@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Concurrency Problems — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../03-concurrency/index.html">Concurrency</a></span>
+    <span>Concurrency Problems</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html" class="active">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="concurrency-problems">Concurrency Problems</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Concurrency bugs are among the hardest to reproduce and debug: they are timing-dependent, environment-sensitive, and often disappear under a debugger. The four classic problems are <strong>race conditions</strong> (concurrent unsynchronised state access), <strong>deadlocks</strong> (circular wait), <strong>thread explosion</strong> (exhausting the thread pool), and <strong>priority inversion</strong> (a high-priority task blocked by a low-priority task holding a resource). Understanding the root cause of each, the detection tools, and the correct fix is essential for production iOS engineering and a standard interview deep-dive area.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p><strong>Race condition</strong>: Two people edit the same document simultaneously without knowing about each other — one person's changes overwrite the other's.</p>
+
+<p><strong>Deadlock</strong>: Two cars at a single-lane bridge from opposite sides, each waiting for the other to back up first. Neither moves.</p>
+
+<p><strong>Thread explosion</strong>: A post office where every parcel requires hiring a new postal worker. After 64 parcels the warehouse is full of idle workers waiting on slow deliveries, and no new workers can be hired.</p>
+
+<p><strong>Priority inversion</strong>: The CEO (high priority) needs a report that a summer intern (low priority) is preparing, but the intern is stuck waiting for the printer held by a middle manager (medium priority). The CEO waits while lower-priority work blocks higher-priority work.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="race-condition">Race Condition</h3>
+
+<p>A race condition occurs when two or more threads access shared mutable state without synchronisation, and the result depends on the order of execution.</p>
+
+<p><strong>Types:</strong></p>
+<ul>
+<li><strong>Read-write race</strong>: One thread reads while another writes — reads get torn values.</li>
+<li><strong>Write-write race</strong>: Two threads write simultaneously — final value is indeterminate.</li>
+<li><strong>Check-then-act race</strong>: Thread A checks a condition, Thread B modifies it before Thread A acts on the result.</li>
+</ul>
+
+<p><strong>Detection tools:</strong></p>
+<ul>
+<li><strong>Thread Sanitiser (TSan)</strong>: Instruments every memory access and reports races at runtime. Enable in the Xcode scheme (Diagnostics → Thread Sanitiser). TSan adds ~2× runtime overhead — use in testing, not production.</li>
+<li><strong>Swift Strict Concurrency</strong> (<code>-strict-concurrency=complete</code>): Static analysis that flags potential data races at compile time in Swift Concurrency code.</li>
+</ul>
+
+<p><strong>Fixes:</strong></p>
+<ul>
+<li>Protect shared mutable state with a serial <code>DispatchQueue</code>, a lock (<code>NSLock</code>, <code>os_unfair_lock</code>), or an <code>actor</code>.</li>
+<li>Prefer immutability — value types passed across threads can't race.</li>
+<li>Use <code>actor</code> for new Swift code.</li>
+</ul>
+
+<h3 id="deadlock">Deadlock</h3>
+
+<p>A deadlock requires all four Coffman conditions simultaneously:</p>
+<ol>
+<li><strong>Mutual exclusion</strong>: A resource is held exclusively.</li>
+<li><strong>Hold and wait</strong>: A thread holds one resource and waits for another.</li>
+<li><strong>No preemption</strong>: Resources can't be forcibly taken.</li>
+<li><strong>Circular wait</strong>: Thread A waits for Thread B's resource; Thread B waits for Thread A's.</li>
+</ol>
+
+<p><strong>Common iOS patterns that deadlock:</strong></p>
+<ul>
+<li><code>DispatchQueue.main.sync { }</code> called from the main thread.</li>
+<li><code>queue.sync { queue.sync { } }</code> — re-entrant sync on the same serial queue.</li>
+<li>Two serial queues doing <code>sync</code> into each other from their own work blocks.</li>
+<li><code>OperationQueue</code> with circular dependencies.</li>
+</ul>
+
+<p><strong>Detection:</strong></p>
+<ul>
+<li>Xcode debugger → pause all threads → inspect thread backtraces for threads blocked in <code>dispatch_sync</code> or lock acquisition.</li>
+<li>Instruments → System Trace → look for threads stuck in kernel <code>__psynch_mutexwait</code> or <code>DISPATCH_WAIT_FOR_QUEUE</code>.</li>
+</ul>
+
+<p><strong>Fixes:</strong></p>
+<ul>
+<li>Eliminate <code>sync</code> calls that could form cycles; prefer <code>async</code>.</li>
+<li>Never call <code>main.sync</code> from the main thread.</li>
+<li>Use lock ordering: always acquire locks in the same global order across all threads.</li>
+<li>Swift actors prevent deadlock structurally — suspension replaces lock-and-hold.</li>
+</ul>
+
+<h3 id="thread-explosion">Thread Explosion</h3>
+
+<p>GCD maintains a thread pool. When all threads are blocked (on <code>sync</code>, <code>semaphore.wait</code>, or a blocking I/O call), GCD creates new threads to handle new submissions — up to a per-process cap (typically 64 threads). Beyond the cap, new work items queue but threads cannot be created, starving the system.</p>
+
+<p>Each thread consumes:</p>
+<ul>
+<li>~512 KB of stack space (configurable)</li>
+<li>Kernel resources for scheduling</li>
+<li>CPU time for context switching</li>
+</ul>
+
+<p><strong>Common cause</strong>: submitting many async tasks that immediately block on a semaphore or synchronous I/O, combined with a backlog of queued work waiting for threads.</p>
+
+<p><strong>Detection:</strong></p>
+<ul>
+<li>Instruments → Threads — count the live threads; &gt; 30–40 threads is suspicious.</li>
+<li>Xcode debug navigator → CPU → threads panel.</li>
+<li>Crash reports showing "Unable to allocate kernel memory for thread" or <code>KERN_RESOURCE_SHORTAGE</code>.</li>
+</ul>
+
+<p><strong>Fixes:</strong></p>
+<ul>
+<li>Replace <code>semaphore.wait()</code> with <code>OperationQueue.maxConcurrentOperationCount</code>.</li>
+<li>Replace blocking threads with <code>async/await</code> and Swift Concurrency's cooperative pool.</li>
+<li>Limit queue depth before submission rather than after (don't submit 1000 tasks then throttle with a semaphore).</li>
+</ul>
+
+<h3 id="priority-inversion">Priority Inversion</h3>
+
+<p>Priority inversion occurs when a high-priority task is blocked on a resource held by a low-priority task. On a busy system, the scheduler gives CPU to medium-priority tasks, starving the low-priority task — which means the high-priority task never gets unblocked.</p>
+
+<p><strong>GCD mitigates this</strong> with <strong>priority inheritance / boosting</strong>: when a high-QoS task submits <code>sync</code> to a lower-QoS queue, GCD temporarily raises the effective QoS of the target queue to match the submitting task.</p>
+
+<p><strong>Swift Concurrency mitigates this</strong> via <strong>task priority escalation</strong>: when a high-priority task awaits a lower-priority task, the runtime raises the lower task's effective priority.</p>
+
+<p><strong>Remaining risk areas:</strong></p>
+<ul>
+<li><code>os_unfair_lock</code> supports priority inheritance; <code>NSLock</code>/<code>pthread_mutex</code> do not by default.</li>
+<li><code>DispatchSemaphore</code> does not support priority inheritance — avoid using semaphores as mutexes in real-time / high-priority contexts.</li>
+<li>Background <code>URLSession</code> tasks can starve foreground downloads if the session is misconfigured.</li>
+</ul>
+
+<p><strong>Detection:</strong></p>
+<ul>
+<li>Instruments → System Trace → CPU Usage lane — look for high-priority thread (red) waiting while medium-priority thread (yellow) runs holding the resource.</li>
+</ul>
+
+<h3 id="summary-table">Summary Table</h3>
+
+<table>
+<tr><td>Problem</td><td>Root cause</td><td>Key detection tool</td><td>Primary fix</td></tr>
+<tr><td>Race condition</td><td>Unsynchronised shared mutable state</td><td>TSan, strict concurrency</td><td><code>actor</code>, serial queue, lock</td></tr>
+<tr><td>Deadlock</td><td>Circular lock acquisition / <code>sync</code> cycle</td><td>Thread backtrace, System Trace</td><td>Eliminate sync cycles; use <code>async</code></td></tr>
+<tr><td>Thread explosion</td><td>Many blocked threads exhausting pool</td><td>Instruments Threads, crash logs</td><td><code>OperationQueue</code> max count; Swift Concurrency</td></tr>
+<tr><td>Priority inversion</td><td>Low-priority lock holder; no inheritance</td><td>System Trace CPU lane</td><td><code>os_unfair_lock</code>; GCD sync (auto-boosting)</td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── Race condition: WRONG (no synchronisation) ─────────────────
+class UnsafeCounter {
+    var count = 0
+
+    // Called from multiple threads simultaneously — data race!
+    func increment() {
+        count += 1   // read-modify-write is NOT atomic on any platform
+    }
+}
+
+// ── Race condition: FIXED with actor ───────────────────────────
+actor SafeCounter {
+    var count = 0
+    func increment() { count += 1 }   // serialised by actor
+    func value() -&gt; Int { count }
+}
+
+// ── Race condition: FIXED with serial queue ─────────────────────
+class QueueSafeCounter {
+    private var count = 0
+    private let queue = DispatchQueue(label: "com.app.counter")
+
+    func increment() {
+        queue.async { self.count += 1 }
+    }
+
+    func value() -&gt; Int {
+        queue.sync { count }
+    }
+}
+
+// ── Deadlock: WRONG ────────────────────────────────────────────
+func deadlockExample() {
+    // Never do this from the main thread
+    DispatchQueue.main.sync {    // blocks main thread waiting for main queue
+        print("Never reached")  // main queue can't dequeue — main thread is blocked
+    }
+}
+
+// ── Deadlock: FIXED ────────────────────────────────────────────
+func noDeadlock() {
+    if Thread.isMainThread {
+        // Already on main thread — call directly
+        updateUI()
+    } else {
+        DispatchQueue.main.async { self.updateUI() }
+    }
+}
+// Or simply always use async:
+func safeUpdate() {
+    DispatchQueue.main.async { self.updateUI() }  // safe from any thread
+}
+
+// ── Thread explosion: WRONG (semaphore rate-limiter) ───────────
+func downloadAllWrong(urls: [URL]) {
+    let semaphore = DispatchSemaphore(value: 4)
+    for url in urls {
+        DispatchQueue.global().async {
+            semaphore.wait()         // up to (urls.count - 4) threads blocked here
+            defer { semaphore.signal() }
+            _ = try? Data(contentsOf: url)
+        }
+    }
+    // With 1000 URLs: 996 threads sitting idle, consuming stack memory
+}
+
+// ── Thread explosion: FIXED with OperationQueue ─────────────────
+func downloadAllFixed(urls: [URL]) {
+    let queue = OperationQueue()
+    queue.maxConcurrentOperationCount = 4   // queue holds work, not threads
+
+    for url in urls {
+        queue.addOperation {
+            _ = try? Data(contentsOf: url)  // only 4 threads ever run at once
+        }
+    }
+}
+
+// ── Thread explosion: FIXED with TaskGroup ──────────────────────
+func downloadAllAsync(urls: [URL]) async {
+    await withTaskGroup(of: Void.self) { group in
+        var inFlight = 0
+        for url in urls {
+            if inFlight &gt;= 4 {
+                await group.next()   // suspend (not block) until one completes
+                inFlight -= 1
+            }
+            group.addTask {
+                _ = try? await URLSession.shared.data(from: url)
+            }
+            inFlight += 1
+        }
+    }
+}
+
+// ── Priority inversion: use os_unfair_lock (supports PI) ────────
+import os
+
+class PriorityAwareCache {
+    private var storage: [String: Data] = [:]
+    private var lock = os_unfair_lock()   // supports priority inheritance
+
+    func value(for key: String) -&gt; Data? {
+        os_unfair_lock_lock(&amp;lock)
+        defer { os_unfair_lock_unlock(&amp;lock) }
+        return storage[key]
+    }
+
+    func setValue(_ data: Data, for key: String) {
+        os_unfair_lock_lock(&amp;lock)
+        defer { os_unfair_lock_unlock(&amp;lock) }
+        storage[key] = data
+    }
+}
+
+func updateUI() {}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is a race condition and how do you prevent it in Swift?</strong></p>
+
+<p>A: A race condition occurs when two or more threads access shared mutable state concurrently without synchronisation, and the result depends on thread scheduling order. In Swift, prevention options are: (1) Use an <code>actor</code> — the compiler enforces that all access is serialised and requires <code>await</code> from outside. (2) Use a serial <code>DispatchQueue</code> — dispatch all reads and writes through it. (3) Use a lock (<code>os_unfair_lock</code>, <code>NSLock</code>) — simpler but requires manual discipline. (4) Use immutable value types — structs copied across threads can't race. Thread Sanitiser (TSan) detects races at runtime.</p>
+
+<p><strong>Q: Describe a deadlock scenario in iOS and how to fix it.</strong></p>
+
+<p>A: Classic scenario: calling <code>DispatchQueue.main.sync { }</code> from the main thread. The main thread blocks waiting for the submitted block to execute, but the block can't execute because the main queue's thread (the main thread) is blocked. It's a circular wait. Fix: always use <code>async</code> when dispatching to any queue from within that same queue. Never call <code>.sync</code> on the current queue, and never call <code>DispatchQueue.main.sync</code> from the main thread.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does GCD prevent priority inversion, and what are its limitations?</strong></p>
+
+<p>A: GCD implements <strong>automatic QoS boosting</strong>: when you call <code>queue.sync { }</code> from a higher-QoS context, GCD temporarily raises the effective QoS of the target queue to match the caller's. This prevents the scheduler from starving the target queue's work in favour of unrelated medium-priority tasks. However, GCD's boosting only helps for <code>sync</code> dispatches — it does not propagate through <code>DispatchSemaphore.wait()</code>, which has no knowledge of the waiting task's priority. <code>os_unfair_lock</code> (the lowest-level lock Apple exposes) supports kernel-level priority inheritance. <code>NSLock</code> wraps <code>pthread_mutex</code> without priority inheritance by default. For critical high-priority-to-low-priority lock interactions, prefer <code>os_unfair_lock</code> or design with actors and Swift Concurrency, which handle priority escalation natively.</p>
+
+<p><strong>Q: What is thread explosion and how does Swift Concurrency avoid it?</strong></p>
+
+<p>A: Thread explosion occurs when many GCD work items block on synchronous operations (semaphores, I/O), causing GCD to create new threads to keep the pool moving — eventually exhausting the 64-thread cap and degrading performance. Swift Concurrency uses a <strong>cooperative thread pool</strong> sized to the number of CPU cores. Tasks <code>await</code> (suspend) instead of blocking threads. A suspended task releases its thread immediately, making it available for other ready tasks. No matter how many tasks are awaiting, only <code>N</code> threads (N ≈ CPU cores) are active at once. This is fundamentally more scalable than the GCD blocking model for high-concurrency workloads.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How does Thread Sanitiser detect races, and why can it produce false positives?</strong></p>
+
+<p>A: TSan instruments every memory read and write at compile time, inserting shadow memory accesses that track which thread last accessed each memory location and what synchronisation primitives were used. At runtime, TSan uses a happens-before analysis based on synchronisation events (lock acquire/release, thread fork/join, signal/wait) to determine whether two conflicting accesses (at least one being a write) could have occurred without one happening-before the other. If so, it's a race. False positives arise when: (1) custom synchronisation is used that TSan doesn't understand (e.g., a spin lock using atomic operations without TSan instrumentation); (2) <code>@unchecked Sendable</code> is used to assert safety that TSan can't verify; (3) intentional benign races (e.g., a flag read without sync that is only written once at startup). The Swift team added TSan annotations (<code>_swift_tsan_acquire</code>) to Swift's own synchronisation primitives so TSan understands them, but custom C-level atomics may still produce false positives.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: App crashes intermittently with EXC_BAD_ACCESS — no consistent stack trace.</strong></p>
+
+<p>Solution: Enable Thread Sanitiser (TSan) in the Xcode scheme. Run the affected user flow. TSan will pin down the exact memory location and the two racing accesses with their stack traces. Fix with an <code>actor</code> or serial queue around the shared state.</p>
+
+<p><strong>Issue: App hangs — spinning wheel, no crash.</strong></p>
+
+<p>Solution: Pause all threads in Xcode debugger and examine backtraces. Look for threads blocked in <code>dispatch_sync</code>, <code>semaphore_wait</code>, or <code>pthread_mutex_lock</code>. Identify the circular dependency and break it with <code>async</code>.</p>
+
+<p><strong>Issue: Background image processing UI is janky even though work is on a background queue.</strong></p>
+
+<p>Solution: Check Instruments → Time Profiler. Look for unexpected main-thread work during the operation. Confirm the background queue is not submitting <code>sync</code> to the main queue inside the loop. Also verify QoS — <code>.background</code> queues are throttled on battery; use <code>.utility</code> for user-visible progress.</p>
+
+<p><strong>Issue: Network requests time out on devices but work in Simulator.</strong></p>
+
+<p>Solution: This is often a thread explosion or priority inversion issue. On device the GCD thread pool is smaller and throttling is more aggressive. Profile with Instruments → System Trace on device. Look for thread pool exhaustion (all threads sleeping on semaphores) or low-priority network tasks being starved by medium-priority work.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="gcd-dispatch-queue.md">GCD &amp; Dispatch Queues</a> — sync/async, QoS — the source of many deadlock and explosion patterns</li>
+<li><a href="dispatch-group-semaphore.md">DispatchGroup, Semaphore &amp; Barrier</a> — semaphore misuse leads to thread explosion</li>
+<li><a href="actors.md">Actors</a> — compiler-enforced solution to race conditions</li>
+<li><a href="task-taskgroup.md">Task &amp; TaskGroup</a> — cooperative pool eliminates thread explosion</li>
+<li><a href="operation-queue.md">Operation &amp; OperationQueue</a> — <code>maxConcurrentOperationCount</code> to limit thread use</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

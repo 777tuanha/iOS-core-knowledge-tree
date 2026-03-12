@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCD & Dispatch Queues — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../03-concurrency/index.html">Concurrency</a></span>
+    <span>Gcd Dispatch Queue</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html" class="active">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="gcd--dispatch-queues">GCD &amp; Dispatch Queues</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Grand Central Dispatch (GCD) is Apple's C-level concurrency framework. It manages a pool of POSIX threads and lets you describe units of work (blocks/closures) that should be executed on queues. The OS scheduler decides which thread actually runs each block, freeing you from thread lifecycle management. GCD underpins most concurrency in iOS — even <code>OperationQueue</code> and (historically) <code>URLSession</code> use it internally.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a post office with a single counter (serial queue) versus many open windows (concurrent queue). At the single counter, each customer is served one at a time in order — no confusion about who gets served next. At the multi-window post office, many customers are helped simultaneously, but no one can predict which window you'll reach first.</p>
+
+<p>GCD is the post office manager. You drop off parcels (work items) at the queue counter, and the manager assigns postal workers (threads) to handle them. You never hire or fire postal workers yourself.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="queue-types">Queue Types</h3>
+
+<table>
+<tr><td>Type</td><td>Behaviour</td><td>Typical use</td></tr>
+<tr><td>Serial</td><td>One item at a time, FIFO</td><td>Protecting a resource from concurrent access</td></tr>
+<tr><td>Concurrent</td><td>Multiple items simultaneously</td><td>Parallel read-only work</td></tr>
+<tr><td>Main queue</td><td>Serial, always on the main thread</td><td>UI updates</td></tr>
+</table>
+
+<h3 id="global-system-concurrent-queues">Global (System) Concurrent Queues</h3>
+
+<p>Apple provides pre-built concurrent queues at five QoS levels:</p>
+
+<pre><code class="language-swift">DispatchQueue.global(qos: .userInteractive)  // animations, direct user response
+DispatchQueue.global(qos: .userInitiated)    // user-triggered, result needed quickly
+DispatchQueue.global(qos: .default)          // general background work
+DispatchQueue.global(qos: .utility)          // progress bars, long operations
+DispatchQueue.global(qos: .background)       // prefetch, maintenance (invisible)</code></pre>
+
+<p>You never own global queues — they are singletons shared across the process.</p>
+
+<h3 id="quality-of-service-qos">Quality of Service (QoS)</h3>
+
+<p>QoS is a hint to the scheduler. It affects:</p>
+<ul>
+<li><strong>Thread priority</strong> — higher QoS gets more CPU time when resources are scarce.</li>
+<li><strong>Timer coalescing</strong> — lower QoS work may be delayed to coalesce with other low-priority work, saving battery.</li>
+<li><strong>Thread creation policy</strong> — the system spawns more threads for high-QoS queues under load.</li>
+</ul>
+
+<p>QoS can be <strong>promoted</strong>: if a high-QoS task is waiting for a result from a low-QoS queue, the system temporarily raises the QoS of the waiting queue (priority boosting).</p>
+
+<h3 id="async-vs-sync-dispatch">async vs sync Dispatch</h3>
+
+<table>
+<tr><td>Method</td><td>Calling thread</td><td>Risk</td></tr>
+<tr><td><code>async</code></td><td>Returns immediately; work runs later</td><td>None to caller</td></tr>
+<tr><td><code>sync</code></td><td>Blocks caller until work completes</td><td>Deadlock if dispatching to own queue</td></tr>
+</table>
+
+<p><strong>Deadlock rule</strong>: never call <code>sync</code> on a queue from work already running on that same queue.</p>
+
+<h3 id="custom-vs-global-queues">Custom vs Global Queues</h3>
+
+<p>Prefer <strong>custom queues</strong> for work that touches a specific resource — you get a meaningful label (visible in Xcode/Instruments), and you can control the queue type, QoS, and target queue.</p>
+
+<pre><code class="language-swift">let dbQueue = DispatchQueue(label: "com.app.database", qos: .userInitiated)
+let imageQueue = DispatchQueue(label: "com.app.images", attributes: .concurrent)</code></pre>
+
+<p>Prefer <strong>global queues</strong> for one-off background tasks where you don't need the extra control.</p>
+
+<h3 id="target-queues">Target Queues</h3>
+
+<p>Every custom queue has a <strong>target queue</strong> (default: <code>DispatchQueue.global(qos:)</code> matching its QoS). Setting a target queue chains queues so that all work ultimately runs on the target. This enables hierarchy-based QoS propagation and is used to implement priority queues and queue activation.</p>
+
+<h3 id="dispatchworkitem">DispatchWorkItem</h3>
+
+<p>A <code>DispatchWorkItem</code> wraps a closure with additional capabilities: cancellation, notification on completion, and wait. Cancellation is cooperative — you must check <code>isCancelled</code> inside the item.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── 1. Main-thread UI update after background work ─────────────
+func loadUserProfile(id: String) {
+    // Move heavy work off the main thread
+    DispatchQueue.global(qos: .userInitiated).async {
+        let profile = fetchProfile(id: id)  // simulated network/DB call
+
+        // All UIKit updates must happen on the main queue
+        DispatchQueue.main.async {
+            self.updateUI(with: profile)
+        }
+    }
+}
+
+// ── 2. Serial queue as a lightweight mutex ──────────────────────
+class Cache {
+    private var store: [String: Data] = [:]
+    // Serial queue serialises all reads and writes — no data races
+    private let queue = DispatchQueue(label: "com.app.cache")
+
+    func set(_ data: Data, for key: String) {
+        queue.async {
+            self.store[key] = data        // safe: only one writer at a time
+        }
+    }
+
+    func get(key: String) -&gt; Data? {
+        // sync: we need the return value before we continue
+        queue.sync { store[key] }
+    }
+}
+
+// ── 3. Concurrent queue for parallel reads ─────────────────────
+class ImageStore {
+    private var images: [String: UIImage] = [:]
+    private let queue = DispatchQueue(
+        label: "com.app.images",
+        attributes: .concurrent       // multiple readers at once
+    )
+
+    func image(for key: String) -&gt; UIImage? {
+        queue.sync { images[key] }    // concurrent reads — fine
+    }
+
+    func setImage(_ image: UIImage, for key: String) {
+        // Use barrier to get exclusive access for writes
+        queue.async(flags: .barrier) {
+            self.images[key] = image  // exclusive: no reads/writes during this
+        }
+    }
+}
+
+// ── 4. DispatchWorkItem with cancellation ──────────────────────
+var searchWorkItem: DispatchWorkItem?
+
+func search(query: String) {
+    searchWorkItem?.cancel()          // cancel previous search
+
+    let item = DispatchWorkItem {
+        guard !Thread.current.isCancelled else { return }
+        let results = performSearch(query: query)
+        guard !(self.searchWorkItem?.isCancelled ?? false) else { return }
+        DispatchQueue.main.async { self.showResults(results) }
+    }
+    searchWorkItem = item
+    DispatchQueue.global(qos: .userInitiated).async(execute: item)
+}
+
+// ── 5. sync dispatch for thread-safe property access ───────────
+class Settings {
+    private var _value = 0
+    private let queue = DispatchQueue(label: "com.app.settings")
+
+    var value: Int {
+        get { queue.sync { _value } }
+        set { queue.async { self._value = newValue } }  // async write is fine
+    }
+}
+
+// Helper stubs used above
+func fetchProfile(id: String) -&gt; String { id }
+func performSearch(query: String) -&gt; [String] { [] }
+extension NSObject {
+    func updateUI(with profile: String) {}
+    func showResults(_ results: [String]) {}
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between a serial and a concurrent dispatch queue?</strong></p>
+
+<p>A: A serial queue executes one work item at a time in FIFO order — the next item does not start until the current one finishes. A concurrent queue can run multiple items simultaneously on different threads. Serial queues are commonly used to protect shared mutable state; concurrent queues are used for independent, parallelisable work where ordering does not matter.</p>
+
+<p><strong>Q: What are the QoS classes in GCD and why do they matter?</strong></p>
+
+<p>A: QoS (Quality of Service) classes are hints to the OS scheduler: <code>.userInteractive</code> (highest — animations), <code>.userInitiated</code> (user-triggered, near-instant), <code>.default</code>, <code>.utility</code> (long operations with visible progress), <code>.background</code> (invisible maintenance), and <code>.unspecified</code>. They determine thread priority and timer coalescing. Using the right QoS keeps the UI responsive by giving background work proportionally less CPU time.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does GCD prevent thread explosion?</strong></p>
+
+<p>A: GCD uses a <strong>thread pool</strong> with a cap (typically 64 threads per process). When you submit work with <code>async</code>, GCD only creates a new thread if all existing threads are blocked and the pool limit has not been reached. If you have many concurrent tasks all blocked on I/O or <code>sync</code> calls, GCD may eventually hit the cap, and new submissions are queued waiting for a thread. This is why you should prefer <code>async</code> over <code>sync</code> for potentially-blocking work and avoid holding threads with long blocking operations — instead, use <code>DispatchSemaphore</code> or structured concurrency, which suspends without occupying a thread.</p>
+
+<p><strong>Q: What is a target queue and how does it affect QoS propagation?</strong></p>
+
+<p>A: Every custom <code>DispatchQueue</code> has a target queue — by default, the global queue matching its QoS. When work submitted to a custom queue is scheduled, it ultimately runs on the target queue's thread pool. You can set a custom target queue via <code>DispatchQueue(label:target:)</code> or <code>setTarget(queue:)</code>. This allows you to create a hierarchy: a set of serialised operations that all funnel into one shared concurrent queue, or a group of queues that inherit QoS from a single authoritative queue. The target queue also propagates synchronisation for <code>DispatchSpecificKey</code> storage.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Explain how GCD's <code>sync</code> on the main queue from the main thread causes a deadlock, and describe a pattern where this deadlock is non-obvious.<em></em></p>
+
+<p>A: <code>DispatchQueue.main.sync { }</code> submits a work item to the main queue and blocks the calling thread until it completes. If the caller is already on the main thread, the main thread is blocked waiting for the item to be dequeued — but the main queue won't dequeue anything because its thread (the main thread) is blocked. This is a simple case. A non-obvious case: a library calls a completion handler synchronously on the calling thread, and you call it from the main thread; internally the library dispatches <code>main.sync</code> to post the result — instant deadlock. Another: a <code>sync</code> dispatch into a custom serial queue A, inside a block already running on queue A (re-entrant <code>sync</code>) — GCD serial queues are not re-entrant. The fix is always to use <code>async</code> when the return value is not immediately needed, or restructure so the main thread is never the target of a <code>sync</code> from itself.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: UI freezes — heavy work accidentally runs on the main thread.</strong></p>
+
+<p>Solution: Profile with Instruments → Time Profiler. Look for long frames (&gt; 16 ms) in the main thread stack. Move database queries, image decoding, and network parsing to <code>DispatchQueue.global()</code>.</p>
+
+<p><strong>Issue: Data race on shared mutable state — crashes or incorrect values.</strong></p>
+
+<p>Solution: Protect the state with a serial queue (all reads and writes go through the queue). For read-heavy workloads use a concurrent queue with <code>.barrier</code> for writes. In Swift 5.7+ with strict concurrency, migrate to an <code>actor</code>.</p>
+
+<p><em></em>Issue: <code>sync</code> deadlock — app hangs with no crash.<em></em></p>
+
+<p>Solution: Enable Thread Sanitiser (TSan) and the main-thread checker. Never call <code>DispatchQueue.main.sync</code> from the main thread. Avoid <code>sync</code> on any queue from inside a block already running on that queue.</p>
+
+<p><em></em>Issue: Work submitted to <code>.background</code> QoS runs too slowly on a plugged-in device but is acceptable on battery.<em></em></p>
+
+<p>Solution: That is expected behaviour — <code>.background</code> is throttled when the device is under battery-saving constraints. Move time-sensitive work to <code>.utility</code> or <code>.userInitiated</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="dispatch-group-semaphore.md">DispatchGroup, Semaphore &amp; Barrier</a> — coordinating multiple async dispatches</li>
+<li><a href="operation-queue.md">Operation &amp; OperationQueue</a> — higher-level alternative to GCD</li>
+<li><a href="async-await.md">async/await</a> — modern replacement for GCD callbacks</li>
+<li><a href="concurrency-problems.md">Concurrency Problems</a> — race conditions, deadlocks, thread explosion</li>
+<li><a href="../02-memory-management/closures-capture-lists.md">Closures &amp; Capture Lists</a> — <code>[weak self]</code> in async blocks</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operation & OperationQueue — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../03-concurrency/index.html">Concurrency</a></span>
+    <span>Operation Queue</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html" class="active">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="operation--operationqueue">Operation &amp; OperationQueue</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>Operation</code> and <code>OperationQueue</code> are Objective-C-era Foundation classes that provide a higher-level, object-oriented concurrency model built on top of GCD. An <code>Operation</code> is an object that encapsulates a unit of work, complete with a state machine (pending → ready → executing → finished/cancelled), support for dependencies between operations, and cooperative cancellation. An <code>OperationQueue</code> manages a collection of operations and dispatches them to an underlying thread pool, respecting dependencies and a configurable maximum concurrency level.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of an <code>OperationQueue</code> as a construction site manager. Each <code>Operation</code> is a work order — it has a status (waiting, in progress, done, cancelled), may depend on other work orders being finished first, and can be cancelled if the project changes.</p>
+
+<p>GCD is like giving workers sticky notes with instructions. It is fast and simple, but notes don't know about each other. Operations are work orders in a filing system — they can say "don't start me until Order #5 is complete", and if the client cancels the project, you can recall all outstanding orders at once.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="operation-state-machine">Operation State Machine</h3>
+
+<p>An <code>Operation</code> moves through states in order:</p>
+
+<pre><code>isReady → isExecuting → isFinished
+                ↓
+           isCancelled</code></pre>
+
+<ul>
+<li><strong>isReady</strong>: all dependencies have finished.</li>
+<li><strong>isExecuting</strong>: the operation is currently running.</li>
+<li><strong>isFinished</strong>: the operation completed (successfully or by cancellation).</li>
+<li><strong>isCancelled</strong>: <code>cancel()</code> was called. The operation must check this flag itself and stop work — cancellation is cooperative, not preemptive.</li>
+</ul>
+
+<p>For <code>BlockOperation</code> and subclasses that override <code>main()</code>, the queue manages state transitions automatically. For async operations (overriding <code>start()</code>), you must manually post KVO notifications for <code>isExecuting</code> and <code>isFinished</code>.</p>
+
+<h3 id="blockoperation">BlockOperation</h3>
+
+<p><code>BlockOperation</code> wraps one or more closures. All closures run concurrently (on GCD) and the operation is not finished until all complete. You can add blocks after creation with <code>addExecutionBlock(_:)</code>.</p>
+
+<h3 id="custom-operation-subclass">Custom Operation Subclass</h3>
+
+<p>Override <code>main()</code> for synchronous work:</p>
+<pre><code class="language-swift">class ParseOperation: Operation {
+    var inputData: Data?
+    var result: [String] = []
+
+    override func main() {
+        guard !isCancelled, let data = inputData else { return }
+        // parse...
+        result = parse(data)
+    }
+}</code></pre>
+
+<p>For asynchronous operations, override <code>start()</code> and manually manage <code>isExecuting</code>/<code>isFinished</code> with KVO.</p>
+
+<h3 id="dependencies">Dependencies</h3>
+
+<p><code>addDependency(_:)</code> creates a happens-before relationship: the dependent operation will not start until all its dependencies are finished (or cancelled). Dependencies can span queues.</p>
+
+<table>
+<tr><td>Property</td><td>Purpose</td></tr>
+<tr><td><code>addDependency(op)</code></td><td>This operation waits for <code>op</code> to finish</td></tr>
+<tr><td><code>removeDependency(op)</code></td><td>Remove the dependency</td></tr>
+<tr><td><code>dependencies</code></td><td>All registered dependency operations</td></tr>
+</table>
+
+<p><strong>Caution</strong>: circular dependencies cause a deadlock — neither operation ever becomes ready.</p>
+
+<h3 id="cancellation">Cancellation</h3>
+
+<p>Calling <code>queue.cancelAllOperations()</code> sets <code>isCancelled</code> on every operation in the queue. Operations that haven't started are removed; running operations must periodically check <code>isCancelled</code> and stop. Finished operations ignore cancellation.</p>
+
+<h3 id="maxconcurrentoperationcount">maxConcurrentOperationCount</h3>
+
+<p>Setting this to 1 makes the queue serial (executes one operation at a time). Setting it to <code>OperationQueue.defaultMaxConcurrentOperationCount</code> lets the system decide (usually based on CPU cores and QoS).</p>
+
+<h3 id="comparison-to-gcd">Comparison to GCD</h3>
+
+<table>
+<tr><td>Feature</td><td>GCD</td><td>OperationQueue</td></tr>
+<tr><td>Abstraction level</td><td>Low (closures, queues)</td><td>High (objects with lifecycle)</td></tr>
+<tr><td>Dependencies</td><td>Manual (groups/semaphores)</td><td>First-class (<code>addDependency</code>)</td></tr>
+<tr><td>Cancellation</td><td>Cooperative via <code>WorkItem</code></td><td>Cooperative via <code>isCancelled</code> flag</td></tr>
+<tr><td>Max concurrency</td><td>Semaphore-based hack</td><td><code>maxConcurrentOperationCount</code></td></tr>
+<tr><td>Observation</td><td>None</td><td>KVO on <code>isExecuting</code>, <code>isFinished</code></td></tr>
+<tr><td>Retry / replay</td><td>Manual</td><td>Override <code>start()</code></td></tr>
+<tr><td>Overhead</td><td>Lower</td><td>Higher (ObjC runtime, KVO)</td></tr>
+</table>
+
+<p>Use <code>OperationQueue</code> when you need: dependency graphs, per-operation cancellation, observable state, or the ability to replay/resubmit operations. Use GCD for simple fire-and-forget async work.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── BlockOperation with dependencies ───────────────────────────
+let downloadOp = BlockOperation {
+    print("Downloading image...")
+    // simulate download
+}
+
+let processOp = BlockOperation {
+    print("Processing image...")
+    // processOp won't start until downloadOp finishes
+}
+processOp.addDependency(downloadOp)
+
+let saveOp = BlockOperation {
+    print("Saving to disk...")
+}
+saveOp.addDependency(processOp)
+
+let queue = OperationQueue()
+queue.name = "com.app.imagePipeline"
+queue.maxConcurrentOperationCount = 4
+
+queue.addOperations([downloadOp, processOp, saveOp], waitUntilFinished: false)
+
+// ── Custom synchronous Operation subclass ──────────────────────
+class ResizeOperation: Operation {
+    let image: UIImage
+    let targetSize: CGSize
+    private(set) var resized: UIImage?
+
+    init(image: UIImage, targetSize: CGSize) {
+        self.image = image
+        self.targetSize = targetSize
+    }
+
+    override func main() {
+        guard !isCancelled else { return }
+
+        // Do work — check isCancelled periodically in long operations
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        guard !isCancelled else {
+            resized = nil   // discard result if cancelled mid-way
+            return
+        }
+    }
+}
+
+// ── Cancelling all operations on view disappear ─────────────────
+class ImageListViewController: UIViewController {
+    let imageQueue = OperationQueue()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        imageQueue.maxConcurrentOperationCount = 3
+        imageQueue.qualityOfService = .userInitiated
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        imageQueue.cancelAllOperations()  // user navigated away — no need to continue
+    }
+
+    func loadImage(url: URL) {
+        let op = BlockOperation { [weak self] in
+            guard let self, !Thread.current.isCancelled else { return }
+            // download &amp; decode...
+            DispatchQueue.main.async {
+                // update cell
+            }
+        }
+        imageQueue.addOperation(op)
+    }
+}
+
+// ── Wrapping OperationQueue in async/await ──────────────────────
+// For bridging legacy Operation pipelines into modern async code:
+func processImage(_ image: UIImage) async -&gt; UIImage {
+    await withCheckedContinuation { continuation in
+        let op = ResizeOperation(image: image, targetSize: CGSize(width: 200, height: 200))
+        op.completionBlock = {
+            continuation.resume(returning: op.resized ?? image)
+        }
+        OperationQueue().addOperation(op)
+    }
+}
+
+// ── Main-queue OperationQueue for serialised UI work ───────────
+let mainQueue = OperationQueue.main  // equivalent to DispatchQueue.main
+mainQueue.addOperation {
+    // this runs on the main thread
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>Operation.cancel()</code> and actually stopping the operation?<em></em></p>
+
+<p>A: <code>cancel()</code> sets the <code>isCancelled</code> flag to <code>true</code> — it does not preemptively interrupt running code. The operation's <code>main()</code> (or <code>start()</code>) method must periodically check <code>isCancelled</code> and return early when it is <code>true</code>. This cooperative model means you must design your operations to be cancellation-aware, particularly in loops or after each significant chunk of work. An operation that ignores <code>isCancelled</code> will run to completion even after <code>cancel()</code> is called.</p>
+
+<p><em></em>Q: What does <code>addDependency</code> do?<em></em></p>
+
+<p>A: It creates a happens-before relationship. The dependent operation will not enter the executing state until all operations it depends on have reached the finished state (whether they succeeded or were cancelled). Dependencies can cross queue boundaries — you can add a dependency on an operation in a different <code>OperationQueue</code>. The queue monitors the dependency's <code>isFinished</code> KVO property to know when to promote the dependent to ready.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How do you implement an asynchronous <code>Operation</code> subclass that wraps an async callback-based API?<em></em></p>
+
+<p>A: Override <code>start()</code> (not <code>main()</code>), manage <code>isExecuting</code> and <code>isFinished</code> manually via KVO, and set <code>isAsynchronous</code> to return <code>true</code>. When the callback fires, set <code>isExecuting = false</code> and <code>isFinished = true</code>. The KVO notifications signal to the queue that the operation is done:</p>
+
+<pre><code class="language-swift">class AsyncFetchOperation: Operation {
+    private var _executing = false { willSet { willChangeValue(forKey: "isExecuting") }
+                                     didSet  { didChangeValue(forKey: "isExecuting") } }
+    private var _finished  = false { willSet { willChangeValue(forKey: "isFinished") }
+                                     didSet  { didChangeValue(forKey: "isFinished") } }
+    override var isAsynchronous: Bool { true }
+    override var isExecuting: Bool    { _executing }
+    override var isFinished:  Bool    { _finished }
+
+    override func start() {
+        guard !isCancelled else { _finished = true; return }
+        _executing = true
+        URLSession.shared.dataTask(with: URL(string: "https://example.com")!) { [weak self] _, _, _ in
+            self?._executing = false
+            self?._finished  = true
+        }.resume()
+    }
+}</code></pre>
+
+<p>Without the correct KVO, the queue will think the operation finishes immediately after <code>start()</code> returns, causing dependent operations to start prematurely.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Compare the overhead and appropriate use cases of <code>OperationQueue</code> versus <code>withTaskGroup</code> in Swift Concurrency.<em></em></p>
+
+<p>A: <code>OperationQueue</code> carries ObjC runtime overhead (KVO, NSObject allocation, lock-based state machine per operation) and is best suited to use cases requiring observable state, complex dependency graphs, or integration with legacy ObjC code. <code>withTaskGroup</code> is a pure Swift structured concurrency primitive that multiplexes onto the cooperative thread pool — child tasks suspend (not block) when waiting, consuming no thread. This makes <code>withTaskGroup</code> dramatically more efficient for high-concurrency scenarios (thousands of tasks), as it avoids thread explosion entirely. <code>withTaskGroup</code> also composes naturally with <code>async/await</code> and provides cooperative cancellation via <code>Task.checkCancellation()</code>. Choose <code>OperationQueue</code> for dependency graphs with rich lifecycle observation, legacy API bridging, or ObjC interop. Choose <code>withTaskGroup</code> for new Swift code doing fan-out parallel work where the cooperative thread pool is available.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Dependent operation starts before its dependency finishes.</strong></p>
+
+<p>Solution: Ensure the dependency operation properly sets <code>isFinished</code> to <code>true</code>. For async operations, this requires manual KVO. Verify by adding a <code>completionBlock</code> to the dependency and logging the order.</p>
+
+<p><em></em>Issue: <code>cancelAllOperations()</code> doesn't stop running operations.<em></em></p>
+
+<p>Solution: Operations must check <code>isCancelled</code> periodically inside <code>main()</code>. Add <code>guard !isCancelled else { return }</code> at each loop iteration or after each significant step.</p>
+
+<p><strong>Issue: Circular dependency — queue deadlocks and no operations ever run.</strong></p>
+
+<p>Solution: Never create dependency cycles (A depends on B, B depends on A). Review the dependency graph. Instruments → System Trace or a thread backtrace will show all operations stuck in the <code>isReady == false</code> state.</p>
+
+<p><strong>Issue: Memory leak — operations retained by the queue long after completion.</strong></p>
+
+<p>Solution: Operations are removed from the queue when they finish. If they linger, verify <code>isFinished</code> is being set to <code>true</code>. For custom async operations, check that the KVO mechanism is correct and that the completion callback always fires.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="gcd-dispatch-queue.md">GCD &amp; Dispatch Queues</a> — lower-level alternative OperationQueue builds on</li>
+<li><a href="dispatch-group-semaphore.md">DispatchGroup, Semaphore &amp; Barrier</a> — GCD coordination primitives</li>
+<li><a href="task-taskgroup.md">Task &amp; TaskGroup</a> — modern Swift alternative to Operation dependencies</li>
+<li><a href="concurrency-problems.md">Concurrency Problems</a> — deadlocks from circular dependencies</li>
+<li><a href="../02-memory-management/closures-capture-lists.md">Closures &amp; Capture Lists</a> — <code>[weak self]</code> inside <code>BlockOperation</code></li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

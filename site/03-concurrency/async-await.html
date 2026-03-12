@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>async/await — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../03-concurrency/index.html">Concurrency</a></span>
+    <span>Async Await</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html" class="active">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="asyncawait">async/await</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>async</code>/<code>await</code> is Swift's built-in syntax for writing asynchronous code that reads like synchronous code. Introduced in Swift 5.5 (iOS 15), it replaces callback chains and Combine pipelines for most async use cases. A function marked <code>async</code> can <strong>suspend</strong> — it pauses execution without blocking its thread, allowing the thread to do other work. When the awaited value is ready, the function resumes, potentially on a different thread. This is part of Swift's <strong>structured concurrency</strong> model, where asynchronous work forms a tree of tasks with well-defined lifetimes.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine you're a chef (a thread) and you put a dish in the oven (an async operation). With traditional callbacks, you'd have to stand next to the oven and do nothing else until the timer rings. With <code>async/await</code>, you set the oven timer, walk away, and let the kitchen manager (the Swift runtime) tap you on the shoulder when the dish is ready — meanwhile you're free to chop vegetables for another order.</p>
+
+<p>Critically, <code>await</code> doesn't freeze you — it frees you. The thread is released to do other work; you (the logical task) just sleep until the oven timer fires.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="suspension-points">Suspension Points</h3>
+
+<p>Every <code>await</code> is a <strong>potential suspension point</strong> — the function may or may not actually suspend depending on whether the awaited value is immediately available. If it suspends, the thread is released back to the pool. When the awaited work completes, the Swift runtime reschedules the continuation — possibly on a different thread (unless bound to an actor or the main actor).</p>
+
+<h3 id="async-let--parallel-async-calls">async let — Parallel Async Calls</h3>
+
+<p><code>async let</code> starts a child task immediately and continues executing the parent. The <code>await</code> on the binding is where the parent waits. This enables structured parallelism:</p>
+
+<pre><code class="language-swift">async let profile = fetchProfile()   // starts immediately
+async let posts   = fetchPosts()     // starts immediately, runs in parallel
+let (p, q) = await (profile, posts)  // wait for both</code></pre>
+
+<p>Without <code>async let</code>, sequential <code>await</code> calls would run one after the other.</p>
+
+<h3 id="bridging-callback-apis-with-withcheckedcontinuation">Bridging Callback APIs with withCheckedContinuation</h3>
+
+<p><code>withCheckedContinuation</code> wraps a callback-based API into an <code>async</code> function. The closure receives a <code>CheckedContinuation</code>; you call <code>resume(returning:)</code> or <code>resume(throwing:)</code> exactly once when the callback fires.</p>
+
+<p>"Checked" adds a runtime assertion that <code>resume</code> is called exactly once — very helpful during development. <code>withUnsafeContinuation</code> skips the check for performance in production-critical paths.</p>
+
+<h3 id="structured-concurrency-model">Structured Concurrency Model</h3>
+
+<p>In structured concurrency:</p>
+<ul>
+<li>Every async task has a parent.</li>
+<li>The parent cannot finish until all its children finish.</li>
+<li>Cancelling a parent automatically cancels all children.</li>
+<li>Errors propagate up the tree.</li>
+</ul>
+
+<p>This tree structure prevents "fire and forget" tasks that outlive their context, eliminating a whole class of bugs present in GCD/callback code.</p>
+
+<h3 id="actor-executor--thread-hopping">Actor Executor &amp; Thread Hopping</h3>
+
+<p>When you <code>await</code> a function on a different actor, the Swift runtime <strong>hops threads</strong> after the suspension — your continuation may resume on the actor's executor, not the original thread. This is transparent to your code but important for understanding execution order and for debugging stack traces.</p>
+
+<h3 id="cooperative-vs-preemptive">Cooperative vs Preemptive</h3>
+
+<p>Swift's concurrency model is <strong>cooperative</strong> — tasks yield at <code>await</code> points. There is no preemptive scheduling. This means a tight CPU loop with no <code>await</code> will never yield. For CPU-intensive work, use <code>Task.yield()</code> periodically to give the runtime a chance to schedule other tasks.</p>
+
+<h3 id="comparison-to-gcd">Comparison to GCD</h3>
+
+<table>
+<tr><td>Feature</td><td>GCD callbacks</td><td>async/await</td></tr>
+<tr><td>Thread blocking</td><td><code>sync</code> blocks; <code>async</code> returns immediately</td><td><code>await</code> suspends without blocking a thread</td></tr>
+<tr><td>Composition</td><td>Nested callbacks ("callback hell")</td><td>Sequential readable code</td></tr>
+<tr><td>Error handling</td><td>Pass error in callback</td><td>Native <code>throws</code></td></tr>
+<tr><td>Cancellation</td><td>Manual flag checks</td><td><code>Task.isCancelled</code> / <code>checkCancellation()</code></td></tr>
+<tr><td>Structured lifetime</td><td>No</td><td>Yes — tasks scoped to their parent</td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── Basic async function with error propagation ─────────────────
+func fetchUser(id: String) async throws -&gt; User {
+    let url = URL(string: "https://api.example.com/users/\(id)")!
+    let (data, response) = try await URLSession.shared.data(from: url)
+
+    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+        throw APIError.badResponse
+    }
+    return try JSONDecoder().decode(User.self, from: data)
+}
+
+// ── Sequential awaits (one after the other) ────────────────────
+func loadUserDashboard(id: String) async throws -&gt; Dashboard {
+    let user    = try await fetchUser(id: id)        // waits for user first
+    let posts   = try await fetchPosts(for: user)    // then fetches posts
+    return Dashboard(user: user, posts: posts)
+}
+
+// ── async let for parallel execution ───────────────────────────
+func loadUserDashboardFast(id: String) async throws -&gt; Dashboard {
+    async let user  = fetchUser(id: id)       // both start immediately
+    async let posts = fetchPostsById(id: id)  // runs in parallel with user fetch
+
+    // await both — whichever finishes last determines the total time
+    return try await Dashboard(user: user, posts: posts)
+}
+
+// ── Bridging a callback API with withCheckedContinuation ────────
+func legacyFetch(url: URL, completion: @escaping (Data?, Error?) -&gt; Void) {
+    URLSession.shared.dataTask(with: url) { data, _, error in
+        completion(data, error)
+    }.resume()
+}
+
+func fetchData(from url: URL) async throws -&gt; Data {
+    try await withCheckedThrowingContinuation { continuation in
+        legacyFetch(url: url) { data, error in
+            if let error {
+                continuation.resume(throwing: error)    // must call exactly once
+            } else if let data {
+                continuation.resume(returning: data)    // must call exactly once
+            } else {
+                continuation.resume(throwing: APIError.noData)
+            }
+        }
+    }
+}
+
+// ── Calling async code from synchronous context ─────────────────
+// Use Task { } to bridge from non-async code (e.g., viewDidLoad)
+class ProfileViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        Task {
+            do {
+                let user = try await fetchUser(id: "42")
+                // After await, execution continues here (may be on different thread)
+                await MainActor.run {
+                    self.displayUser(user)    // ensure UI update on main thread
+                }
+            } catch {
+                print("Failed: \(error)")
+            }
+        }
+    }
+
+    func displayUser(_ user: User) {}
+}
+
+// ── Task.yield() for CPU-bound work ────────────────────────────
+func processLargeDataset(_ items: [Int]) async -&gt; [Int] {
+    var results: [Int] = []
+    for (index, item) in items.enumerated() {
+        results.append(item * item)
+
+        // Yield every 1000 items to let other tasks run
+        if index % 1000 == 0 {
+            await Task.yield()
+        }
+    }
+    return results
+}
+
+// Stubs
+struct User: Decodable {}
+struct Dashboard { init(user: User, posts: [String]) {} }
+enum APIError: Error { case badResponse, noData }
+func fetchPosts(for user: User) async throws -&gt; [String] { [] }
+func fetchPostsById(id: String) async throws -&gt; [String] { [] }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What does <code>await</code> do — does it block the thread?<em></em></p>
+
+<p>A: No. <code>await</code> is a <strong>suspension point</strong> — the current task suspends and releases its thread back to the pool. The thread is free to execute other tasks while the awaited operation runs. When the awaited result is ready, the Swift runtime reschedules the continuation (the code after the <code>await</code>) on an appropriate thread. This is fundamentally different from <code>DispatchQueue.sync</code>, which truly blocks the thread.</p>
+
+<p><em></em>Q: What is <code>withCheckedContinuation</code> used for?<em></em></p>
+
+<p>A: It bridges callback-based (non-async) APIs into <code>async</code> functions. You call <code>withCheckedContinuation</code> inside an <code>async</code> function, and the closure receives a <code>CheckedContinuation</code>. You must call <code>resume(returning:)</code> or <code>resume(throwing:)</code> exactly once inside the callback of the legacy API. The "checked" variant adds a runtime assertion that <code>resume</code> is called exactly once, which helps catch bugs during development. When <code>resume</code> is called, the suspended <code>async</code> function resumes.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: What is the difference between sequential <code>await</code> and <code>async let</code>?<em></em></p>
+
+<p>A: Sequential <code>await</code> runs async operations one after another — the second doesn't start until the first finishes. <code>async let</code> starts a child task immediately in the background, while the current task continues executing. When you later <code>await</code> the <code>async let</code> binding, you wait only if the child hasn't finished yet. For independent operations that can run in parallel (e.g., fetching a user and their posts simultaneously), <code>async let</code> can halve the total time. For operations with a data dependency (you need the user's ID to fetch posts), sequential <code>await</code> is correct.</p>
+
+<p><strong>Q: How does structured concurrency's task tree prevent common async bugs?</strong></p>
+
+<p>A: In structured concurrency, every task has a parent scope. The parent cannot leave its scope until all child tasks finish. This guarantees: (1) no orphaned tasks that outlive their context (a common GCD bug where a completion block fires after the owning object is deallocated); (2) automatic cancellation propagation — cancelling the parent cancels all children, so you can't leak background work when a view disappears; (3) error propagation — if any child task throws, the error propagates to the parent, which cancels remaining siblings. GCD and callbacks have none of these guarantees by default.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Explain how thread hopping works after an <code>await</code> and why it matters for UI code.<em></em></p>
+
+<p>A: When a task suspended at <code>await</code> resumes, the Swift runtime schedules the continuation on the executor of the function currently awaited. If you're calling into a non-actor async function, the continuation may resume on any thread in the cooperative pool — not necessarily the one you suspended from. If you're calling a function isolated to an actor (e.g., a <code>@MainActor</code> method), you'll resume on that actor's executor. This matters for UI code: if you <code>await</code> a background task inside a <code>@MainActor</code> function, the continuation after the <code>await</code> automatically resumes on the main actor — no <code>DispatchQueue.main.async</code> needed. However, if you <code>await</code> inside an unstructured <code>Task { }</code> started from a <code>@MainActor</code> context, the task inherits that context and all awaits resume on the main actor unless you explicitly hop off with a non-isolated async call.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: UI update after <code>await</code> runs on a background thread, causing a UIKit crash.<em></em></p>
+
+<p>Solution: Wrap the update in <code>await MainActor.run { }</code>, or mark the function <code>@MainActor</code>. In Xcode, enable the Main Thread Checker (enabled by default) — it will flag off-main UIKit access at runtime.</p>
+
+<p><em></em>Issue: <code>withCheckedContinuation</code> crashes or hangs — "continuation resumed more than once" / never resumes.<em></em></p>
+
+<p>Solution: Ensure <code>resume</code> is called exactly once. Use <code>defer</code> if the callback has multiple paths. If the legacy API can call the callback multiple times (e.g., a streaming API), use <code>AsyncStream</code> instead of a continuation.</p>
+
+<p><em></em>Issue: Sequential <code>await</code> is slow — two independent network calls take twice as long.<em></em></p>
+
+<p>Solution: Replace sequential <code>await</code> calls with <code>async let</code> to run them in parallel. If there are more than two, use <code>withTaskGroup</code>.</p>
+
+<p><em></em>Issue: <code>async</code> function called from <code>viewDidLoad</code> — compiler error "expression is 'async' but is not marked with 'await'".<em></em></p>
+
+<p>Solution: Wrap the call in <code>Task { }</code> to bridge from the synchronous context. The <code>Task</code> creates an unstructured task that runs concurrently and does not need <code>await</code> at the call site.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="task-taskgroup.md">Task &amp; TaskGroup</a> — structured task management building on async/await</li>
+<li><a href="actors.md">Actors</a> — how async functions relate to actor isolation and thread safety</li>
+<li><a href="gcd-dispatch-queue.md">GCD &amp; Dispatch Queues</a> — the layer async/await replaces for most use cases</li>
+<li><a href="concurrency-problems.md">Concurrency Problems</a> — race conditions that async/await helps prevent</li>
+<li><a href="../02-memory-management/closures-capture-lists.md">Closures &amp; Capture Lists</a> — capture semantics in async closures</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

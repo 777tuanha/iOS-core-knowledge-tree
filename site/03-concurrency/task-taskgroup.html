@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task & TaskGroup — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../03-concurrency/index.html">Concurrency</a></span>
+    <span>Task Taskgroup</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html" class="active">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="task--taskgroup">Task &amp; TaskGroup</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>Task</code> and <code>TaskGroup</code> are the core building blocks of Swift's structured concurrency model. A <code>Task</code> is a unit of asynchronous work that runs concurrently with other tasks, carries a priority, can be cancelled, and participates in the task tree. A <code>TaskGroup</code> fans out multiple child tasks from a parent, waits for all of them to complete, and propagates cancellation and errors automatically. Together they provide the structured, tree-based approach to concurrency that replaces ad-hoc GCD and OperationQueue patterns for new Swift code.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>A <code>Task</code> is like an employee you hire to do one job. You give them a job description (the closure), a priority (urgent vs. low), and you can fire them early if the project changes (cancel). When the employee finishes or is fired, they report back to you.</p>
+
+<p>A <code>TaskGroup</code> is like a project manager who hires a team of employees for parallel work. The project manager doesn't leave the meeting room until all employees are done — and if the project gets cancelled, the manager fires all employees immediately.</p>
+
+<p>The key insight: in structured concurrency, <strong>employees can't outlive their manager</strong>. You can never lose track of background work.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="task-lifecycle">Task Lifecycle</h3>
+
+<pre><code>created → running ⇄ suspended → finished
+                 ↓
+             cancelled</code></pre>
+
+<p>A <code>Task</code> runs immediately when created. It suspends at <code>await</code> points, releasing its thread. It resumes when awaited work completes. Cancellation is cooperative — calling <code>task.cancel()</code> sets a flag; the task must check <code>Task.isCancelled</code> or call <code>try Task.checkCancellation()</code> to respond.</p>
+
+<h3 id="structured-vs-unstructured-tasks">Structured vs Unstructured Tasks</h3>
+
+<table>
+<tr><td>Type</td><td>Created by</td><td>Inherits actor?</td><td>Inherits priority?</td><td>Cancellation</td></tr>
+<tr><td>Structured child task</td><td><code>async let</code>, <code>withTaskGroup</code></td><td>Yes</td><td>Yes</td><td>Cancelled with parent</td></tr>
+<tr><td>Unstructured task</td><td><code>Task { }</code></td><td>Yes (captures current actor)</td><td>Yes</td><td>Independent</td></tr>
+<tr><td>Detached task</td><td><code>Task.detached { }</code></td><td>No</td><td>No</td><td>Independent</td></tr>
+</table>
+
+<p><strong>Structured child tasks</strong> (inside <code>withTaskGroup</code>) form the task tree. They are the preferred model.</p>
+
+<p><strong>Unstructured tasks</strong> (<code>Task { }</code>) are launched when you need to bridge from a non-async context (e.g., <code>viewDidLoad</code>). They inherit the current actor and priority but are not children of any parent task — you must cancel them manually or store the handle.</p>
+
+<p><strong>Detached tasks</strong> (<code>Task.detached { }</code>) are fully independent. They don't inherit actor or priority. Use sparingly — they're the least structured option.</p>
+
+<h3 id="task-priority">Task Priority</h3>
+
+<table>
+<tr><td>Priority</td><td>Maps to GCD QoS</td><td>Use</td></tr>
+<tr><td><code>.high</code></td><td><code>.userInteractive</code></td><td>User-facing immediate work</td></tr>
+<tr><td><code>.userInitiated</code></td><td><code>.userInitiated</code></td><td>User-triggered, result needed soon</td></tr>
+<tr><td><code>.medium</code></td><td><code>.default</code></td><td>General background</td></tr>
+<tr><td><code>.low</code></td><td><code>.utility</code></td><td>Long operations</td></tr>
+<tr><td><code>.background</code></td><td><code>.background</code></td><td>Maintenance, prefetch</td></tr>
+<tr><td><code>.utility</code></td><td><code>.utility</code></td><td>Alias for <code>.low</code></td></tr>
+</table>
+
+<p>Priority escalation works: a high-priority task awaiting a low-priority task will boost the low-priority task's effective priority.</p>
+
+<h3 id="taskgroup">TaskGroup</h3>
+
+<p><code>withTaskGroup(of:)</code> creates a group of child tasks that all return the same type. <code>withThrowingTaskGroup(of:)</code> allows child tasks to throw.</p>
+
+<p>Key rules:</p>
+<ul>
+<li><code>group.addTask { }</code> launches a child task immediately.</li>
+<li>Iterate the group with <code>for await result in group { }</code> to collect results as they complete.</li>
+<li>If any child throws (in <code>withThrowingTaskGroup</code>), the group cancels remaining children and rethrows.</li>
+<li>The group is automatically awaited at the end of the <code>withTaskGroup</code> body — you can't escape the group.</li>
+</ul>
+
+<h3 id="task-cancellation">Task Cancellation</h3>
+
+<p>Cancellation is <strong>cooperative and recursive</strong>:</p>
+<ul>
+<li><code>task.cancel()</code> sets <code>isCancelled</code> on the task and all its structured children.</li>
+<li><code>await</code> on a cancelled task throws <code>CancellationError</code> automatically for Swift stdlib async functions.</li>
+<li>Call <code>try Task.checkCancellation()</code> explicitly in CPU-bound loops.</li>
+<li><code>Task.isCancelled</code> provides a non-throwing check.</li>
+</ul>
+
+<h3 id="actor-inheritance">Actor Inheritance</h3>
+
+<p><code>Task { }</code> inherits the actor of the enclosing scope. Inside a <code>@MainActor</code> context, <code>Task { }</code> also runs on the main actor — which can be a trap: you may accidentally do background work on the main thread. Use <code>Task.detached { }</code> or call a non-isolated async function to escape.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── Unstructured Task from synchronous context ─────────────────
+class FeedViewController: UIViewController {
+    private var loadTask: Task&lt;Void, Never&gt;?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        loadTask = Task { [weak self] in      // inherits @MainActor from UIViewController
+            await self?.loadFeed()
+        }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        loadTask?.cancel()                    // cancel if user navigates away
+    }
+
+    @MainActor
+    func loadFeed() async {
+        do {
+            let items = try await fetchFeedItems()
+            display(items)
+        } catch is CancellationError {
+            // user navigated away — do nothing
+        } catch {
+            showError(error)
+        }
+    }
+
+    func display(_ items: [String]) {}
+    func showError(_ error: Error) {}
+}
+
+// ── TaskGroup: parallel fetch with result collection ────────────
+func fetchAllProfiles(ids: [String]) async throws -&gt; [Profile] {
+    try await withThrowingTaskGroup(of: Profile.self) { group in
+        for id in ids {
+            group.addTask {                   // each ID fetched concurrently
+                try await fetchProfile(id: id)
+            }
+        }
+
+        var profiles: [Profile] = []
+        for try await profile in group {     // collect results as they arrive
+            profiles.append(profile)
+        }
+        return profiles
+    }
+}
+
+// ── Limiting concurrency inside a TaskGroup ─────────────────────
+func downloadImages(urls: [URL], maxConcurrent: Int = 4) async throws -&gt; [Data] {
+    try await withThrowingTaskGroup(of: Data.self) { group in
+        var results: [Data] = []
+        var inFlight = 0
+
+        for url in urls {
+            if inFlight &gt;= maxConcurrent {
+                // Wait for one to finish before launching another
+                if let data = try await group.next() {
+                    results.append(data)
+                    inFlight -= 1
+                }
+            }
+            group.addTask { try await downloadData(from: url) }
+            inFlight += 1
+        }
+
+        // Collect remaining
+        for try await data in group {
+            results.append(data)
+        }
+        return results
+    }
+}
+
+// ── Task cancellation with checkCancellation ────────────────────
+func processItems(_ items: [Int]) async throws -&gt; [Int] {
+    var results: [Int] = []
+    for item in items {
+        try Task.checkCancellation()         // throws CancellationError if cancelled
+        let processed = await heavyProcess(item)
+        results.append(processed)
+    }
+    return results
+}
+
+// ── Detached task to escape actor context ──────────────────────
+@MainActor
+class ViewModel {
+    func startBackgroundSync() {
+        // Task { } would run on MainActor — wrong for background work
+        Task.detached(priority: .background) {
+            // This runs off the main actor
+            await performSync()
+        }
+    }
+}
+
+// ── async let for structured parallel calls ─────────────────────
+func loadDashboard() async throws -&gt; Dashboard {
+    async let user    = fetchUser(id: "1")       // starts immediately
+    async let metrics = fetchMetrics(userId: "1") // starts immediately
+
+    return try await Dashboard(                  // waits for both
+        user: user,
+        metrics: metrics
+    )
+}
+
+// Stubs
+struct Profile {}
+struct Dashboard { init(user: Profile, metrics: [String]) {} }
+func fetchFeedItems() async throws -&gt; [String] { [] }
+func fetchProfile(id: String) async throws -&gt; Profile { Profile() }
+func downloadData(from url: URL) async throws -&gt; Data { Data() }
+func heavyProcess(_ item: Int) async -&gt; Int { item }
+func performSync() async {}
+func fetchUser(id: String) async throws -&gt; Profile { Profile() }
+func fetchMetrics(userId: String) async throws -&gt; [String] { [] }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>Task { }</code> and <code>Task.detached { }</code>?<em></em></p>
+
+<p>A: <code>Task { }</code> inherits the actor context and priority of the enclosing scope. If created inside a <code>@MainActor</code> function, the task also runs on the main actor. <code>Task.detached { }</code> creates a fully independent task with no inherited actor or priority — it starts with <code>.medium</code> priority and runs on the cooperative thread pool with no actor isolation. Detached tasks are useful for background work that must run off the main actor, but they lose the structured lifetime guarantees: they are not children of the enclosing scope.</p>
+
+<p><em></em>Q: How do you cancel a <code>Task</code> and how does the task respond?<em></em></p>
+
+<p>A: Call <code>task.cancel()</code> on the <code>Task</code> value returned when creating a task. This sets the <code>isCancelled</code> flag on the task (and all its structured children). The task must respond cooperatively: check <code>Task.isCancelled</code> in loops, or call <code>try Task.checkCancellation()</code> which throws <code>CancellationError</code> if the task is cancelled. Many Swift stdlib async functions (including <code>URLSession</code>) automatically throw <code>CancellationError</code> when the task is cancelled.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How does <code>withTaskGroup</code> handle an error thrown by a child task?<em></em></p>
+
+<p>A: In <code>withThrowingTaskGroup</code>, if any child task throws, the group automatically cancels all remaining children and the error is rethrown when you <code>for try await</code> or <code>try await group.waitForAll()</code>. Remaining children receive a cancellation signal (their <code>isCancelled</code> becomes <code>true</code>) and are expected to clean up and exit. The group's body closure then exits with the thrown error. If you want to handle child errors individually (not propagate them), use <code>withTaskGroup</code> (non-throwing) and handle errors inside each child task, returning a <code>Result</code> type instead.</p>
+
+<p><em></em>Q: What does it mean for a <code>Task { }</code> to inherit the actor context, and when does this cause bugs?<em></em></p>
+
+<p>A: When you write <code>Task { }</code> inside a <code>@MainActor</code>-isolated function or class, the task closure is also isolated to <code>@MainActor</code>. All <code>await</code>-resumed continuations in that task run on the main thread. This is often correct (e.g., updating UI after an async call without needing <code>DispatchQueue.main.async</code>). The bug: you might accidentally perform long-running work inside a <code>Task { }</code> thinking it will run in the background, but it actually blocks the main actor between suspension points. If your task has no <code>await</code> (or calls CPU-bound non-async code), it runs entirely on the main thread. Fix: use <code>Task.detached { }</code> or call a <code>nonisolated</code> async function to move CPU work off the main actor.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you implement a rate-limited concurrent download of 1000 images using TaskGroup, and how does it compare to using DispatchSemaphore?</strong></p>
+
+<p>A: With <code>TaskGroup</code>, limit concurrency by controlling how many <code>addTask</code> calls are outstanding at once — wait for one child to finish before adding the next when you've hit your concurrency cap. This approach is superior to <code>DispatchSemaphore</code> because: (1) tasks suspend at <code>await</code> rather than blocking a thread — no thread explosion; (2) cancellation propagates automatically — if the parent is cancelled, all downloads stop immediately; (3) errors are structured — the first failure cancels remaining work and rethrows. With <code>DispatchSemaphore</code>, each blocked task holds a real thread from the GCD pool. For 1000 images with <code>semaphore(value: 4)</code>, you'd have 1000 queue submissions, 4 running, and up to 996 threads blocked in <code>semaphore.wait()</code> — potentially exhausting the 64-thread pool cap and causing thread explosion. The TaskGroup approach uses O(concurrency limit) threads regardless of total task count.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Task launched in <code>viewDidLoad</code> continues running after view is dismissed.<em></em></p>
+
+<p>Solution: Store the <code>Task</code> handle in a property and call <code>task.cancel()</code> in <code>viewDidDisappear</code> or <code>deinit</code>. Alternatively, use a scoped pattern where the task is a child of a <code>TaskGroup</code> managed by a <code>ViewModel</code> that is torn down with the view.</p>
+
+<p><em></em>Issue: <code>Task { }</code> inside <code>@MainActor</code> context runs CPU-bound work on the main thread, causing UI jank.<em></em></p>
+
+<p>Solution: Use <code>Task.detached { }</code> for CPU-bound work, or call a <code>nonisolated</code> async function that moves execution off the main actor.</p>
+
+<p><em></em>Issue: <code>withTaskGroup</code> results arrive out of order.<em></em></p>
+
+<p>Solution: That is expected — <code>for await result in group</code> yields results in completion order, not submission order. If you need ordered results, associate each task with its index: store results in a pre-allocated array by index, or collect <code>(index, value)</code> tuples.</p>
+
+<p><strong>Issue: Child task error silently swallowed — other tasks continue running.</strong></p>
+
+<p>Solution: Use <code>withThrowingTaskGroup</code> and <code>for try await</code> to propagate errors. If you use <code>withTaskGroup</code> with <code>Result</code> returns, explicitly check each result and handle failures.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="async-await.md">async/await</a> — the syntax that Task and TaskGroup build on</li>
+<li><a href="actors.md">Actors</a> — how tasks interact with actor isolation</li>
+<li><a href="operation-queue.md">Operation &amp; OperationQueue</a> — predecessor pattern for dependency graphs</li>
+<li><a href="dispatch-group-semaphore.md">DispatchGroup, Semaphore &amp; Barrier</a> — GCD alternatives for coordination</li>
+<li><a href="concurrency-problems.md">Concurrency Problems</a> — cancellation, thread explosion, priority inversion</li>
+<li><a href="../02-memory-management/closures-capture-lists.md">Closures &amp; Capture Lists</a> — capture semantics in Task closures</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

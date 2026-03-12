@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Actors — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../03-concurrency/index.html">Concurrency</a></span>
+    <span>Actors</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html" class="active">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="actors">Actors</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>actor</code> is a Swift reference type (introduced in Swift 5.5) that protects its mutable state from concurrent access by serialising all access through its <strong>executor</strong> — a serial queue-like mechanism that ensures only one caller accesses the actor's state at a time. Actors provide data-race safety enforced at <strong>compile time</strong>: the compiler rejects code that accesses actor-isolated state from outside the actor without <code>await</code>. The <code>MainActor</code> global actor confines UI code to the main thread. The <code>Sendable</code> protocol marks types safe to send across concurrency boundaries. Together these form Swift's high-level concurrency safety model.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>An <code>actor</code> is like a personal assistant with a single phone line. Anyone can call them (send messages), but they take calls one at a time in order. While they're handling your request, no one else can interrupt. You don't need to worry about two callers giving conflicting instructions at the same time — the assistant serialises everything.</p>
+
+<p>Unlike a <code>class</code> protected by a lock, you don't hold the lock across a function call. Instead, you "call" the actor (with <code>await</code>) and step back while they handle your request — freeing you to do other things in the meantime.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="actor-isolation">Actor Isolation</h3>
+
+<p>Every stored property and method of an <code>actor</code> is <strong>isolated</strong> to that actor by default. To access them from outside, you must <code>await</code> — signalling that you may need to suspend until the actor is free. The compiler statically enforces this:</p>
+
+<pre><code class="language-swift">actor Counter {
+    var value = 0
+    func increment() { value += 1 }  // isolated — no await needed internally
+}
+
+let c = Counter()
+await c.increment()  // from outside: must await</code></pre>
+
+<h3 id="nonisolated">nonisolated</h3>
+
+<p>Mark methods or properties <code>nonisolated</code> to indicate they don't access actor state and can be called without <code>await</code>. Useful for implementing protocol requirements that aren't async, or for computed properties that derive from value-type state:</p>
+
+<pre><code class="language-swift">actor Logger {
+    let id: String               // 'let' constants are implicitly nonisolated
+    nonisolated func tag() -&gt; String { "[\(id)]" }  // safe — no mutable state
+}</code></pre>
+
+<h3 id="mainactor">MainActor</h3>
+
+<p><code>@MainActor</code> is a global actor backed by the main thread's serial executor. It provides compile-time enforcement that UIKit/SwiftUI code runs on the main thread. You can apply it to:</p>
+<ul>
+<li><strong>A whole class</strong>: <code>@MainActor class ViewModel { }</code></li>
+<li><strong>A method</strong>: <code>@MainActor func updateUI() { }</code></li>
+<li><strong>A property</strong>: <code>@MainActor var label: UILabel</code></li>
+</ul>
+
+<p>All <code>await</code>-resumed continuations inside a <code>@MainActor</code> function run on the main thread — no <code>DispatchQueue.main.async</code> needed.</p>
+
+<h3 id="global-actors">Global Actors</h3>
+
+<p>A global actor is a singleton actor used as an annotation (<code>@SomeActor</code>). <code>MainActor</code> is the only built-in global actor, but you can define your own:</p>
+
+<pre><code class="language-swift">@globalActor
+actor DatabaseActor {
+    static let shared = DatabaseActor()
+}
+
+@DatabaseActor func saveRecord(_ record: Record) async { }</code></pre>
+
+<h3 id="sendable">Sendable</h3>
+
+<p><code>Sendable</code> is a marker protocol indicating a type is safe to transfer across concurrency boundaries (actor-to-actor, task-to-task). Types that conform to <code>Sendable</code> must guarantee no shared mutable state:</p>
+<ul>
+<li>Value types (structs, enums) with <code>Sendable</code> stored properties are implicitly <code>Sendable</code>.</li>
+<li>Actors are <code>Sendable</code> (they serialise their own state).</li>
+<li>Classes can be <code>Sendable</code> only if they are immutable (all <code>let</code> properties) or internally synchronised.</li>
+</ul>
+
+<p>In strict concurrency mode (<code>-strict-concurrency=complete</code>), the compiler warns when non-<code>Sendable</code> values cross concurrency boundaries.</p>
+
+<h3 id="actor-reentrancy">Actor Reentrancy</h3>
+
+<p>An actor is <strong>reentrant</strong>: while an actor is awaiting (suspended at an <code>await</code> point inside one of its own methods), another caller can run a different method on the same actor. This prevents deadlocks but means actor state can change between <code>await</code> points:</p>
+
+<pre><code class="language-swift">actor BankAccount {
+    var balance: Double = 1000
+
+    func transfer(amount: Double, to other: BankAccount) async {
+        guard balance &gt;= amount else { return }
+        balance -= amount                  // (1) deducted
+        await other.deposit(amount)        // (2) suspended here — another transfer can run!
+        // At (3), balance may have changed again due to reentrancy
+    }
+
+    func deposit(_ amount: Double) {
+        balance += amount
+    }
+}</code></pre>
+
+<p>The fix: complete all state reads and writes <strong>before</strong> the first <code>await</code>, or validate preconditions again after each <code>await</code>.</p>
+
+<h3 id="actor-vs-class--serial-queue">Actor vs Class + Serial Queue</h3>
+
+<table>
+<tr><td>Feature</td><td><code>actor</code></td><td><code>class</code> + serial <code>DispatchQueue</code></td></tr>
+<tr><td>Compile-time enforcement</td><td>Yes</td><td>No</td></tr>
+<tr><td>Reentrancy</td><td>Safe (cooperative)</td><td>Depends on implementation</td></tr>
+<tr><td>async/await integration</td><td>Native</td><td>Manual (<code>sync</code>/<code>async</code>)</td></tr>
+<tr><td>Sendable support</td><td>Built-in</td><td>Manual</td></tr>
+<tr><td>Thread</td><td>Cooperative pool</td><td>GCD thread pool</td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── Basic actor for thread-safe state ──────────────────────────
+actor ImageCache {
+    private var cache: [URL: Data] = [:]
+
+    func store(_ data: Data, for url: URL) {
+        cache[url] = data               // no locks needed — actor serialises
+    }
+
+    func data(for url: URL) -&gt; Data? {
+        cache[url]                      // reads are also serialised
+    }
+
+    nonisolated func cacheKey(for url: URL) -&gt; String {
+        url.absoluteString              // no actor state — callable without await
+    }
+}
+
+// Usage from async context
+let cache = ImageCache()
+await cache.store(imageData, for: imageURL)
+let data = await cache.data(for: imageURL)
+
+// ── @MainActor for UI view models ──────────────────────────────
+@MainActor
+class UserViewModel: ObservableObject {
+    @Published var name: String = ""
+    @Published var isLoading: Bool = false
+
+    func loadUser(id: String) async {
+        isLoading = true                // on main thread — safe for @Published
+        defer { isLoading = false }
+
+        do {
+            let user = try await fetchUser(id: id)   // suspends; may hop threads
+            name = user.displayName                  // resumes on MainActor — safe
+        } catch {
+            print("Error: \(error)")
+        }
+    }
+}
+
+// ── Reentrancy — guard against state changes after await ────────
+actor Wallet {
+    var balance: Int = 100
+
+    func withdraw(amount: Int) async throws {
+        // Validate BEFORE the await
+        guard balance &gt;= amount else { throw WalletError.insufficientFunds }
+
+        balance -= amount               // mutate before any await
+
+        // Any await here would allow another method to run
+        await logTransaction(amount: -amount)  // reentrancy window is fine now
+    }
+
+    private func logTransaction(amount: Int) async {
+        // simulated async logging
+    }
+}
+
+// ── Sendable — crossing actor boundaries ───────────────────────
+// This struct is Sendable (all stored properties are value types)
+struct Message: Sendable {
+    let id: UUID
+    let text: String
+}
+
+actor MessageStore {
+    func add(_ message: Message) {
+        // Message crosses the actor boundary — must be Sendable
+    }
+}
+
+// ── Custom global actor ────────────────────────────────────────
+@globalActor
+actor NetworkActor {
+    static let shared = NetworkActor()
+}
+
+@NetworkActor
+func performRequest(url: URL) async throws -&gt; Data {
+    // Isolated to NetworkActor — one request at a time
+    let (data, _) = try await URLSession.shared.data(from: url)
+    return data
+}
+
+// ── Calling actor from non-async context ──────────────────────
+class LegacyController {
+    let cache = ImageCache()
+
+    func prefetch(url: URL) {
+        Task {
+            let data = try? await URLSession.shared.data(from: url).0
+            if let data {
+                await cache.store(data, for: url)
+            }
+        }
+    }
+}
+
+// Stubs
+var imageData = Data()
+var imageURL = URL(string: "https://example.com/image.png")!
+struct User { var displayName: String = "" }
+func fetchUser(id: String) async throws -&gt; User { User() }
+enum WalletError: Error { case insufficientFunds }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What problem does <code>actor</code> solve compared to using a class with a serial <code>DispatchQueue</code>?<em></em></p>
+
+<p>A: Both serialise access to shared mutable state, but <code>actor</code> does it with <strong>compile-time enforcement</strong>. The compiler rejects code that accesses actor-isolated properties from outside without <code>await</code> — you can't accidentally forget the queue. With a class + serial queue, accessing a property without dispatching through the queue is a silent runtime bug. Additionally, actors integrate natively with <code>async/await</code>, use the cooperative thread pool (suspending instead of blocking), and work automatically with <code>Sendable</code> checking.</p>
+
+<p><em></em>Q: What is <code>@MainActor</code> and why is it preferred over <code>DispatchQueue.main.async</code>?<em></em></p>
+
+<p>A: <code>@MainActor</code> is a global actor that confines code to the main thread. When applied to a class or method, the compiler ensures all accesses are on the main thread. After an <code>await</code> inside a <code>@MainActor</code> function, the continuation automatically resumes on the main thread — no explicit <code>DispatchQueue.main.async</code> needed. This eliminates a class of bugs where developers forget to dispatch UI updates back to the main thread after a background operation.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: What is actor reentrancy and how can it lead to bugs?</strong></p>
+
+<p>A: An actor is reentrant: while it is suspended at an <code>await</code> point inside one of its own methods, other callers can run different methods on the same actor. The actor remains safe from data races (it still serialises all method execution), but it can observe unexpected state changes. For example: a method reads a property value, <code>await</code>s an async operation, and then reads the property again — the value may have changed because another method ran during the suspension. The fix is to read all necessary state <strong>before</strong> the first <code>await</code> and avoid assuming state is unchanged after a suspension point.</p>
+
+<p><em></em>Q: How does <code>Sendable</code> relate to actors?<em></em></p>
+
+<p>A: <code>Sendable</code> is a protocol marking types safe to pass across concurrency boundaries (actor-to-actor, task handoffs). Actors enforce that values sent to them are <code>Sendable</code> — if you try to send a non-<code>Sendable</code> class instance to an actor, the compiler (in strict concurrency mode) will warn because the sender could retain a reference to the shared mutable state, defeating the actor's protection. Value types (structs, enums) with <code>Sendable</code> stored properties are automatically <code>Sendable</code>. Classes must be explicitly marked and must either be immutable or internally synchronised. Actors themselves are <code>Sendable</code> because they protect their own state.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe a scenario where two actors can deadlock, and how Swift's cooperative model prevents it.</strong></p>
+
+<p>A: In traditional locking (mutexes), Actor A holds a lock and calls into Actor B, which tries to acquire Actor A's lock — classic deadlock. Swift actors cannot deadlock in this way because they use <code>await</code>, not blocking locks. When Actor A calls <code>await actorB.someMethod()</code>, Actor A suspends — it does not hold any lock that Actor B would need. Actor B can freely run and even call back into Actor A (queuing behind any ongoing work). The cooperative model eliminates lock-hold-and-wait, which is one of the four necessary conditions for deadlock. The tradeoff is reentrancy: because Actor A suspends rather than holding a lock, Actor A's state can change while it's waiting, requiring careful design around <code>await</code> points.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Accessing actor property from a synchronous context — compiler error "expression is 'async' but is not marked with 'await'".</strong></p>
+
+<p>Solution: Wrap the access in <code>Task { }</code> or make the calling function <code>async</code>. If the property is a constant (<code>let</code>), mark it <code>nonisolated</code> to allow synchronous access.</p>
+
+<p><strong>Issue: Reentrancy bug — double withdrawal from a wallet actor.</strong></p>
+
+<p>Solution: Complete all state validation and mutation <strong>before</strong> the first <code>await</code>. If you must read state after an <code>await</code>, re-validate the preconditions.</p>
+
+<p><em></em>Issue: <code>@MainActor</code> class method calling an async function that hops off the main thread — UI update after <code>await</code> runs on wrong thread.<em></em></p>
+
+<p>Solution: This should not happen with <code>@MainActor</code> — continuations after <code>await</code> inside a <code>@MainActor</code> function resume on the main actor. Verify that the class is correctly annotated and not calling <code>Task.detached { }</code>, which loses the actor context.</p>
+
+<p><em></em>Issue: Non-<code>Sendable</code> value passed to actor triggers compiler warning in strict concurrency.<em></em></p>
+
+<p>Solution: Make the type conform to <code>Sendable</code>. For value types, add explicit conformance. For classes, either make all properties <code>let</code> and the class <code>final</code>, or use <code>@unchecked Sendable</code> with an internal lock (document why it's safe).</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="async-await.md">async/await</a> — the async calling convention that actors use</li>
+<li><a href="task-taskgroup.md">Task &amp; TaskGroup</a> — how tasks interact with actor isolation</li>
+<li><a href="concurrency-problems.md">Concurrency Problems</a> — race conditions that actors prevent</li>
+<li><a href="../02-memory-management/arc.md">ARC</a> — actors are reference types; ARC manages their lifetime</li>
+<li><a href="../01-swift-language/weak-vs-unowned.md">Weak vs Unowned</a> — capture semantics when closures reference actors</li>
+<li><a href="../04-ui-frameworks/index.md">UI Frameworks</a> — <code>@MainActor</code> and UIKit/SwiftUI thread requirements</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

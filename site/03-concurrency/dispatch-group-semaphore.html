@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DispatchGroup, Semaphore & Barrier — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../03-concurrency/index.html">Concurrency</a></span>
+    <span>Dispatch Group Semaphore</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html" class="active">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="dispatchgroup-semaphore--barrier">DispatchGroup, Semaphore &amp; Barrier</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>GCD dispatches individual work items efficiently, but many real problems require coordinating <em>groups</em> of concurrent tasks: wait for all of them, limit how many run at once, or ensure exclusive access during a write. Three GCD primitives address these needs: <strong>DispatchGroup</strong> (wait for a set of tasks to all finish), <strong>DispatchSemaphore</strong> (limit concurrency or signal between threads), and <strong>DispatchBarrier</strong> (mutual exclusion within a concurrent queue). Together they cover the vast majority of synchronisation patterns needed before Swift's structured concurrency was introduced.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p><strong>DispatchGroup</strong> is like a group project tracker. Every student (task) checks in when they start (<code>enter</code>) and checks out when they finish (<code>leave</code>). When all students have checked out, the teacher is notified (<code>notify</code>) that the project is done.</p>
+
+<p><strong>DispatchSemaphore</strong> is a parking lot with a fixed number of spaces. When a car (thread) enters, it takes a space (<code>wait</code>). When it leaves, it frees the space (<code>signal</code>). If the lot is full, incoming cars idle at the gate until a space opens up.</p>
+
+<p><strong>DispatchBarrier</strong> is a one-lane bridge in the middle of a multi-lane highway. Regular traffic (concurrent reads) flows freely on either side, but when a barrier truck (write) needs to cross, all other traffic stops until it finishes.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="dispatchgroup">DispatchGroup</h3>
+
+<p>A <code>DispatchGroup</code> tracks an internal counter:</p>
+<ul>
+<li><code>enter()</code> increments the counter.</li>
+<li><code>leave()</code> decrements it.</li>
+<li>When the counter reaches zero, the group fires its registered <code>notify</code> blocks (and unblocks any threads calling <code>wait()</code>).</li>
+</ul>
+
+<p>You can use groups with work submitted via <code>group:</code> parameter or manually with <code>enter</code>/<code>leave</code> for non-GCD async APIs (e.g., <code>URLSession</code>).</p>
+
+<table>
+<tr><td>Method</td><td>Behaviour</td></tr>
+<tr><td><code>group.async(queue:) { }</code></td><td>Submits and auto-pairs enter/leave</td></tr>
+<tr><td><code>group.enter()</code> / <code>group.leave()</code></td><td>Manual pairing — must be balanced</td></tr>
+<tr><td><code>group.notify(queue:) { }</code></td><td>Callback when count reaches zero</td></tr>
+<tr><td><code>group.wait()</code></td><td>Blocks calling thread until count reaches zero</td></tr>
+<tr><td><code>group.wait(timeout:)</code></td><td>Returns <code>.success</code> or <code>.timedOut</code></td></tr>
+</table>
+
+<p><strong>Important</strong>: <code>enter</code> and <code>leave</code> must always be balanced. An extra <code>leave</code> beyond a matching <code>enter</code> crashes with <code>EXC_BAD_INSTRUCTION</code>.</p>
+
+<h3 id="dispatchsemaphore">DispatchSemaphore</h3>
+
+<p>A semaphore wraps an integer count:</p>
+<ul>
+<li><code>wait()</code> decrements the count; if count was already 0, it blocks.</li>
+<li><code>signal()</code> increments the count; if a thread is waiting, it is unblocked.</li>
+</ul>
+
+<p>Common uses:</p>
+<ol>
+<li><strong>Binary semaphore (count = 1)</strong> — mutual exclusion, similar to a mutex.</li>
+<li><strong>Counting semaphore (count = N)</strong> — limit concurrent access to a pool of N resources.</li>
+<li><strong>Signalling</strong> — one thread waits for another to finish a specific step.</li>
+</ol>
+
+<p>Using a semaphore to block a thread is still "blocking a thread" — it wastes a thread from the GCD pool. Prefer <code>DispatchGroup.notify</code> or <code>async/await</code> when you don't need synchronous waiting.</p>
+
+<h3 id="dispatchbarrier">DispatchBarrier</h3>
+
+<p>Submitted via <code>queue.async(flags: .barrier) { }</code> or <code>queue.sync(flags: .barrier) { }</code> on a <strong>custom concurrent</strong> queue. A barrier item:</p>
+<ol>
+<li>Waits until all currently-executing items in the queue finish.</li>
+<li>Executes exclusively — no other items run while it is active.</li>
+<li>After it finishes, concurrent execution resumes.</li>
+</ol>
+
+<p>This creates a <strong>reader-writer lock</strong> pattern: multiple readers run concurrently, but each writer gets exclusive access.</p>
+
+<p><strong>Important</strong>: barriers have no effect on global (system) concurrent queues — only custom concurrent queues. Submitting a barrier to a global queue causes it to run as a normal (non-exclusive) async item.</p>
+
+<h3 id="combining-group-and-semaphore">Combining Group and Semaphore</h3>
+
+<p>A semaphore can act as a signal from an async callback back to a synchronous caller — a pattern sometimes called "sync-wrapping an async API". This must never be done on the main thread (deadlock risk) or inside a narrow thread pool context.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── DispatchGroup: wait for multiple network requests ──────────
+func fetchDashboard(completion: @escaping () -&gt; Void) {
+    let group = DispatchGroup()
+    let queue = DispatchQueue.global(qos: .userInitiated)
+
+    group.enter()
+    fetchUser { _ in
+        group.leave()                 // must always be called, even on error
+    }
+
+    group.enter()
+    fetchPosts { _ in
+        group.leave()
+    }
+
+    group.enter()
+    fetchNotifications { _ in
+        group.leave()
+    }
+
+    // notify fires on the specified queue when all three have left
+    group.notify(queue: .main) {
+        completion()                  // safe to update UI here
+    }
+}
+
+// ── DispatchGroup with group.async ─────────────────────────────
+func processBatch(items: [String]) {
+    let group = DispatchGroup()
+
+    for item in items {
+        // group.async automatically calls enter before and leave after the block
+        group.async(queue: .global(qos: .utility)) {
+            process(item: item)
+        }
+    }
+
+    // Synchronously wait with a timeout (avoid on main thread)
+    let result = group.wait(timeout: .now() + 5)
+    if result == .timedOut {
+        print("Batch timed out")
+    }
+}
+
+// ── DispatchSemaphore: limit concurrent downloads ──────────────
+func downloadAll(urls: [URL]) {
+    let semaphore = DispatchSemaphore(value: 3)  // max 3 simultaneous downloads
+    let queue = DispatchQueue.global(qos: .utility)
+
+    for url in urls {
+        queue.async {
+            semaphore.wait()                 // block if 3 downloads already active
+            defer { semaphore.signal() }     // always release, even on error
+            download(url: url)
+        }
+    }
+}
+
+// ── DispatchSemaphore: sync-wrap an async API (background only) ─
+func syncFetch(url: URL) -&gt; Data? {
+    // WARNING: never call this from the main thread — it will deadlock.
+    var result: Data?
+    let semaphore = DispatchSemaphore(value: 0)
+
+    URLSession.shared.dataTask(with: url) { data, _, _ in
+        result = data
+        semaphore.signal()            // unblock the waiting thread
+    }.resume()
+
+    semaphore.wait()                  // block until dataTask calls signal
+    return result
+}
+
+// ── Reader-Writer lock using DispatchBarrier ────────────────────
+class ThreadSafeArray&lt;T&gt; {
+    private var storage: [T] = []
+    // MUST be a custom concurrent queue — not global!
+    private let queue = DispatchQueue(
+        label: "com.app.safeArray",
+        attributes: .concurrent
+    )
+
+    func read() -&gt; [T] {
+        queue.sync { storage }        // concurrent reads allowed
+    }
+
+    func append(_ element: T) {
+        queue.async(flags: .barrier) {
+            self.storage.append(element)  // exclusive write
+        }
+    }
+
+    func removeAll() {
+        queue.async(flags: .barrier) {
+            self.storage.removeAll()      // exclusive write
+        }
+    }
+}
+
+// Stubs
+func fetchUser(completion: @escaping (String?) -&gt; Void) { completion(nil) }
+func fetchPosts(completion: @escaping ([String]?) -&gt; Void) { completion(nil) }
+func fetchNotifications(completion: @escaping ([String]?) -&gt; Void) { completion(nil) }
+func process(item: String) {}
+func download(url: URL) {}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What does <code>DispatchGroup.notify</code> do and how does it differ from <code>wait</code>?<em></em></p>
+
+<p>A: <code>notify(queue:execute:)</code> registers a closure that is called asynchronously on the specified queue when the group's counter reaches zero — the calling thread is not blocked. <code>wait()</code> blocks the calling thread until the counter reaches zero. <code>notify</code> is almost always preferable because it does not occupy a thread while waiting. <code>wait</code> is useful in rare cases where you need a synchronous API, must be called from a background thread, and cannot use a completion callback.</p>
+
+<p><em></em>Q: What is a <code>DispatchSemaphore</code> and what is the initial count parameter?<em></em></p>
+
+<p>A: A <code>DispatchSemaphore</code> is a synchronisation primitive wrapping a counter. <code>wait()</code> decrements the counter; if it was already 0, the calling thread blocks until another thread calls <code>signal()</code>. <code>signal()</code> increments the counter. The initial count you pass to <code>DispatchSemaphore(value:)</code> is the number of concurrent accesses allowed before blocking begins. A value of 0 means the first <code>wait</code> blocks immediately until a <code>signal</code> arrives — useful as a one-shot signal. A value of N limits concurrency to N simultaneous accessors.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: Why does <code>DispatchBarrier</code> not work on global concurrent queues?<em></em></p>
+
+<p>A: Global queues are shared system resources used by the entire process (and possibly the OS). Apple does not allow private synchronisation on shared queues because it could block work submitted by other parts of the system. A barrier on a global queue would serialize not just your work but anyone else's work on that queue. Therefore, GCD silently ignores the <code>.barrier</code> flag on global queues and executes the block as a normal async submission. The fix is always to create a custom <code>DispatchQueue(label:attributes:.concurrent)</code> that you own, then use barriers on it.</p>
+
+<p><em></em>Q: How do you avoid a <code>DispatchGroup</code> counter imbalance and what happens if it occurs?<em></em></p>
+
+<p>A: Every <code>enter()</code> must have exactly one corresponding <code>leave()</code>, even in error paths. The standard pattern is to call <code>group.leave()</code> inside <code>defer { }</code> immediately after <code>enter()</code>, so the leave is guaranteed to execute regardless of how the scope exits. If there are more <code>leave()</code> calls than <code>enter()</code> calls (counter goes below zero), GCD raises a trap (<code>EXC_BAD_INSTRUCTION</code>) — it is a programming error and not catchable. If there are more <code>enter()</code> calls than <code>leave()</code> calls, the group never reaches zero and <code>notify</code>/<code>wait</code> never fire, causing a silent hang.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Describe a scenario where using <code>DispatchSemaphore.wait()</code> inside a GCD block causes thread explosion, and explain the fix.<em></em></p>
+
+<p>A: Suppose you submit 100 tasks to <code>DispatchQueue.global()</code>, each of which calls <code>semaphore.wait()</code> with a limit of 3. The first 3 tasks acquire the semaphore and proceed; the remaining 97 are blocked inside their GCD work blocks. GCD sees 97 blocked threads and, to keep the system moving, creates new threads to handle new submissions — up to its 64-thread cap (and sometimes beyond, triggering the kernel's thread limit). The system now has dozens of threads doing nothing but sleeping on a semaphore, consuming stack memory and scheduler overhead. This is <strong>thread explosion</strong>. The fix: don't submit all 100 tasks at once. Use an <code>OperationQueue</code> with <code>maxConcurrentOperationCount = 3</code> (which holds work in an internal queue rather than occupying threads), or redesign using Swift Concurrency's <code>TaskGroup</code> with <code>withTaskGroup</code> and process at most 3 child tasks concurrently.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>group.notify</code> never fires — app hangs silently.<em></em></p>
+
+<p>Solution: Check for missing <code>group.leave()</code> calls. Every code path — including early returns and error paths — must call <code>leave()</code>. Use <code>defer { group.leave() }</code> immediately after <code>group.enter()</code> to guarantee balance.</p>
+
+<p><em></em>Issue: <code>DispatchSemaphore.wait()</code> on the main thread deadlocks.<em></em></p>
+
+<p>Solution: Never block the main thread with <code>semaphore.wait()</code>. Move the call to a background queue, or restructure the code to use a callback/<code>notify</code> pattern or <code>async/await</code>.</p>
+
+<p><em></em>Issue: Barrier flag on <code>DispatchQueue.global()</code> has no effect — writes race with reads.<em></em></p>
+
+<p>Solution: Replace the global queue with a custom <code>DispatchQueue(label:attributes:.concurrent)</code>. Only custom concurrent queues honour the <code>.barrier</code> flag.</p>
+
+<p><strong>Issue: Thread explosion when using semaphore to rate-limit network requests.</strong></p>
+
+<p>Solution: Use <code>OperationQueue.maxConcurrentOperationCount</code> instead of a semaphore, or batch submissions manually. Alternatively, use <code>async/await</code> with a <code>TaskGroup</code> and limit child tasks to the desired concurrency level.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="gcd-dispatch-queue.md">GCD &amp; Dispatch Queues</a> — foundation: queues, QoS, async/sync</li>
+<li><a href="operation-queue.md">Operation &amp; OperationQueue</a> — better alternative for rate-limiting and dependency graphs</li>
+<li><a href="async-await.md">async/await</a> — modern replacement; <code>async let</code> parallels DispatchGroup fan-out</li>
+<li><a href="task-taskgroup.md">Task &amp; TaskGroup</a> — structured alternative to DispatchGroup</li>
+<li><a href="concurrency-problems.md">Concurrency Problems</a> — deadlocks, thread explosion</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>
