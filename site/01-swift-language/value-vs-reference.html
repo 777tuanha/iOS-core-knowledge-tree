@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Value vs Reference Types — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../01-swift-language/index.html">Swift Language</a></span>
+    <span>Value Vs Reference</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="value-vs-reference-types">Value vs Reference Types</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Swift divides all types into two fundamental categories: <strong>value types</strong> and <strong>reference types</strong>. Value types (structs, enums, tuples) are copied when assigned or passed. Reference types (classes, actors, closures) share a single instance through a reference. This distinction affects memory layout, thread safety, identity semantics, and overall application design.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a value type like a sticky note. When you give someone a copy, they get their own note — changes they make don't affect yours. A reference type is like a shared Google Doc with a link. Everyone holding the link sees the same document, and any change is visible to all.</p>
+
+<p>In Swift:</p>
+<ul>
+<li><code>struct</code> → sticky note (value type)</li>
+<li><code>class</code> → Google Doc link (reference type)</li>
+</ul>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="value-types">Value Types</h3>
+
+<p>Value types are allocated on the <strong>stack</strong> by default (though large structs or those inside heap-allocated containers can end up on the heap). Stack allocation is extremely fast — it's just a pointer offset. Value semantics guarantee that every variable holds its own independent copy.</p>
+
+<p>Swift standard library collections (<code>Array</code>, <code>Dictionary</code>, <code>String</code>) are structs with <strong>copy-on-write (COW)</strong> semantics — they appear to copy eagerly but share storage until a mutation is needed.</p>
+
+<p>Structs cannot participate in reference cycles, making them inherently safer in concurrent contexts (though <code>actor</code> isolation is still needed for mutable state shared across tasks).</p>
+
+<h3 id="reference-types">Reference Types</h3>
+
+<p>Classes use <strong>reference counting (ARC)</strong> for lifetime management. Each <code>init</code> increments the retain count; each deinit decrements it. When the count reaches zero, <code>deinit</code> is called and memory is released.</p>
+
+<p>Multiple references to the same instance mean mutations are visible everywhere that reference exists — useful for shared state but dangerous without careful synchronisation.</p>
+
+<p>Key class-only capabilities:</p>
+<ul>
+<li>Inheritance and polymorphism</li>
+<li><code>deinit</code></li>
+<li>Identity comparison (<code>===</code>)</li>
+<li>Objective-C interoperability</li>
+</ul>
+
+<h3 id="when-swift-uses-the-heap-for-value-types">When Swift Uses the Heap for Value Types</h3>
+
+<ul>
+<li>A value type stored in a class property lives on the heap</li>
+<li>Closures that capture value types box them on the heap</li>
+<li>Existential containers for large value types use heap allocation</li>
+</ul>
+
+<h3 id="thread-safety">Thread Safety</h3>
+
+<p>Value types copied between threads are safe because each thread owns its copy. Reference types require explicit synchronisation (locks, serial queues, <code>actor</code>) to avoid data races.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// Value type — each variable is independent
+struct Point {
+    var x: Double
+    var y: Double
+}
+
+var a = Point(x: 0, y: 0)
+var b = a       // b is a copy
+b.x = 10
+print(a.x)      // 0 — a is unaffected
+
+// Reference type — shared identity
+class Counter {
+    var count = 0
+    func increment() { count += 1 }
+}
+
+let c1 = Counter()
+let c2 = c1     // c2 points to the same instance
+c2.increment()
+print(c1.count) // 1 — mutation visible through c1
+
+// Identity check — only valid for reference types
+print(c1 === c2) // true
+
+// Mixed: value type containing reference type
+struct Config {
+    var name: String
+    var cache: NSCache&lt;NSString, AnyObject&gt;  // reference type inside struct
+}
+// Copying Config copies the struct, but `cache` is still shared!
+// This is a "non-obvious sharing" pitfall.
+
+// Protocol to abstract over both
+protocol Resettable {
+    mutating func reset()
+}
+
+extension Point: Resettable {
+    mutating func reset() { x = 0; y = 0 }
+}
+
+extension Counter: Resettable {
+    func reset() { count = 0 }   // no `mutating` needed for class
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between a struct and a class in Swift?</strong></p>
+
+<p>A: Structs are value types — copied on assignment. Classes are reference types — multiple variables can point to the same instance. Classes support inheritance and have <code>deinit</code>; structs do not. Classes require explicit memory management through ARC.</p>
+
+<p><strong>Q: When would you choose a struct over a class?</strong></p>
+
+<p>A: Prefer structs when the data is simple, should not be shared, and benefits from value semantics (e.g., model objects, view models in SwiftUI). Use classes when you need inheritance, shared mutable state, or Objective-C interop.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: A struct containing a class property is copied — is the copy truly independent?</strong></p>
+
+<p>A: No. Copying the struct gives each copy its own struct storage, but the class property is a reference — both copies share the same class instance. Mutations to the class instance are visible from all struct copies. This is called "impure value semantics" or "non-obvious aliasing." To achieve true independence you must deep-copy the class instance, for example by implementing a copy method or using a value-type wrapper with COW.</p>
+
+<p><strong>Q: How does Swift decide whether to allocate a value type on the stack or heap?</strong></p>
+
+<p>A: Swift uses escape analysis. If a value does not escape the current scope (not stored in a global, not captured by a heap-allocated closure, not stored in a class property), the compiler allocates it on the stack. If it escapes, the value is boxed on the heap. Large value types inside existential containers (<code>any Protocol</code>) are always heap-allocated via the existential box.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: How do value and reference semantics interact with Swift's <code>Sendable</code> and structured concurrency model?<em></em></p>
+
+<p>A: Swift 5.5+ enforces data-race safety at compile time. <code>Sendable</code> marks types safe to pass across actor boundaries. Structs with all-<code>Sendable</code> properties are implicitly <code>Sendable</code> because each actor gets its own copy. Classes must either be immutable (<code>let</code> properties only) or be <code>actor</code>-isolated to be <code>Sendable</code>. Passing a non-<code>Sendable</code> class across actor boundaries is a compile-time warning (soon error), preventing data races. Value types with COW, like <code>Array</code>, are <code>Sendable</code> because the copy mechanism ensures independent buffers when the type parameter is <code>Sendable</code>.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Unexpected sharing when copying a struct that contains a class property.</strong></p>
+
+<p>Solution: Audit every <code>struct</code> for reference-type properties. If mutation isolation is required, use COW by wrapping the class in a private holder and checking <code>isKnownUniquelyReferenced</code> before mutating.</p>
+
+<p><em></em>Issue: Retain cycles with closures capturing <code>self</code> of a class.<em></em></p>
+
+<p>Solution: Use <code>[weak self]</code> or <code>[unowned self]</code> capture lists in closures. Prefer <code>[weak self]</code> when the object may be deallocated before the closure fires.</p>
+
+<p><strong>Issue: Treating a class as if it has value semantics and getting aliasing bugs.</strong></p>
+
+<p>Solution: Make the type a <code>struct</code> if value semantics are needed, or define a <code>clone()</code> / copy method and use it explicitly. Document sharing intent clearly.</p>
+
+<p><strong>Issue: Large value types causing excessive stack pressure.</strong></p>
+
+<p>Solution: If a struct is over ~64–128 bytes and is frequently passed around, consider using a COW wrapper (like Swift's standard collections) or switching to a class.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="copy-on-write.md">Copy-on-Write</a> — how Swift avoids unnecessary copies of value types</li>
+<li><a href="../02-memory-management/index.md">Memory Management</a> — ARC, retain cycles, and weak references</li>
+<li><a href="../03-concurrency/index.md">Concurrency</a> — Sendable, actors, and thread safety</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

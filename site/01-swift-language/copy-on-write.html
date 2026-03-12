@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Copy-on-Write — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../01-swift-language/index.html">Swift Language</a></span>
+    <span>Copy On Write</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="copy-on-write">Copy-on-Write</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Copy-on-write (COW) is an optimization strategy used by Swift's standard library value types — <code>Array</code>, <code>Dictionary</code>, <code>Set</code>, and <code>String</code> — to avoid expensive copies when a value is shared but not mutated. Instead of copying storage immediately on assignment, multiple value-type variables share the same underlying buffer until one of them needs to mutate it. Only then is the buffer copied.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine two people sharing a printed document. As long as neither writes on it, they can share the same physical copy. The moment one person wants to mark it up, the photocopy machine makes them a private copy first, and only then do they write on it.</p>
+
+<p>Swift collections work the same way:</p>
+
+<pre><code class="language-swift">var a = [1, 2, 3]
+var b = a       // no copy yet — a and b share the same buffer
+b.append(4)     // NOW b gets its own private copy before mutating</code></pre>
+
+<p><code>a</code> still contains <code>[1, 2, 3]</code>. The copy was deferred until it was actually needed.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="how-cow-works-internally">How COW Works Internally</h3>
+
+<p>Swift uses a <strong>class-based buffer</strong> inside the struct. Both the struct value and any copies share a reference to this buffer (a <code>ManagedBuffer</code> or similar). The key function is:</p>
+
+<pre><code class="language-swift">isKnownUniquelyReferenced(&amp;buffer)</code></pre>
+
+<p>Before any mutation, the collection checks whether the buffer is uniquely referenced (i.e., only this variable holds it). If yes, it mutates in place. If no (shared), it copies the buffer first.</p>
+
+<p>This means:</p>
+<ul>
+<li><strong>Reading</strong> is always O(1) — no copy, just access through the shared buffer.</li>
+<li><strong>Mutating</strong> shared storage is O(n) on first mutation, then O(1) for further mutations (the copy is now unique).</li>
+</ul>
+
+<h3 id="arcs-role">ARC's Role</h3>
+
+<p>The reference count on the internal buffer drives COW. ARC increments the retain count each time a struct containing a buffer is copied. <code>isKnownUniquelyReferenced</code> returns <code>true</code> only when the retain count is exactly 1. Non-Swift (Objective-C) references are not counted, so <code>isUniquelyReferenced</code> only considers Swift references.</p>
+
+<h3 id="existentials-and-cow">Existentials and COW</h3>
+
+<p>When stored in an existential container (<code>any Sequence</code>), a collection may be heap-allocated. Accessing such values through a protocol witness table adds indirection but does not disable COW — the buffer sharing still applies.</p>
+
+<h3 id="performance-profile">Performance Profile</h3>
+
+<table>
+<tr><td>Operation</td><td>Unique Buffer</td><td>Shared Buffer</td></tr>
+<tr><td>Read element</td><td>O(1)</td><td>O(1)</td></tr>
+<tr><td>Append (amortized)</td><td>O(1)</td><td>O(n) first time</td></tr>
+<tr><td>Assignment</td><td>O(1)</td><td>O(1)</td></tr>
+<tr><td>Copy (eager)</td><td>not triggered</td><td>not triggered</td></tr>
+</table>
+
+<h3 id="bridging-to-objective-c">Bridging to Objective-C</h3>
+
+<p>When a Swift <code>Array</code> bridges to <code>NSArray</code>, Swift may eagerly copy the buffer because Objective-C objects don't participate in Swift's <code>isKnownUniquelyReferenced</code> check. This is a common performance footgun when passing Swift arrays to legacy Obj-C APIs.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Standard library COW (automatic) ──────────────────────────
+
+var original = [1, 2, 3, 4, 5]
+var copy = original          // no buffer copy yet
+
+copy[0] = 99                 // buffer copied here (COW triggers)
+
+print(original[0])           // 1 — original unchanged
+print(copy[0])               // 99
+
+// ── Custom COW value type ──────────────────────────────────────
+
+// Step 1: reference-type storage
+final class _DataBuffer {
+    var values: [Int]
+    init(_ values: [Int]) { self.values = values }
+    func copy() -&gt; _DataBuffer { _DataBuffer(values) }
+}
+
+// Step 2: value-type wrapper
+struct DataStore {
+    private var _buffer: _DataBuffer
+
+    init(_ values: [Int] = []) {
+        _buffer = _DataBuffer(values)
+    }
+
+    // Ensure unique buffer before mutation
+    private mutating func ensureUnique() {
+        if !isKnownUniquelyReferenced(&amp;_buffer) {
+            _buffer = _buffer.copy()
+        }
+    }
+
+    var count: Int { _buffer.values.count }
+
+    subscript(index: Int) -&gt; Int {
+        get { _buffer.values[index] }
+        set {
+            ensureUnique()        // copy only if shared
+            _buffer.values[index] = newValue
+        }
+    }
+
+    mutating func append(_ value: Int) {
+        ensureUnique()
+        _buffer.values.append(value)
+    }
+}
+
+// Usage
+var store1 = DataStore([10, 20, 30])
+var store2 = store1          // shares buffer
+store2.append(40)            // buffer copied here
+print(store1.count)          // 3 — store1 unchanged
+print(store2.count)          // 4
+
+// ── Detecting unintended copies in debug builds ───────────────
+
+// Use Instruments → Allocations to track buffer heap allocations.
+// A spike in allocations during a tight loop often indicates missed COW.</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is copy-on-write and which Swift types use it?</strong></p>
+
+<p>A: COW is a lazy-copy optimization where multiple variables share the same backing storage until a mutation occurs. Swift's standard collection types — <code>Array</code>, <code>Dictionary</code>, <code>Set</code>, and <code>String</code> — implement COW. Assignment is O(1); the actual buffer copy only happens on the first mutation of a shared value.</p>
+
+<p><em></em>Q: Is copying a Swift <code>Array</code> always expensive?<em></em></p>
+
+<p>A: No. Due to COW, assigning an array to a new variable is O(1) — only a pointer to the shared buffer is copied. The buffer is duplicated only when one of the owners mutates it, and only at that point does the cost become O(n).</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How would you implement COW in a custom Swift type?</strong></p>
+
+<p>A: Wrap mutable state in a <code>final class</code> (the buffer). The struct holds a reference to this class. Before every <code>mutating</code> operation, call <code>isKnownUniquelyReferenced(&amp;buffer)</code>. If it returns <code>false</code> (buffer is shared), copy the class instance first. This pattern mirrors how <code>Array</code> works internally. The <code>final</code> keyword is important — it prevents subclassing, which would complicate the uniqueness check.</p>
+
+<p><strong>Q: Why does COW break when bridging to Objective-C?</strong></p>
+
+<p>A: <code>isKnownUniquelyReferenced</code> only counts Swift ARC references. When a Swift <code>Array</code> is bridged to <code>NSArray</code>, Objective-C retains the buffer with its own reference count mechanism, which Swift's check cannot see. Because Swift can't verify uniqueness in that scenario, it may conservatively copy the buffer, negating the COW benefit and causing unexpected O(n) work.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: In a high-throughput data pipeline, you notice that mutating a large array inside a loop is causing repeated O(n) copies despite there being only one logical owner. What could cause this?</strong></p>
+
+<p>A: Several subtle issues can break COW uniqueness even with a single logical owner:</p>
+
+<ol>
+<li><strong>Captured by a closure</strong>: if the array is captured by an <code>@escaping</code> closure, ARC retains the buffer, making the retain count &gt; 1 even inside the same scope.</li>
+<li><strong>Passed to a non-inout parameter</strong>: Swift passes value types by copy to functions (unless <code>inout</code>). If an intermediate function receives the array by value, ARC sees two owners momentarily.</li>
+<li><em></em>Stored in an <code>Any</code> or existential<em></em>: boxing the array can add an extra retain.</li>
+<li><strong>Objective-C bridging in the hot path</strong>: even a single call to an Obj-C method that touches the array can trigger a copy.</li>
+</ol>
+
+<p>Fix: use <code>inout</code> parameters, avoid capturing the array in closures on the hot path, and profile with Instruments → Allocations to observe buffer allocation events.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Surprising O(n) mutation cost in a tight loop.</strong></p>
+
+<p>Solution: Keep the array locally scoped and avoid assigning it to other variables, capturing it in closures, or passing it by value while in the loop. An <code>inout</code> parameter preserves the unique-reference guarantee across call boundaries.</p>
+
+<p><strong>Issue: Custom COW type not working — buffer is always copied.</strong></p>
+
+<p>Solution: Ensure the buffer class is <code>final</code>. Non-final classes have subclass potential that makes <code>isKnownUniquelyReferenced</code> always return <code>false</code>. Also ensure the buffer reference is stored as <code>var</code>, not <code>let</code>.</p>
+
+<p><strong>Issue: Memory usage higher than expected for multiple array copies.</strong></p>
+
+<p>Solution: Check whether some copies are being mutated immediately, triggering early COW. Defer mutations or batch them so shared buffers persist longer.</p>
+
+<p><strong>Issue: String COW and bridging to NSString causing performance issues.</strong></p>
+
+<p>Solution: Avoid repeated conversions between <code>String</code> and <code>NSString</code> in hot paths. If Obj-C interop is required, do one conversion and store the <code>NSString</code> rather than re-bridging on every call.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="value-vs-reference.md">Value vs Reference Types</a> — the foundation COW builds upon</li>
+<li><a href="../02-memory-management/index.md">Memory Management</a> — ARC and how retain counts drive COW</li>
+<li><a href="../12-performance/index.md">Performance</a> — profiling allocations with Instruments</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>
