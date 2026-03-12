@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Publishers & Subscribers — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../05-reactive-programming/index.html">Reactive Programming</a></span>
+    <span>Publishers Subscribers</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html" class="active">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="publishers--subscribers">Publishers &amp; Subscribers</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>Publisher</code> and <code>Subscriber</code> are the two fundamental protocols of Combine. A <code>Publisher</code> declares that it can emit a sequence of typed values (<code>Output</code>) and a typed error (<code>Failure</code>) over time, eventually completing or failing. A <code>Subscriber</code> registers interest in those values and receives them, plus a completion event. The connection between them — a <code>Subscription</code> — manages lifetime and backpressure. Understanding this three-party handshake is the foundation of all Combine usage.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of a Publisher as a newspaper printing press. You (the Subscriber) call the press to subscribe. The press sends you a subscription card (Subscription). You fill in how many papers you want (Demand). The press starts delivering papers (values). Eventually the press shuts down (completion) or catches fire (failure). You can cancel your subscription at any time with the cancellation token (AnyCancellable).</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="the-publisher-protocol">The Publisher Protocol</h3>
+
+<pre><code class="language-swift">protocol Publisher {
+    associatedtype Output
+    associatedtype Failure: Error
+    func receive&lt;S: Subscriber&gt;(subscriber: S)
+        where S.Input == Output, S.Failure == Failure
+}</code></pre>
+
+<p>The only requirement is <code>receive(subscriber:)</code>. All operators are extensions on this protocol. The <code>Output</code> and <code>Failure</code> associated types define what the publisher emits.</p>
+
+<p><code>Failure == Never</code> means the publisher cannot fail — common for UI events and <code>@Published</code> properties.</p>
+
+<h3 id="the-subscriber-protocol">The Subscriber Protocol</h3>
+
+<pre><code class="language-swift">protocol Subscriber: CustomCombineIdentifierConvertible {
+    associatedtype Input
+    associatedtype Failure: Error
+    func receive(subscription: Subscription)   // called once on subscribe
+    func receive(_ input: Input) -&gt; Subscribers.Demand  // called for each value
+    func receive(completion: Subscribers.Completion&lt;Failure&gt;)  // called once at end
+}</code></pre>
+
+<p>The Subscriber's <code>Input</code> must match the Publisher's <code>Output</code>, and their <code>Failure</code> types must match.</p>
+
+<h3 id="the-subscription-protocol-and-backpressure">The Subscription Protocol and Backpressure</h3>
+
+<pre><code class="language-swift">protocol Subscription: Cancellable {
+    func request(_ demand: Subscribers.Demand)
+}</code></pre>
+
+<p>After <code>receive(subscription:)</code> is called, the Subscriber <strong>must</strong> call <code>subscription.request(_:)</code> to signal how many values it wants. This is the backpressure mechanism — the Publisher sends at most as many values as demanded. <code>Subscribers.Demand</code> can be <code>.max(n)</code>, <code>.unlimited</code>, or <code>.none</code>.</p>
+
+<h3 id="subscription-lifecycle">Subscription Lifecycle</h3>
+
+<pre><code>Publisher.subscribe(subscriber)
+    │
+    ▼
+Publisher calls subscriber.receive(subscription:)
+    │
+    ▼
+Subscriber calls subscription.request(.unlimited)   ← demand signal
+    │
+    ▼
+Publisher calls subscriber.receive(value)  ×N        ← for each emitted value
+    │
+    ▼
+Publisher calls subscriber.receive(completion:)      ← .finished or .failure(Error)
+    │
+    ▼
+subscription is cancelled / released</code></pre>
+
+<h3 id="built-in-publishers">Built-in Publishers</h3>
+
+<table>
+<tr><td>Publisher</td><td>Emits</td><td>Fails</td></tr>
+<tr><td><code>Just(value)</code></td><td>Single value, then finishes</td><td>Never</td></tr>
+<tr><td><code>Empty()</code></td><td>Nothing, completes immediately</td><td>Never</td></tr>
+<tr><td><code>Fail(error)</code></td><td>Nothing, fails immediately</td><td>Yes</td></tr>
+<tr><td><code>Future { promise in }</code></td><td>Single async value</td><td>Yes</td></tr>
+<tr><td><code>Deferred { publisher }</code></td><td>Evaluates publisher lazily at subscribe time</td><td>—</td></tr>
+<tr><td><code>[1,2,3].publisher</code></td><td>Each element, then finishes</td><td>Never</td></tr>
+<tr><td><code>Timer.publish(every:on:in:)</code></td><td>Current date at interval</td><td>Never</td></tr>
+<tr><td><code>NotificationCenter.publisher(for:)</code></td><td>Notification on post</td><td>Never</td></tr>
+<tr><td><code>URLSession.dataTaskPublisher(for:)</code></td><td>(Data, URLResponse)</td><td>URLError</td></tr>
+<tr><td><code>@Published var x</code></td><td>Each new value of x</td><td>Never</td></tr>
+</table>
+
+<h3 id="anypublisher-and-type-erasure">AnyPublisher and Type Erasure</h3>
+
+<p>Concrete publisher types expose their full type (e.g., <code>Publishers.Map&lt;URLSession.DataTaskPublisher, Data&gt;</code>). Use <code>eraseToAnyPublisher()</code> to hide implementation details:</p>
+
+<pre><code class="language-swift">func fetchData(url: URL) -&gt; AnyPublisher&lt;Data, URLError&gt; {
+    URLSession.shared.dataTaskPublisher(for: url)
+        .map(\.data)
+        .eraseToAnyPublisher()          // hides the concrete pipeline type
+}</code></pre>
+
+<h3 id="sink-and-assign">sink and assign</h3>
+
+<p><code>sink</code> is the most common subscriber:</p>
+
+<pre><code class="language-swift">publisher
+    .sink(
+        receiveCompletion: { completion in
+            switch completion {
+            case .finished: print("Done")
+            case .failure(let error): print("Error: \(error)")
+            }
+        },
+        receiveValue: { value in
+            print("Received: \(value)")
+        }
+    )</code></pre>
+
+<p><code>assign(to:on:)</code> assigns values to a property via key path:</p>
+
+<pre><code class="language-swift">publisher
+    .assign(to: \.title, on: viewController)</code></pre>
+
+<p><code>assign(to:)</code> (iOS 14+) assigns to a <code>@Published</code> var without creating a retain cycle:</p>
+
+<pre><code class="language-swift">publisher
+    .assign(to: &amp;viewModel.$displayName)  // &amp; binds the inout Binding</code></pre>
+
+<h3 id="future">Future</h3>
+
+<p><code>Future</code> wraps a single async value in a Combine publisher:</p>
+
+<pre><code class="language-swift">func fetchUser(id: String) -&gt; Future&lt;User, Error&gt; {
+    Future { promise in
+        UserService.fetch(id: id) { result in
+            promise(result)             // call promise with .success or .failure
+        }
+    }
+}</code></pre>
+
+<p><strong>Important</strong>: <code>Future</code> executes its closure <strong>immediately on creation</strong> (not lazily). Wrap it in <code>Deferred</code> to defer execution until subscription.</p>
+
+<h3 id="deferred">Deferred</h3>
+
+<pre><code class="language-swift">func fetchUserDeferred(id: String) -&gt; AnyPublisher&lt;User, Error&gt; {
+    Deferred {
+        Future { promise in
+            UserService.fetch(id: id) { promise($0) }
+        }
+    }
+    .eraseToAnyPublisher()
+}</code></pre>
+
+<p>Now the network call starts only when a subscriber subscribes — not when the publisher is created.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Combine
+import Foundation
+
+var cancellables = Set&lt;AnyCancellable&gt;()
+
+// ── Just — emit a single value ────────────────────────────────
+Just(42)
+    .sink { value in print("Got: \(value)") }   // prints "Got: 42" then completes
+    .store(in: &amp;cancellables)                    // store the token to keep subscription alive
+
+// ── Array publisher — emit each element ──────────────────────
+[1, 2, 3, 4, 5].publisher
+    .map { $0 * $0 }                             // square each value
+    .sink { print($0) }                          // prints 1, 4, 9, 16, 25
+    .store(in: &amp;cancellables)
+
+// ── Future — wrap a callback-based API ────────────────────────
+func fetchNumber() -&gt; Future&lt;Int, Never&gt; {
+    Future { promise in
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+            promise(.success(42))                // resolve the future
+        }
+    }
+}
+
+fetchNumber()
+    .sink { print("Future resolved: \($0)") }
+    .store(in: &amp;cancellables)
+
+// ── Deferred Future — lazy execution ─────────────────────────
+func lazyFetch() -&gt; AnyPublisher&lt;Int, Never&gt; {
+    Deferred {                                   // closure runs at subscribe time
+        Future { promise in
+            print("Starting work...")
+            promise(.success(99))
+        }
+    }
+    .eraseToAnyPublisher()
+}
+
+let publisher = lazyFetch()     // "Starting work..." NOT printed yet
+publisher
+    .sink { print("Received: \($0)") }  // NOW "Starting work..." prints
+    .store(in: &amp;cancellables)
+
+// ── Timer publisher ───────────────────────────────────────────
+let timerPublisher = Timer
+    .publish(every: 1.0, on: .main, in: .common)
+    .autoconnect()                               // connect automatically on subscription
+
+let timerCancellable = timerPublisher
+    .sink { date in print("Tick: \(date)") }
+
+DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+    timerCancellable.cancel()                    // stop after 3 seconds
+}
+
+// ── NotificationCenter publisher ─────────────────────────────
+NotificationCenter.default
+    .publisher(for: UIApplication.didBecomeActiveNotification)  // Combine publisher for notifications
+    .sink { _ in print("App became active") }
+    .store(in: &amp;cancellables)
+
+// ── URLSession dataTaskPublisher ─────────────────────────────
+let url = URL(string: "https://api.example.com/data")!
+
+URLSession.shared
+    .dataTaskPublisher(for: url)                 // Publisher&lt;(Data, URLResponse), URLError&gt;
+    .map(\.data)                                 // extract Data
+    .decode(type: [String: String].self, decoder: JSONDecoder())
+    .receive(on: DispatchQueue.main)             // deliver result on main thread
+    .sink(
+        receiveCompletion: { completion in
+            if case .failure(let error) = completion {
+                print("Error: \(error)")
+            }
+        },
+        receiveValue: { dict in print("Received: \(dict)") }
+    )
+    .store(in: &amp;cancellables)
+
+// ── AnyPublisher — type-erased return ────────────────────────
+func search(query: String) -&gt; AnyPublisher&lt;[String], Never&gt; {
+    Just(["result1", "result2"])                 // placeholder
+        .eraseToAnyPublisher()
+}
+
+// ── assign(to:) on @Published (iOS 14+) ──────────────────────
+class ViewModel: ObservableObject {
+    @Published var name: String = ""
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    init() {
+        // Assign directly to @Published — no retain cycle, no stored AnyCancellable
+        Just("Alice")
+            .assign(to: &amp;$name)                 // &amp; passes inout; no need to store token
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between a Publisher and a Subject in Combine?</strong></p>
+
+<p>A: A Publisher is a type that produces values for subscribers to receive — subscribers observe it but cannot push values into it. A Subject is a special Publisher that also exposes an imperative <code>send(_:)</code> method, allowing you to inject values into the pipeline from outside. Subjects bridge traditional imperative code (callbacks, delegate methods) into the reactive Combine pipeline. <code>PassthroughSubject</code> and <code>CurrentValueSubject</code> are the two concrete Subject types.</p>
+
+<p><em></em>Q: What is <code>AnyCancellable</code> and why must you store it?<em></em></p>
+
+<p>A: <code>AnyCancellable</code> is a Combine subscription token. When it is deallocated, the subscription is cancelled and the publisher stops delivering values. If you don't store the token returned by <code>sink</code> or <code>assign</code>, it is immediately deallocated, cancelling the subscription before any values arrive. The idiomatic pattern is <code>store(in: &amp;cancellables)</code> where <code>cancellables</code> is a <code>Set&lt;AnyCancellable&gt;</code> property on the owning object — the subscriptions live as long as the owner does.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: Explain the Publisher-Subscriber-Subscription three-party handshake.</strong></p>
+
+<p>A: (1) You call <code>publisher.subscribe(subscriber)</code>. (2) The publisher calls <code>subscriber.receive(subscription:)</code>, passing a <code>Subscription</code> object. (3) The subscriber calls <code>subscription.request(.unlimited)</code> (or a specific demand count) — without this call, the publisher sends nothing. This is the backpressure signal. (4) For each emitted value, the publisher calls <code>subscriber.receive(_ input:)</code>, which returns a new <code>Subscribers.Demand</code> indicating how many more values are wanted (used for dynamic backpressure). (5) When the publisher completes or fails, it calls <code>subscriber.receive(completion:)</code>. The subscription is then released. This design makes the contract explicit: no values arrive until the subscriber requests them.</p>
+
+<p><em></em>Q: What is the difference between <code>Future</code> and <code>Deferred&lt;Future&gt;</code>?<em></em></p>
+
+<p>A: <code>Future</code> executes its closure — and starts the underlying async work — <strong>immediately when created</strong>, regardless of whether anyone has subscribed. This means creating a <code>Future</code> in a function that no one calls <code>sink</code> on will still start the work. <code>Deferred</code> wraps any publisher and delays its creation until a subscriber actually subscribes. <code>Deferred { Future { ... } }</code> is the correct pattern for lazy async operations: the work only starts when someone subscribes, matching the expected semantics of a function that returns a publisher.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How does backpressure work in Combine and when is it relevant in iOS apps?</strong></p>
+
+<p>A: Backpressure is the mechanism by which a Subscriber controls the rate at which a Publisher produces values. After receiving the <code>Subscription</code>, a Subscriber calls <code>subscription.request(_:)</code> with a <code>Subscribers.Demand</code> (<code>.max(1)</code>, <code>.max(n)</code>, or <code>.unlimited</code>). The Publisher must not send more values than demanded. For each value received, <code>receive(_ input:)</code> returns an additional Demand increment. In practice, most iOS Combine pipelines use <code>.unlimited</code> demand (via <code>sink</code>) — this is safe when the publisher is event-driven (UI events, notifications) because events naturally arrive at a human pace. Backpressure becomes important when a publisher can generate values much faster than a subscriber can process them — e.g., a high-frequency sensor publisher feeding into a slow database write. In those cases, operators like <code>throttle</code> and <code>debounce</code> implement effective backpressure at the operator level without needing custom Subscriber implementations.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Subscription fires and immediately cancels — no values received.</strong></p>
+
+<p>Solution: The <code>AnyCancellable</code> token was not stored. Assign the result of <code>sink</code> / <code>assign</code> to a property or add it to a <code>Set&lt;AnyCancellable&gt;</code>.</p>
+
+<p><em></em>Issue: <code>Future</code> starts network work even though no one subscribed yet.<em></em></p>
+
+<p>Solution: Wrap the <code>Future</code> in <code>Deferred { }</code>. This defers closure execution until the first subscription.</p>
+
+<p><em></em>Issue: <code>assign(to:on:)</code> creates a retain cycle in a ViewModel.<em></em></p>
+
+<p>Solution: Use <code>assign(to: &amp;$publishedProperty)</code> (iOS 14+) instead — it does not retain <code>self</code>. Alternatively, use <code>sink { [weak self] in self?.property = $0 }</code>.</p>
+
+<p><strong>Issue: Publisher completes before subscriber receives all values.</strong></p>
+
+<p>Solution: Check that the subscription token is stored. Also verify that no <code>first()</code> or <code>prefix(_:)</code> operators are limiting the output unexpectedly.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="operators.md">Operators</a> — transform, filter, and combine publishers</li>
+<li><a href="subjects.md">Subjects</a> — imperatively push values into a pipeline</li>
+<li><a href="backpressure-cancellation.md">Backpressure &amp; Cancellation</a> — AnyCancellable, demand, memory management</li>
+<li><a href="combine-networking.md">Combine Networking</a> — dataTaskPublisher in practice</li>
+<li><a href="../03-concurrency/async-await.md">async/await</a> — modern alternative for single async values</li>
+<li><a href="../02-memory-management/retain-cycles.md">Retain Cycles</a> — assign vs sink retain cycle patterns</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

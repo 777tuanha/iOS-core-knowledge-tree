@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Combine + UIKit & SwiftUI — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../05-reactive-programming/index.html">Reactive Programming</a></span>
+    <span>Combine Swiftui Uikit</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html" class="active">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="combine--uikit--swiftui">Combine + UIKit &amp; SwiftUI</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Combine integrates with both UIKit and SwiftUI to enable reactive data binding — connecting model state changes directly to UI updates without manual observation code. In <strong>SwiftUI</strong>, <code>@Published</code> and <code>ObservableObject</code> are built on Combine; the framework handles subscription and UI invalidation automatically. In <strong>UIKit</strong>, you manually subscribe to publishers and update UI elements in <code>sink</code> closures. Combine also provides publishers for many Foundation and UIKit APIs: <code>NotificationCenter</code>, <code>Timer</code>, <code>KVO</code>, <code>URLSession</code>, and <code>URLSession.WebSocketTask</code>.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of data binding as a smart thermostat. In the old world (UIKit without Combine), you'd manually check the temperature and adjust the heating yourself — repetitive, error-prone. With Combine binding in UIKit, you set up a wire between the temperature sensor (model) and the heating control (UI) once, and the system updates automatically. In SwiftUI, the wiring is even simpler — you just declare what depends on what, and the framework manages everything.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="published-and-observableobject-swiftui">@Published and ObservableObject (SwiftUI)</h3>
+
+<p>SwiftUI's <code>ObservableObject</code> protocol requires that conforming types emit an <code>objectWillChange</code> publisher before any property changes. <code>@Published</code> handles this automatically — each <code>@Published</code> property synthesises a Combine <code>Publisher</code> (accessible via <code>$property</code>) and calls <code>objectWillChange.send()</code> before the value changes.</p>
+
+<p>SwiftUI subscribes to <code>objectWillChange</code> and schedules a view re-render when it fires. The <code>$property</code> publisher can be used directly in Combine pipelines:</p>
+
+<pre><code class="language-swift">class ViewModel: ObservableObject {
+    @Published var query = ""
+
+    init() {
+        $query                           // Publisher&lt;String, Never&gt;
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] q in self?.search(query: q) }
+            .store(in: &amp;cancellables)
+    }
+}</code></pre>
+
+<h3 id="combine-in-uikit--binding-patterns">Combine in UIKit — Binding Patterns</h3>
+
+<p>UIKit has no built-in reactive binding. Patterns for connecting Combine to UIKit:</p>
+
+<p><strong>Pattern 1: sink to update UI</strong></p>
+<pre><code class="language-swift">viewModel.$title
+    .receive(on: DispatchQueue.main)
+    .sink { [weak self] text in
+        self?.titleLabel.text = text    // manually update UIKit control
+    }
+    .store(in: &amp;cancellables)</code></pre>
+
+<p><strong>Pattern 2: assign(to:on:)</strong> — simpler but creates retain cycles if target is <code>self</code>:</p>
+<pre><code class="language-swift">viewModel.$title
+    .receive(on: DispatchQueue.main)
+    .assign(to: \.text, on: titleLabel)   // safe if titleLabel != self
+    .store(in: &amp;cancellables)</code></pre>
+
+<p><strong>Pattern 3: UIControl publishers via Combine</strong> — Combine doesn't provide UIControl publishers natively, but you can create them:</p>
+<pre><code class="language-swift">extension UIControl {
+    func publisher(for event: UIControl.Event) -&gt; AnyPublisher&lt;Void, Never&gt; {
+        UIControlPublisher(control: self, event: event).eraseToAnyPublisher()
+    }
+}</code></pre>
+
+<h3 id="notificationcenter-publisher">NotificationCenter Publisher</h3>
+
+<pre><code class="language-swift">NotificationCenter.default
+    .publisher(for: UIApplication.willResignActiveNotification)
+    .sink { _ in saveState() }
+    .store(in: &amp;cancellables)</code></pre>
+
+<p>The publisher emits <code>Notification</code> values, which you can <code>map</code> to extract <code>userInfo</code> or the <code>object</code>.</p>
+
+<h3 id="kvo-publisher">KVO Publisher</h3>
+
+<p>For <code>NSObject</code> properties marked <code>@objc dynamic</code>, Combine provides a KVO publisher:</p>
+
+<pre><code class="language-swift">let scrollView = UIScrollView()
+scrollView
+    .publisher(for: \.contentOffset)     // KVO publisher on contentOffset
+    .map { offset in offset.y &gt; 100 }    // is header hidden?
+    .removeDuplicates()
+    .sink { [weak self] shouldHide in
+        self?.navigationBar.isHidden = shouldHide
+    }
+    .store(in: &amp;cancellables)</code></pre>
+
+<p>Requirements: the property must be <code>@objc dynamic</code> and the owning type must be an <code>NSObject</code> subclass.</p>
+
+<h3 id="uitextfield-and-uisearchbar-integration">UITextField and UISearchBar Integration</h3>
+
+<p>Combine doesn't provide built-in UIKit control publishers. A minimal extension:</p>
+
+<pre><code class="language-swift">extension UITextField {
+    var textPublisher: AnyPublisher&lt;String, Never&gt; {
+        NotificationCenter.default
+            .publisher(for: UITextField.textDidChangeNotification, object: self)
+            .compactMap { ($0.object as? UITextField)?.text }
+            .eraseToAnyPublisher()
+    }
+}</code></pre>
+
+<h3 id="combine-vs-swiftui-binding">Combine vs SwiftUI Binding</h3>
+
+<table>
+<tr><td>Binding target</td><td>Combine approach</td><td>SwiftUI approach</td></tr>
+<tr><td>UILabel.text</td><td><code>.sink { label.text = $0 }</code></td><td><code>Text(viewModel.name)</code> directly</td></tr>
+<tr><td>UISwitch</td><td>KVO or NotificationCenter publisher</td><td><code>Toggle(isOn: $viewModel.flag)</code></td></tr>
+<tr><td>UITableView</td><td><code>.sink { tableView.reloadData() }</code></td><td><code>List(viewModel.items)</code></td></tr>
+<tr><td>UITextField</td><td>NotificationCenter publisher</td><td><code>TextField("", text: $viewModel.query)</code></td></tr>
+</table>
+
+<h3 id="bridging-combine-to-asyncawait">Bridging Combine to async/await</h3>
+
+<p>iOS 15+ allows consuming any Combine publisher as an <code>AsyncSequence</code> via the <code>.values</code> property:</p>
+
+<pre><code class="language-swift">for await value in viewModel.$someProperty.values {
+    // each new value of someProperty arrives here
+}</code></pre>
+
+<p>And converting async work to a Combine publisher:</p>
+<pre><code class="language-swift">func asyncToCombine&lt;T&gt;(_ work: @escaping () async throws -&gt; T) -&gt; AnyPublisher&lt;T, Error&gt; {
+    Future { promise in
+        Task {
+            do { promise(.success(try await work())) }
+            catch { promise(.failure(error)) }
+        }
+    }
+    .eraseToAnyPublisher()
+}</code></pre>
+
+<h3 id="thread-safety-in-uikit-binding">Thread Safety in UIKit Binding</h3>
+
+<p>Combine delivers values on the scheduler of the upstream publisher (usually a background thread for network publishers). Always add <code>receive(on: DispatchQueue.main)</code> before any operator or <code>sink</code> that updates UIKit controls. Omitting this causes purple runtime warnings ("UIView was accessed from a non-main thread").</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Combine
+import UIKit
+import SwiftUI
+
+// ── ViewModel shared between UIKit and SwiftUI ─────────────────
+@MainActor
+class UserViewModel: ObservableObject {
+    @Published var displayName: String = ""
+    @Published var isLoading: Bool = false
+    @Published var avatarURL: URL?
+
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    func loadUser(id: String) {
+        isLoading = true
+        // Network call via Combine or async/await
+        URLSession.shared.dataTaskPublisher(
+            for: URL(string: "https://api.example.com/users/\(id)")!
+        )
+        .map(\.data)
+        .decode(type: APIUser.self, decoder: JSONDecoder())
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] _ in self?.isLoading = false },
+            receiveValue: { [weak self] user in
+                self?.displayName = user.name
+                self?.avatarURL = user.avatarURL
+            }
+        )
+        .store(in: &amp;cancellables)
+    }
+}
+
+struct APIUser: Decodable { let name: String; let avatarURL: URL? }
+
+// ── SwiftUI View — @Published drives UI automatically ─────────
+struct UserProfileView: View {
+    @StateObject private var viewModel = UserViewModel()
+
+    var body: some View {
+        VStack {
+            if viewModel.isLoading {
+                ProgressView()
+            } else {
+                Text(viewModel.displayName)
+                    .font(.title)
+            }
+        }
+        .onAppear { viewModel.loadUser(id: "42") }
+    }
+}
+
+// ── UIKit ViewController bound to the same ViewModel ──────────
+class UserProfileViewController: UIViewController {
+    private let viewModel: UserViewModel
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    private let nameLabel = UILabel()
+    private let loadingIndicator = UIActivityIndicatorView(style: .medium)
+
+    init(viewModel: UserViewModel) {
+        self.viewModel = viewModel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupViews()
+        bindViewModel()
+        viewModel.loadUser(id: "42")
+    }
+
+    private func bindViewModel() {
+        // Bind displayName → label text
+        viewModel.$displayName
+            .receive(on: DispatchQueue.main)            // UIKit update on main thread
+            .sink { [weak self] name in                 // [weak self] prevents retain cycle
+                self?.nameLabel.text = name
+            }
+            .store(in: &amp;cancellables)
+
+        // Bind isLoading → activity indicator
+        viewModel.$isLoading
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] loading in
+                loading
+                    ? self?.loadingIndicator.startAnimating()
+                    : self?.loadingIndicator.stopAnimating()
+            }
+            .store(in: &amp;cancellables)
+    }
+
+    private func setupViews() {
+        view.backgroundColor = .systemBackground
+        [nameLabel, loadingIndicator].forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview($0)
+        }
+        NSLayoutConstraint.activate([
+            nameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            nameLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            loadingIndicator.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8)
+        ])
+    }
+}
+
+// ── NotificationCenter publisher ──────────────────────────────
+class KeyboardObserver {
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    func observe(adjustingView view: UIView) {
+        NotificationCenter.default
+            .publisher(for: UIResponder.keyboardWillShowNotification)
+            .compactMap { $0.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect }
+            .map { keyboardFrame in keyboardFrame.height }
+            .sink { [weak view] keyboardHeight in
+                view?.transform = CGAffineTransform(translationX: 0, y: -keyboardHeight)
+            }
+            .store(in: &amp;cancellables)
+
+        NotificationCenter.default
+            .publisher(for: UIResponder.keyboardWillHideNotification)
+            .sink { [weak view] _ in
+                view?.transform = .identity
+            }
+            .store(in: &amp;cancellables)
+    }
+}
+
+// ── KVO publisher — track scroll position ─────────────────────
+class HeaderViewController: UIViewController {
+    private let scrollView = UIScrollView()
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        scrollView
+            .publisher(for: \.contentOffset)            // KVO on contentOffset
+            .map { $0.y }
+            .removeDuplicates()
+            .sink { [weak self] offsetY in
+                let alpha = min(1.0, max(0.0, offsetY / 100))
+                self?.navigationController?.navigationBar.alpha = alpha
+            }
+            .store(in: &amp;cancellables)
+    }
+}
+
+// ── @Published pipeline — search debounce ─────────────────────
+class SearchViewModel: ObservableObject {
+    @Published var searchText = ""
+    @Published var results: [String] = []
+
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    init() {
+        $searchText                                      // Publisher&lt;String, Never&gt;
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .removeDuplicates()
+            .filter { !$0.isEmpty }
+            .map { query in ["Result: \(query)"] }       // replace with real search
+            .assign(to: &amp;$results)                       // assign to @Published — no cycle
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: How does <code>@Published</code> integrate with Combine and SwiftUI?<em></em></p>
+
+<p>A: <code>@Published</code> is a property wrapper that wraps a stored value and synthesises a Combine <code>Publisher</code> accessible via the <code>$</code> prefix (e.g., <code>$name</code> is a <code>Published&lt;String&gt;.Publisher</code>). When the wrapped value changes, it calls <code>objectWillChange.send()</code> on the enclosing <code>ObservableObject</code> before the change, triggering SwiftUI to schedule a view re-render. The <code>$name</code> publisher also emits the new value downstream, so it can be used in Combine pipelines with operators like <code>debounce</code>, <code>map</code>, and <code>sink</code>. This dual role — triggering SwiftUI and serving as a Combine source — makes <code>@Published</code> the primary bridge between reactive models and the SwiftUI view layer.</p>
+
+<p><em></em>Q: Why do you need <code>receive(on: DispatchQueue.main)</code> when binding Combine to UIKit?<em></em></p>
+
+<p>A: Combine delivers values on the same thread/scheduler as the upstream publisher. For <code>URLSession.dataTaskPublisher</code>, values arrive on a background queue managed by <code>URLSession</code>. UIKit requires that all view updates happen on the main thread — accessing any <code>UIView</code> property from a background thread is a data race and causes runtime warnings or crashes. <code>receive(on: DispatchQueue.main)</code> inserts a scheduler hop, ensuring the downstream <code>sink</code> closure runs on the main thread. In SwiftUI, <code>@MainActor</code> on the <code>ObservableObject</code> class ensures all <code>@Published</code> mutations happen on the main thread, eliminating the need for manual <code>receive(on:)</code>.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: What is the difference between using <code>assign(to:on:)</code> and <code>sink</code> for UIKit binding and which is safer?<em></em></p>
+
+<p>A: <code>assign(to:on:)</code> assigns emitted values to a property via key path and holds a <strong>strong</strong> reference to the target object. If the target is <code>self</code> and you store the <code>AnyCancellable</code> in <code>self</code>, you have a retain cycle: <code>self → AnyCancellable → assign → self</code>. This prevents deallocation. <code>sink { [weak self] in self?.property = value }</code> uses <code>[weak self]</code> to avoid the cycle — the closure holds a weak reference. <code>assign(to:on:)</code> is safe when the target is <strong>not</strong> the same object holding the <code>AnyCancellable</code> (e.g., assigning to a <code>UILabel</code> reference that is a separate object). For assigning to <code>@Published</code> properties on <code>self</code>, use <code>assign(to: &amp;$property)</code> (iOS 14+) — this form is retain-cycle safe.</p>
+
+<p><strong>Q: How would you implement a UITextField text change publisher without third-party libraries?</strong></p>
+
+<p>A: Two approaches: (1) <code>NotificationCenter.publisher(for: UITextField.textDidChangeNotification, object: textField)</code> — emits a <code>Notification</code>; use <code>compactMap { ($0.object as? UITextField)?.text }</code> to extract the text. (2) A custom <code>Publisher</code> + <code>Subscription</code> that adds a target-action pair to the <code>UITextField</code> for <code>.editingChanged</code> events. When the control fires, the subscription calls <code>receive(_ input:)</code> on the subscriber. Wrap in a <code>UITextField</code> extension for ergonomics. The NotificationCenter approach is simpler but doesn't deliver an initial value; the custom publisher approach can optionally emit the current text on subscription.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe a complete reactive data binding architecture using Combine in a UIKit app without SwiftUI.</strong></p>
+
+<p>A: (1) <strong>ViewModel</strong>: <code>ObservableObject</code> class with <code>@Published</code> properties for each piece of UI state — <code>@Published var items: [Item]</code>, <code>@Published var isLoading: Bool</code>, <code>@Published var error: String?</code>. Mark the class <code>@MainActor</code>. (2) <strong>ViewController binding</strong>: In <code>viewDidLoad</code>, subscribe to each <code>@Published</code> publisher with <code>sink { [weak self] value in ... }.store(in: &amp;cancellables)</code>. Use <code>receive(on: DispatchQueue.main)</code> if the ViewModel isn't <code>@MainActor</code>. (3) <strong>User actions</strong>: The VC calls ViewModel methods directly (e.g., <code>viewModel.loadItems()</code>). The ViewModel performs async work and publishes results via <code>@Published</code>. (4) <strong>Lifecycle</strong>: Cancel subscriptions in <code>deinit</code> or <code>viewWillDisappear</code> via <code>cancellables.removeAll()</code>. (5) <strong>Testing</strong>: Inject a mock service into the ViewModel constructor; observe <code>@Published</code> values in tests using <code>sink</code> with an <code>XCTestExpectation</code>. This architecture is identical to SwiftUI's MVVM — the only difference is the manual binding step in the VC.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: UIKit control not updating despite publisher emitting values.</strong></p>
+
+<p>Solution: Missing <code>receive(on: DispatchQueue.main)</code>. Add it before the <code>sink</code> that updates the UI control. Also check that <code>AnyCancellable</code> is stored.</p>
+
+<p><em></em>Issue: <code>assign(to:on: self)</code> causes a memory leak.<em></em></p>
+
+<p>Solution: Replace with <code>assign(to: &amp;$publishedProperty)</code> or <code>sink { [weak self] in self?.property = $0 }</code>.</p>
+
+<p><strong>Issue: KVO publisher crashes with "An -observeValueForKeyPath:ofObject:change:context: message was received but not handled."</strong></p>
+
+<p>Solution: The property is not <code>@objc dynamic</code>. Both <code>@objc</code> and <code>dynamic</code> are required for KVO — <code>@objc</code> makes it visible to Objective-C, <code>dynamic</code> forces runtime dispatch through the KVO machinery.</p>
+
+<p><strong>Issue: Combine pipeline in UIViewController fires after the VC is deallocated.</strong></p>
+
+<p>Solution: The <code>AnyCancellable</code> is still alive (held by the publisher or another object). Ensure <code>cancellables</code> is a property on <code>self</code> and is cleared on deallocation. Also use <code>[weak self]</code> in all closures.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="publishers-subscribers.md">Publishers &amp; Subscribers</a> — the protocol foundation</li>
+<li><a href="operators.md">Operators</a> — debounce, removeDuplicates used in binding pipelines</li>
+<li><a href="subjects.md">Subjects</a> — PassthroughSubject as an action relay from UIKit controls</li>
+<li><a href="backpressure-cancellation.md">Backpressure &amp; Cancellation</a> — [weak self] and AnyCancellable lifetime</li>
+<li><a href="../04-ui-frameworks/swiftui-state-management.md">SwiftUI State Management</a> — @Published and ObservableObject in SwiftUI</li>
+<li><a href="../04-ui-frameworks/mvvm-coordinator.md">MVVM &amp; Coordinator</a> — architecture that hosts Combine bindings</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

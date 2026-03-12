@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backpressure & Cancellation — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../05-reactive-programming/index.html">Reactive Programming</a></span>
+    <span>Backpressure Cancellation</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html" class="active">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="backpressure--cancellation">Backpressure &amp; Cancellation</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><strong>Backpressure</strong> is the mechanism by which a Combine <code>Subscriber</code> controls the rate at which a <code>Publisher</code> produces values — preventing fast publishers from overwhelming slow subscribers. <strong>Cancellation</strong> is the mechanism by which a subscription is terminated before its publisher completes. The <code>AnyCancellable</code> token is the primary handle for managing subscription lifetimes in iOS apps. Getting memory management right in Combine — storing tokens correctly, using <code>[weak self]</code> in closures, and cancelling appropriately — is critical for avoiding leaks and zombie subscriptions.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine you've subscribed to a newspaper delivery. Backpressure is telling the delivery company "I only want one paper a day" — they respect your request and don't dump 50 papers on your doorstep. <code>AnyCancellable</code> is your cancellation notice — when you move house (your object is deallocated), you automatically cancel the subscription. If you throw away the cancellation notice before moving, the papers keep coming even though nobody is home (zombie subscription).</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="subscribersdemand">Subscribers.Demand</h3>
+
+<p><code>Subscribers.Demand</code> is the type used to signal how many more values a subscriber wants:</p>
+
+<table>
+<tr><td>Value</td><td>Meaning</td></tr>
+<tr><td><code>.unlimited</code></td><td>Publisher can send as many values as it wants</td></tr>
+<tr><td><code>.max(n)</code></td><td>Publisher can send at most n more values</td></tr>
+<tr><td><code>.none</code></td><td>Publisher should send nothing for now</td></tr>
+</table>
+
+<p>Demand is <strong>additive</strong> — each <code>receive(_ input:)</code> return value adds to the existing demand. A subscriber that initially requests <code>.max(1)</code> and returns <code>.max(1)</code> on every <code>receive</code> effectively receives an unlimited stream.</p>
+
+<h3 id="how-backpressure-flows">How Backpressure Flows</h3>
+
+<ol>
+<li>Subscriber calls <code>subscription.request(.max(1))</code> — requests one value.</li>
+<li>Publisher emits one value; calls <code>subscriber.receive(value)</code>.</li>
+<li><code>receive</code> returns <code>.max(1)</code> — subscriber wants one more.</li>
+<li>Publisher emits the next value. Repeat.</li>
+</ol>
+
+<p>If <code>receive</code> returns <code>.none</code>, the publisher must stop until a new <code>request</code> arrives. Most built-in publishers buffer values when demand is temporarily zero; fast publishers that cannot buffer may drop values.</p>
+
+<h3 id="unlimited-demand-in-practice">.unlimited demand in practice</h3>
+
+<p><code>sink</code> always requests <code>.unlimited</code> demand. This is safe for event-driven publishers (UI events, notifications) because events arrive at human speed. For high-frequency publishers (sensor data, game loops), <code>.unlimited</code> can cause issues — use <code>throttle</code>, <code>debounce</code>, or <code>buffer</code> operators to manage throughput.</p>
+
+<h3 id="anycancellable">AnyCancellable</h3>
+
+<p><code>AnyCancellable</code> is a type-erased <code>Cancellable</code> that calls <code>cancel()</code> when it is deallocated. It is the return value of <code>sink</code> and <code>assign</code>. There are three correct storage patterns:</p>
+
+<pre><code class="language-swift">// 1. Store in a Set for automatic lifetime management
+var cancellables = Set&lt;AnyCancellable&gt;()
+publisher.sink { ... }.store(in: &amp;cancellables)
+
+// 2. Store as a property for individual control
+var subscription: AnyCancellable?
+subscription = publisher.sink { ... }
+
+// 3. Store in a collection if ordering matters
+var cancellablesList = [AnyCancellable]()
+cancellablesList.append(publisher.sink { ... })</code></pre>
+
+<p>When the <code>Set&lt;AnyCancellable&gt;</code> (or the property) is deallocated, all contained tokens cancel their subscriptions.</p>
+
+<h3 id="manual-cancellation">Manual Cancellation</h3>
+
+<pre><code class="language-swift">var token: AnyCancellable?
+token = publisher.sink { value in
+    if condition(value) {
+        self.token = nil   // cancel by releasing the token
+    }
+}</code></pre>
+
+<p>Or explicitly: <code>token?.cancel()</code>. After cancellation, the subscriber receives no further values or completion events.</p>
+
+<h3 id="retain-cycles-in-combine">Retain Cycles in Combine</h3>
+
+<p>The most common memory issue in Combine is a retain cycle between an object and its Combine subscription closure:</p>
+
+<pre><code>ViewController  ─strong→  Set&lt;AnyCancellable&gt;
+                                │
+                              sink closure
+                                │
+                          strong capture of VC</code></pre>
+
+<p>The <code>VC → AnyCancellable → closure → VC</code> cycle prevents the VC from deallocating. Fix: use <code>[weak self]</code> in the closure.</p>
+
+<pre><code class="language-swift">// Retain cycle — don't do this
+publisher.sink { [self] value in   // or just capturing self
+    self.updateUI(value)
+}.store(in: &amp;cancellables)
+
+// Correct — use [weak self]
+publisher.sink { [weak self] value in
+    self?.updateUI(value)
+}.store(in: &amp;cancellables)</code></pre>
+
+<p>Exception: <code>assign(to:on:)</code> creates a retain cycle because it holds a strong reference to the target object. Use <code>assign(to: &amp;$publishedProperty)</code> (iOS 14+) or <code>sink { [weak self] in self?.property = $0 }</code> instead.</p>
+
+<h3 id="cancelling-subscriptions-on-lifecycle-events">Cancelling Subscriptions on Lifecycle Events</h3>
+
+<p>In UIKit, cancel subscriptions when a VC disappears:</p>
+<pre><code class="language-swift">override func viewWillDisappear(_ animated: Bool) {
+    super.viewWillDisappear(animated)
+    cancellables.removeAll()   // cancel all subscriptions
+}</code></pre>
+
+<p>In SwiftUI, subscriptions in <code>@StateObject</code> viewmodels are automatically cancelled when the view leaves the tree (because the ViewModel is deallocated). For <code>task(_:)</code>, SwiftUI manages cancellation automatically.</p>
+
+<h3 id="buffer-operator">buffer Operator</h3>
+
+<p><code>buffer(size:prefetch:whenFull:)</code> adds a bounded queue between a fast publisher and a slow subscriber:</p>
+
+<pre><code class="language-swift">fastPublisher
+    .buffer(size: 100, prefetch: .byRequest, whenFull: .dropOldest)
+    .sink { slowConsume($0) }</code></pre>
+
+<p>When the buffer is full, <code>whenFull</code> determines strategy: <code>.dropOldest</code>, <code>.dropNewest</code>, or <code>.customError</code>.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Combine
+import Foundation
+
+// ── Correct AnyCancellable storage ────────────────────────────
+class DataViewController {
+    private var cancellables = Set&lt;AnyCancellable&gt;()   // all subscriptions live here
+
+    func bind(to viewModel: DataViewModel) {
+        viewModel.$items
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] items in                // [weak self] avoids retain cycle
+                self?.updateTable(items: items)
+            }
+            .store(in: &amp;cancellables)                   // token stored — subscription lives
+
+        viewModel.$error
+            .compactMap { $0 }                          // filter nil errors
+            .sink { [weak self] error in
+                self?.showAlert(error: error)
+            }
+            .store(in: &amp;cancellables)
+    }
+
+    private func updateTable(items: [String]) {}
+    private func showAlert(error: Error) {}
+}
+
+class DataViewModel: ObservableObject {
+    @Published var items: [String] = []
+    @Published var error: Error?
+}
+
+// ── Individual cancellation ────────────────────────────────────
+class PollingService {
+    private var pollCancellable: AnyCancellable?
+
+    func startPolling() {
+        pollCancellable = Timer
+            .publish(every: 5.0, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.poll()
+            }
+    }
+
+    func stopPolling() {
+        pollCancellable = nil    // setting to nil cancels and releases
+    }
+
+    private func poll() { print("Polling...") }
+}
+
+// ── Self-cancelling subscription ─────────────────────────────
+class OneTimeLoader {
+    private var cancellable: AnyCancellable?
+
+    func loadOnce(from publisher: AnyPublisher&lt;String, Never&gt;) {
+        cancellable = publisher
+            .first()                        // take only the first value, then complete
+            .sink { [weak self] value in
+                print("Loaded: \(value)")
+                self?.cancellable = nil     // release token — also cancels
+            }
+    }
+}
+
+// ── Avoiding the assign(to:on:) retain cycle ──────────────────
+class ProfileViewModel: ObservableObject {
+    @Published var displayName = ""
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    init() {
+        let namePublisher = Just("Alice")
+
+        // WRONG — retain cycle: assign(to:on:) holds strong reference to self
+        // namePublisher.assign(to: \.displayName, on: self).store(in: &amp;cancellables)
+
+        // CORRECT option 1: assign(to:) on @Published (iOS 14+) — no cycle
+        namePublisher.assign(to: &amp;$displayName)
+
+        // CORRECT option 2: sink with [weak self]
+        namePublisher
+            .sink { [weak self] name in self?.displayName = name }
+            .store(in: &amp;cancellables)
+    }
+}
+
+// ── Custom Subscriber demonstrating demand control ─────────────
+class BoundedSubscriber: Subscriber {
+    typealias Input = Int
+    typealias Failure = Never
+
+    private var subscription: Subscription?
+    private var received = 0
+    private let limit = 3
+
+    func receive(subscription: Subscription) {
+        self.subscription = subscription
+        subscription.request(.max(1))   // request one at a time — backpressure
+    }
+
+    func receive(_ input: Int) -&gt; Subscribers.Demand {
+        received += 1
+        print("Received: \(input)")
+        if received &gt;= limit {
+            subscription?.cancel()
+            return .none               // no more values needed
+        }
+        return .max(1)                 // request exactly one more
+    }
+
+    func receive(completion: Subscribers.Completion&lt;Never&gt;) {
+        print("Completed")
+    }
+}
+
+let subscriber = BoundedSubscriber()
+(1...100).publisher.subscribe(subscriber)
+// Only prints: Received: 1, Received: 2, Received: 3 — then stops
+
+// ── buffer for rate mismatch ─────────────────────────────────
+let fastTimer = Timer.publish(every: 0.01, on: .main, in: .common).autoconnect()
+
+fastTimer
+    .buffer(size: 50, prefetch: .byRequest, whenFull: .dropOldest)
+    .throttle(for: .seconds(1), scheduler: DispatchQueue.main, latest: true)
+    .sink { date in print("Processed tick at \(date)") }
+    .store(in: &amp;cancellables)</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is <code>AnyCancellable</code> and what happens if you don't store it?<em></em></p>
+
+<p>A: <code>AnyCancellable</code> is a token returned by <code>sink</code> and <code>assign</code> that represents an active subscription. When it is deallocated, it automatically calls <code>cancel()</code> on the subscription, stopping value delivery. If you don't store the token — for example, discarding it with <code>_ = publisher.sink { ... }</code> or letting it fall out of scope — it is deallocated immediately and the subscription is cancelled before any values can arrive. The idiomatic solution is <code>.store(in: &amp;cancellables)</code> where <code>cancellables</code> is a <code>Set&lt;AnyCancellable&gt;</code> property on the owning object.</p>
+
+<p><em></em>Q: What is Combine backpressure and how does <code>sink</code> handle it?<em></em></p>
+
+<p>A: Backpressure is the mechanism by which a subscriber signals how many values it wants from a publisher. The subscriber requests values via <code>Subscribers.Demand</code>. <code>sink</code> always requests <code>.unlimited</code> demand — it signals to the publisher that it will accept as many values as the publisher can produce. This is appropriate for event-driven publishers that produce values at a human-interaction rate. For fast producers, manage throughput with <code>debounce</code>, <code>throttle</code>, or <code>buffer</code> operators rather than with a custom subscriber demand.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How does <code>assign(to:on:)</code> create a retain cycle and how do you fix it?<em></em></p>
+
+<p>A: <code>assign(to:on:)</code> stores a strong reference to the <code>on</code> object internally. If the <code>on</code> object also holds the <code>AnyCancellable</code> (e.g., via <code>store(in: &amp;cancellables)</code> on the same object), there is a cycle: object → cancellable → assign → object. Even without explicit <code>store</code>, if the object's lifetime outlasts the subscription, <code>assign</code> keeps it alive via the strong reference. Fix: Use <code>assign(to: &amp;$property)</code> (iOS 14+) — this form does not hold a strong reference; it binds to the <code>@Published</code> property's inout pointer and the subscription's lifetime is managed by the property wrapper, breaking the cycle. Alternatively, use <code>sink { [weak self] in self?.property = $0 }</code>.</p>
+
+<p><strong>Q: Explain the difference between cancelling a subscription and the publisher completing.</strong></p>
+
+<p>A: <strong>Completion</strong> is the publisher's decision to stop — it calls <code>subscriber.receive(completion: .finished)</code> or <code>receive(completion: .failure(_:))</code>. The subscriber is informed and can react (e.g., show an error). <strong>Cancellation</strong> is the subscriber's decision to stop receiving — <code>AnyCancellable.cancel()</code> terminates the subscription, and no completion event is delivered to the subscriber. After cancellation, the publisher's underlying work may or may not be stopped depending on the publisher (e.g., <code>URLSession.dataTaskPublisher</code> cancels its network task; a <code>Timer</code> publisher connected via <code>autoconnect</code> stops when all subscribers cancel). For cleanup purposes, treat cancellation as "I'm done here" — don't expect completion events after cancelling.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a Combine-based rate limiter that processes at most 5 events per second from an unbounded source.</strong></p>
+
+<p>A: Combine's <code>throttle(for:scheduler:latest:)</code> limits to one value per interval. For rate-limiting to N events per interval (not just 1), the approach is: (1) Use <code>collect(.byTimeOrCount(scheduler, timeGroupingStrategy: ..., count: 5))</code> to batch up to 5 events per second into an array. (2) <code>flatMap</code> each batch into individual publisher elements with a micro-delay between them. Or, for strict N-per-second, use a custom <code>Scheduler</code> or pair <code>buffer</code> with a <code>throttle</code>-based dispatcher. Another approach: <code>scan</code> to count events per time window, combined with <code>filter</code> to discard over-rate events. For production use, the simplest correct solution is <code>throttle</code> (one per interval) + <code>buffer</code> to queue excess events — this guarantees none are lost while still respecting rate limits.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Subscription fires values but then abruptly stops.</strong></p>
+
+<p>Solution: The <code>AnyCancellable</code> was deallocated. Common cause: returned inside a function without being stored, or added to a temporary local <code>Set</code>. Ensure it's stored in an instance-level property or <code>Set&lt;AnyCancellable&gt;</code>.</p>
+
+<p><strong>Issue: ViewController is not deallocating — memory leak.</strong></p>
+
+<p>Solution: A <code>sink</code> closure captures <code>self</code> strongly, creating a retain cycle via <code>VC → Set&lt;AnyCancellable&gt; → closure → VC</code>. Add <code>[weak self]</code> to every <code>sink</code> and <code>handleEvents</code> closure that references <code>self</code>.</p>
+
+<p><em></em>Issue: <code>assign(to:on:)</code> leaking the target object.<em></em></p>
+
+<p>Solution: Migrate to <code>assign(to: &amp;$publishedProperty)</code> (requires iOS 14+) or use <code>sink { [weak self] value in self?.property = value }</code>.</p>
+
+<p><strong>Issue: Fast publisher causes UI jank.</strong></p>
+
+<p>Solution: Add <code>throttle</code> or <code>debounce</code> before the <code>receive(on: .main)</code> step. These operators reduce the frequency of main-thread updates, keeping the run loop free for rendering.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="publishers-subscribers.md">Publishers &amp; Subscribers</a> — Subscription and Demand are defined here</li>
+<li><a href="operators.md">Operators</a> — throttle, debounce, and buffer manage effective backpressure</li>
+<li><a href="subjects.md">Subjects</a> — Subjects are cancelled just like other publishers</li>
+<li><a href="../02-memory-management/retain-cycles.md">Retain Cycles</a> — [weak self] patterns in sink closures</li>
+<li><a href="../02-memory-management/closures-capture-lists.md">Closures &amp; Capture Lists</a> — capture list mechanics</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -125,6 +125,7 @@
 - MVVM
 - MVP
 - VIPER / Clean Architecture
+- VIP Clean Swift Architecture
 - The Composable Architecture (TCA)
 
 ### Design Principles

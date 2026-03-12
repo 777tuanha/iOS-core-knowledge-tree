@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dependency Injection — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../06-architecture/index.html">Architecture</a></span>
+    <span>Dependency Injection</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html" class="active">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="dependency-injection">Dependency Injection</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Dependency Injection (DI) is the practice of supplying an object's dependencies from outside rather than having the object create them internally. It is the primary mechanism for making code testable, composable, and flexible. Instead of <code>let service = NetworkService()</code> inside a ViewModel, the ViewModel receives <code>service: NetworkServiceProtocol</code> through its initialiser. The caller decides which concrete implementation to provide — a real service in production, a mock in tests. DI underpins all advanced iOS architecture patterns (MVVM, VIPER, TCA) and is the practical implementation of the Dependency Inversion Principle.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a coffee machine (your ViewModel). A poorly designed machine has a specific brand of beans locked inside — you can't change them. A well-designed machine has a bean compartment (a protocol) — you can put in any brand of beans (any service implementation) from outside. For your morning routine (production), you use real beans. For a demonstration (unit test), you use decaf. The machine's brewing logic is the same; only the beans differ. Dependency Injection is designing the bean compartment.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="constructor-initialiser-injection">Constructor (Initialiser) Injection</h3>
+
+<p>The most recommended form. Dependencies are passed through the initialiser:</p>
+
+<pre><code class="language-swift">class FeedViewModel {
+    private let service: FeedServiceProtocol
+
+    init(service: FeedServiceProtocol) {
+        self.service = service   // injected at creation time
+    }
+}</code></pre>
+
+<p><strong>Advantages</strong>:</p>
+<ul>
+<li>Dependencies are explicit and visible at the call site</li>
+<li>Object is ready to use immediately after <code>init</code> — no partially-initialised state</li>
+<li>Compiler enforces that the dependency is provided</li>
+<li>Easiest to test — create the object with a mock</li>
+</ul>
+
+<p><strong>When to use</strong>: The default choice for all non-trivial dependencies.</p>
+
+<h3 id="property-injection">Property Injection</h3>
+
+<p>Dependencies are set via a mutable property after initialisation:</p>
+
+<pre><code class="language-swift">class ArticlePresenter {
+    weak var view: ArticleViewProtocol?      // set by VIPER assembler
+    var interactor: ArticleInteractorProtocol?  // set by assembler
+}</code></pre>
+
+<p><strong>Advantages</strong>: Allows circular references (e.g., VIPER's Presenter ↔ View mutual weak reference).</p>
+
+<p><strong>Disadvantages</strong>: Object may be used before the dependency is set (partial init). Requires optionals or <code>!</code> — introduces potential crashes.</p>
+
+<p><strong>When to use</strong>: When circular references require it (VIPER assembler pattern) or for <code>delegate</code> properties that UIKit manages.</p>
+
+<h3 id="method-injection">Method Injection</h3>
+
+<p>A dependency is passed as a parameter to the specific method that needs it:</p>
+
+<pre><code class="language-swift">func formatDate(_ date: Date, using formatter: DateFormatter) -&gt; String {
+    formatter.string(from: date)
+}</code></pre>
+
+<p><strong>When to use</strong>: When the dependency is needed only for one operation and does not persist. Good for pure utility functions.</p>
+
+<h3 id="service-locator">Service Locator</h3>
+
+<p>A central registry that resolves dependencies on demand:</p>
+
+<pre><code class="language-swift">class ServiceLocator {
+    static let shared = ServiceLocator()
+    private var services: [ObjectIdentifier: Any] = [:]
+
+    func register&lt;T&gt;(_ service: T, for type: T.Type) {
+        services[ObjectIdentifier(type)] = service
+    }
+
+    func resolve&lt;T&gt;(_ type: T.Type) -&gt; T? {
+        services[ObjectIdentifier(type)] as? T
+    }
+}
+
+// Registration
+ServiceLocator.shared.register(NetworkService(), for: FeedServiceProtocol.self)
+
+// Usage
+let service = ServiceLocator.shared.resolve(FeedServiceProtocol.self)</code></pre>
+
+<p><strong>Advantages</strong>: Avoids "dependency propagation" — you don't pass dependencies through every layer.</p>
+
+<p><strong>Disadvantages</strong>:</p>
+<ul>
+<li>Dependencies are hidden (not visible at call site) — a form of global state</li>
+<li>Compile-time safety lost — missing registrations crash at runtime</li>
+<li>Harder to test — tests must set up and tear down the locator</li>
+</ul>
+
+<p><strong>When to use</strong>: Sparingly, as a fallback for deeply nested dependencies or third-party libraries that can't be refactored.</p>
+
+<h3 id="di-containers">DI Containers</h3>
+
+<p>A DI container is a more sophisticated service locator with automatic resolution (resolves dependency graphs automatically), lifecycle management (singleton vs transient), and compile-time or registration-time validation.</p>
+
+<p>Popular iOS options:</p>
+<ul>
+<li><strong>Swinject</strong> — manual registration with graph resolution</li>
+<li><strong>Needle</strong> — compile-time DI (Uber's internal framework, open-sourced)</li>
+<li><strong>TCA Dependencies</strong> — TCA's built-in <code>@Dependency</code> system</li>
+<li><strong>Factory</strong> — modern Swift DI framework using property wrappers</li>
+</ul>
+
+<h3 id="environment-based-di-swiftui">Environment-based DI (SwiftUI)</h3>
+
+<p>SwiftUI's <code>@Environment</code> and <code>environmentObject</code> are a form of DI built into the framework:</p>
+
+<pre><code class="language-swift">struct ContentView: View {
+    @EnvironmentObject var authService: AuthService  // injected by ancestor
+}</code></pre>
+
+<p>For dependency injection across the app boundary without SwiftUI's environment, create a root <code>DependencyContainer</code>:</p>
+
+<pre><code class="language-swift">struct AppDependencies {
+    let networkService: NetworkServiceProtocol
+    let authService: AuthServiceProtocol
+    let analyticsService: AnalyticsProtocol
+
+    static let live = AppDependencies(
+        networkService: URLSessionNetworkService(),
+        authService: FirebaseAuthService(),
+        analyticsService: FirebaseAnalytics()
+    )
+
+    static let mock = AppDependencies(
+        networkService: MockNetworkService(),
+        authService: MockAuthService(),
+        analyticsService: NoOpAnalytics()
+    )
+}</code></pre>
+
+<p>Pass the container to the root coordinator/view and propagate it via constructor injection or <code>@EnvironmentObject</code>.</p>
+
+<h3 id="testing-with-di">Testing with DI</h3>
+
+<p>The key benefit of DI: unit tests swap real dependencies for fast, deterministic mocks:</p>
+
+<pre><code class="language-swift">// Production
+let vm = FeedViewModel(service: URLSessionFeedService())
+
+// Unit test
+let mock = MockFeedService()
+mock.stubbedPosts = [Post(id: 1, title: "Test")]
+let vm = FeedViewModel(service: mock)
+await vm.loadPosts()
+XCTAssertEqual(vm.posts.count, 1)
+// No network call. Test runs in milliseconds.</code></pre>
+
+<h3 id="protocol-driven-design">Protocol-Driven Design</h3>
+
+<p>DI works best with protocols that define the interface. Concrete implementations are swappable:</p>
+
+<pre><code class="language-swift">protocol AnalyticsProtocol {
+    func track(event: String, properties: [String: Any])
+}
+
+class FirebaseAnalytics: AnalyticsProtocol {
+    func track(event: String, properties: [String: Any]) { /* Firebase */ }
+}
+
+class NoOpAnalytics: AnalyticsProtocol {
+    func track(event: String, properties: [String: Any]) { /* nothing */ }
+}
+
+class ConsoleAnalytics: AnalyticsProtocol {
+    func track(event: String, properties: [String: Any]) {
+        print("Track: \(event) - \(properties)")
+    }
+}</code></pre>
+
+<p><code>NoOpAnalytics</code> is useful in tests; <code>ConsoleAnalytics</code> in debug builds; <code>FirebaseAnalytics</code> in production.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── Protocols define the contracts ───────────────────────────
+protocol NetworkServiceProtocol {
+    func fetch&lt;T: Decodable&gt;(_ type: T.Type, from url: URL) async throws -&gt; T
+}
+
+protocol KeychainServiceProtocol {
+    func save(token: String)
+    func loadToken() -&gt; String?
+}
+
+protocol AnalyticsProtocol {
+    func track(_ event: String)
+}
+
+// ── Concrete implementations (live) ──────────────────────────
+class URLSessionNetworkService: NetworkServiceProtocol {
+    func fetch&lt;T: Decodable&gt;(_ type: T.Type, from url: URL) async throws -&gt; T {
+        let (data, _) = try await URLSession.shared.data(from: url)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+}
+
+class AppKeychainService: KeychainServiceProtocol {
+    func save(token: String) { /* Keychain API */ }
+    func loadToken() -&gt; String? { /* Keychain API */ return nil }
+}
+
+struct FirebaseAnalyticsService: AnalyticsProtocol {
+    func track(_ event: String) { print("[Firebase] \(event)") }
+}
+
+// ── Dependency Container ──────────────────────────────────────
+struct AppDependencies {
+    let network: NetworkServiceProtocol
+    let keychain: KeychainServiceProtocol
+    let analytics: AnalyticsProtocol
+
+    // Production dependencies
+    static let live = AppDependencies(
+        network: URLSessionNetworkService(),
+        keychain: AppKeychainService(),
+        analytics: FirebaseAnalyticsService()
+    )
+
+    // Test dependencies (all mocks — no network, no Keychain, no analytics calls)
+    static let test = AppDependencies(
+        network: MockNetworkService(),
+        keychain: MockKeychainService(),
+        analytics: NoOpAnalytics()
+    )
+}
+
+// ── ViewModels receive dependencies via constructor injection ──
+struct Post: Decodable { let id: Int; let title: String }
+
+@MainActor
+final class FeedViewModel: ObservableObject {
+    @Published private(set) var posts: [Post] = []
+    @Published private(set) var isLoading = false
+
+    // Injected abstractions — not concrete types
+    private let network: NetworkServiceProtocol
+    private let analytics: AnalyticsProtocol
+
+    init(network: NetworkServiceProtocol, analytics: AnalyticsProtocol) {
+        self.network = network
+        self.analytics = analytics
+    }
+
+    func loadFeed() async {
+        isLoading = true
+        defer { isLoading = false }
+        let url = URL(string: "https://api.example.com/feed")!
+        posts = (try? await network.fetch([Post].self, from: url)) ?? []
+        analytics.track("feed_loaded")
+    }
+}
+
+// ── Using the container at the composition root ───────────────
+// In AppDelegate / App struct (composition root):
+//
+// let deps = AppDependencies.live
+// let feedVM = FeedViewModel(network: deps.network, analytics: deps.analytics)
+
+// ── Mocks for tests ──────────────────────────────────────────
+class MockNetworkService: NetworkServiceProtocol {
+    var stubbedResult: Any?
+    var stubbedError: Error?
+
+    func fetch&lt;T: Decodable&gt;(_ type: T.Type, from url: URL) async throws -&gt; T {
+        if let error = stubbedError { throw error }
+        return stubbedResult as! T
+    }
+}
+
+class MockKeychainService: KeychainServiceProtocol {
+    private var token: String?
+    func save(token: String) { self.token = token }
+    func loadToken() -&gt; String? { token }
+}
+
+struct NoOpAnalytics: AnalyticsProtocol {
+    func track(_ event: String) { /* intentional no-op in tests */ }
+}
+
+// ── Unit test (no network, no Firebase, no Keychain) ─────────
+// func testFeedLoadPopulatesPosts() async {
+//     let mock = MockNetworkService()
+//     mock.stubbedResult = [Post(id: 1, title: "Hello")]
+//     let analytics = NoOpAnalytics()
+//     let vm = await FeedViewModel(network: mock, analytics: analytics)
+//     await vm.loadFeed()
+//     let posts = await vm.posts
+//     XCTAssertEqual(posts.count, 1)
+//     XCTAssertEqual(posts[0].title, "Hello")
+// }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is dependency injection and why is it important for testability?</strong></p>
+
+<p>A: Dependency injection means providing an object's dependencies from outside rather than having it create them internally. Instead of <code>let service = NetworkService()</code> in a ViewModel, the ViewModel receives <code>service: NetworkServiceProtocol</code> via its <code>init</code>. This is important for testability because: unit tests can inject a <code>MockNetworkService</code> that returns pre-programmed responses without making real network calls. Tests run in milliseconds, are deterministic, and can simulate error conditions (timeout, 404, 500) that would be hard to reproduce against a real server. Without DI, every test that creates the ViewModel would trigger real networking.</p>
+
+<p><strong>Q: What is the difference between constructor injection and the service locator pattern?</strong></p>
+
+<p>A: Constructor injection makes dependencies visible and explicit — you can see what a class needs by reading its <code>init</code> signature. The compiler enforces that all dependencies are provided. Service locator hides dependencies — the class calls a global registry at runtime to resolve them. This has several drawbacks: (1) missing registrations crash at runtime, not compile time; (2) a class's dependencies are invisible without reading its implementation; (3) tests must configure the shared locator before each test, introducing shared mutable state. Constructor injection is strongly preferred; service locator is a pragmatic fallback for legacy codebases or deeply nested dependencies.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you handle dependency injection in a large app with deeply nested view hierarchies?</strong></p>
+
+<p>A: Several approaches: (1) <strong>Prop drilling</strong>: pass dependencies through constructors at every level. Simple, explicit, but verbose for deeply nested hierarchies. (2) <strong>Dependency container</strong>: create a root <code>AppDependencies</code> struct containing all dependencies; pass it to root coordinators; each coordinator extracts what it needs and passes focused subsets deeper. (3) <strong>SwiftUI environment</strong>: inject shared services via <code>.environmentObject</code> at the root and read them with <code>@EnvironmentObject</code> anywhere in the tree — avoids prop drilling for genuinely app-wide services. (4) <strong>TCA Dependencies</strong>: <code>@Dependency</code> property wrapper accesses a global registry with test overrides, combining convenience and testability. The right choice depends on app architecture — a mix of (2) + (3) works well for most MVVM SwiftUI apps.</p>
+
+<p><strong>Q: What is the "composition root" and why is it important?</strong></p>
+
+<p>A: The composition root is the single place in the application where all concrete implementations are assembled and wired together. In iOS, this is typically the <code>AppDelegate.application(_:didFinishLaunchingWithOptions:)</code> or the SwiftUI <code>App.init()</code>. All <code>DependencyContainer.live</code> objects are created here. Everywhere else in the app, code depends only on protocols. The composition root is the only place that knows about concrete types. This is important because: (1) changing a dependency (e.g., switching from Firebase to a different analytics provider) requires only a one-line change in the composition root; (2) in tests, the <code>TestCase.setUp()</code> is the test composition root, and it assembles all mocks.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Compare constructor injection, property injection, and method injection — when is each appropriate in iOS?</strong></p>
+
+<p>A: <strong>Constructor injection</strong>: Use as the default. Dependencies are immutable after <code>init</code>, clearly documented in the signature, enforced by the compiler, and easiest to test. Appropriate for all primary dependencies a class needs throughout its lifetime. <strong>Property injection</strong>: Use only when circular references are unavoidable (e.g., VIPER's Presenter needs a weak reference to the View, and the View holds the Presenter) or when UIKit/SwiftUI imposes it (<code>delegate</code> is set after <code>init</code>). The risk is partial initialisation — the object can be used before the dependency is set. Use <code>weak var</code> for delegate-style properties and document when they must be set. <strong>Method injection</strong>: Use for one-off, per-operation dependencies that don't belong to the object's lifetime (a <code>DateFormatter</code> parameter to a formatting function, a <code>Logger</code> to a utility method). Avoids polluting the class interface with single-use dependencies.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: ViewModel creates its dependencies internally — untestable.</strong></p>
+
+<p>Solution: Move dependency creation out of the class. Use constructor injection with a protocol. Create a factory or use the composition root to wire concretions.</p>
+
+<p><strong>Issue: Service locator crashes in tests because a service wasn't registered.</strong></p>
+
+<p>Solution: Add a <code>setUp</code> method that registers all required services before each test, and a <code>tearDown</code> that clears the locator. Or migrate the dependency to constructor injection to eliminate the runtime crash risk.</p>
+
+<p><em></em>Issue: Passing a <code>DependencyContainer</code> through 10 layers of initializers — "dependency prop drilling".<em></em></p>
+
+<p>Solution: (1) Use SwiftUI <code>@EnvironmentObject</code> for app-wide singletons. (2) Group related dependencies into focused sub-containers passed only to the layer that needs them. (3) Use TCA's <code>@Dependency</code> if already using TCA. Avoid passing the full container to every layer — each layer should only receive the dependencies it directly uses.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="solid-principles.md">SOLID Principles</a> — DIP is the principle DI implements</li>
+<li><a href="mvvm.md">MVVM</a> — constructor injection for ViewModel services</li>
+<li><a href="mvp-viper.md">MVP &amp; VIPER</a> — VIPER assembler as the composition root for a module</li>
+<li><a href="tca.md">The Composable Architecture</a> — TCA's @Dependency system</li>
+<li><a href="modularization.md">Modularization</a> — DI at module boundaries</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

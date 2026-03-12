@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOLID Principles — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../06-architecture/index.html">Architecture</a></span>
+    <span>Solid Principles</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html" class="active">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="solid-principles">SOLID Principles</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>SOLID is a set of five object-oriented design principles coined by Robert Martin. They guide how to write code that is maintainable, extensible, and testable — code that can be changed without cascading breakage. In iOS, SOLID principles directly shape how to structure ViewModels, services, protocols, and dependency graphs. Violating them produces the familiar problems: Massive View Controllers (SRP violation), fragile networking layers (OCP violation), untestable code (DIP violation).</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of a well-designed workshop. Each tool has one purpose (SRP — the hammer doesn't also make coffee). You can add new tools without modifying existing ones (OCP — adding a new drill doesn't change the hammer). Any tool of the same category works interchangeably (LSP — one brand of wrench fits the same bolts as another). Each tool has only the interfaces it needs (ISP — the hammer has a grip, not a USB port). You depend on the category "wrench", not a specific brand (DIP — you ask for a wrench, not a Snap-on model 12A).</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="s--single-responsibility-principle">S — Single Responsibility Principle</h3>
+
+<p><strong>"A class should have only one reason to change."</strong></p>
+
+<p>Each type should own one well-defined responsibility. Common SRP violations in iOS:</p>
+
+<ul>
+<li>A ViewController that does networking, parsing, navigation, and display.</li>
+<li>A service class that handles both authentication and data formatting.</li>
+<li>A utility struct that validates input AND formats output AND logs events.</li>
+</ul>
+
+<p><strong>Swift application</strong>:</p>
+<pre><code class="language-swift">// Violation: one class handles auth + formatting + persistence
+class UserManager {
+    func login() { }
+    func formatDisplayName(_ user: User) -&gt; String { "" }
+    func saveToKeychain(_ user: User) { }
+}
+
+// Better: split into focused types
+class AuthService { func login() { } }
+struct UserFormatter { func displayName(for user: User) -&gt; String { "" } }
+class KeychainStore { func save(_ user: User) { } }</code></pre>
+
+<h3 id="o--openclosed-principle">O — Open/Closed Principle</h3>
+
+<p><strong>"Software entities should be open for extension, but closed for modification."</strong></p>
+
+<p>You should be able to add new behaviour without editing existing code. In Swift: use <strong>protocols</strong> and <strong>composition</strong> to define extension points. New implementations satisfy the protocol without touching existing code.</p>
+
+<pre><code class="language-swift">// Closed design — adding a new payment method requires editing existing code
+class PaymentProcessor {
+    func process(method: String) {
+        if method == "card" { }
+        else if method == "paypal" { }
+        // adding crypto requires editing this function
+    }
+}
+
+// Open/Closed — new payment methods extend without modifying
+protocol PaymentMethod { func process() }
+class CardPayment: PaymentMethod { func process() { } }
+class PayPalPayment: PaymentMethod { func process() { } }
+class CryptoPayment: PaymentMethod { func process() { } }  // new — no edits needed
+
+class PaymentProcessor {
+    func process(_ method: PaymentMethod) { method.process() }
+}</code></pre>
+
+<h3 id="l--liskov-substitution-principle">L — Liskov Substitution Principle</h3>
+
+<p><strong>"Subtypes must be substitutable for their base types."</strong></p>
+
+<p>Any code that uses a base type must work correctly with any of its subtypes. Violations occur when a subclass overrides a method in a way that breaks the superclass's contract — throwing unexpected exceptions, returning invalid values, or requiring preconditions not in the base type.</p>
+
+<pre><code class="language-swift">// Violation: Square is not a valid substitute for Rectangle
+class Rectangle {
+    var width: Double
+    var height: Double
+    init(width: Double, height: Double) { self.width = width; self.height = height }
+    func area() -&gt; Double { width * height }
+}
+
+class Square: Rectangle {
+    override var width: Double {
+        didSet { height = width }   // breaks the contract: setting width changes height
+    }
+}
+// Code expecting a Rectangle and setting width/height independently breaks with Square
+
+// Better: use a protocol; Rectangle and Square are separate implementations
+protocol Shape { func area() -&gt; Double }
+struct Rectangle: Shape {
+    let width, height: Double
+    func area() -&gt; Double { width * height }
+}
+struct Square: Shape {
+    let side: Double
+    func area() -&gt; Double { side * side }
+}</code></pre>
+
+<p><strong>iOS application</strong>: Prefer protocols over class inheritance. <code>UITableViewDataSource</code> is a good example — any conforming type can be substituted.</p>
+
+<h3 id="i--interface-segregation-principle">I — Interface Segregation Principle</h3>
+
+<p><strong>"Clients should not be forced to depend on methods they do not use."</strong></p>
+
+<p>Large protocols that bundle many methods force implementing types to provide stubs for irrelevant methods. Prefer <strong>small, focused protocols</strong> ("role interfaces").</p>
+
+<pre><code class="language-swift">// Violation: one fat protocol
+protocol DataManager {
+    func fetchFromNetwork()
+    func saveToDatabase()
+    func exportToCSV()
+    func sendEmail()
+}
+
+// Better: four focused protocols
+protocol NetworkFetcher { func fetchFromNetwork() }
+protocol DatabasePersister { func saveToDatabase() }
+protocol CSVExporter { func exportToCSV() }
+protocol EmailSender { func sendEmail() }
+
+// Types implement only what they need
+class ReportService: NetworkFetcher, CSVExporter {
+    func fetchFromNetwork() { }
+    func exportToCSV() { }
+}</code></pre>
+
+<p><strong>iOS application</strong>: <code>UITableViewDataSource</code> and <code>UITableViewDelegate</code> are separate protocols — a good example of ISP in UIKit's design. <code>Codable</code> is split into <code>Encodable</code> and <code>Decodable</code>.</p>
+
+<h3 id="d--dependency-inversion-principle">D — Dependency Inversion Principle</h3>
+
+<p><strong>"High-level modules should not depend on low-level modules. Both should depend on abstractions."</strong></p>
+
+<p>ViewModels (high-level) should not import or instantiate concrete service classes (low-level). Both should depend on protocols. This enables testing with mocks and swapping implementations.</p>
+
+<pre><code class="language-swift">// Violation: ViewModel depends on concrete URLSession networking class
+class FeedViewModel {
+    private let service = NetworkService()   // concrete — can't test without network
+}
+
+// Better: depend on abstraction
+protocol FeedServiceProtocol {
+    func fetchPosts() async throws -&gt; [Post]
+}
+
+class FeedViewModel {
+    private let service: FeedServiceProtocol   // depends on abstraction
+
+    init(service: FeedServiceProtocol) { self.service = service }
+}
+
+// Test: inject mock
+class MockFeedService: FeedServiceProtocol {
+    var stubbedPosts: [Post] = []
+    func fetchPosts() async throws -&gt; [Post] { stubbedPosts }
+}</code></pre>
+
+<h3 id="composition-over-inheritance">Composition Over Inheritance</h3>
+
+<p>Prefer composing behaviour via protocols and value types over building deep class hierarchies. Swift's value types and protocol extensions make this natural:</p>
+
+<pre><code class="language-swift">// Deep inheritance — fragile
+class Animal { func breathe() { } }
+class Mammal: Animal { func nurse() { } }
+class Dog: Mammal { func bark() { } }
+class GuideDog: Dog { func guide() { } }
+
+// Composition — each behaviour is a protocol/struct
+protocol Breathable { func breathe() }
+protocol Barkable { func bark() }
+protocol Guidable { func guide() }
+
+struct GuideDog: Breathable, Barkable, Guidable {
+    func breathe() { }
+    func bark() { }
+    func guide() { }
+}</code></pre>
+
+<p>Protocol extensions provide shared default implementations without inheritance.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ─────────────────────────────────────────────────────────────
+// SOLID applied to a typical iOS service layer
+// ─────────────────────────────────────────────────────────────
+
+struct Post: Codable { let id: Int; let title: String }
+struct Comment: Codable { let id: Int; let body: String }
+
+// ISP: separate protocols for each data concern
+protocol PostFetching { func fetchPosts() async throws -&gt; [Post] }
+protocol CommentFetching { func fetchComments(postID: Int) async throws -&gt; [Comment] }
+protocol PostCreating { func createPost(title: String) async throws -&gt; Post }
+
+// SRP: one service per concern
+class PostService: PostFetching, PostCreating {
+    func fetchPosts() async throws -&gt; [Post] {
+        // URLSession networking
+        []
+    }
+    func createPost(title: String) async throws -&gt; Post {
+        Post(id: 0, title: title)
+    }
+}
+
+class CommentService: CommentFetching {
+    func fetchComments(postID: Int) async throws -&gt; [Comment] { [] }
+}
+
+// DIP: ViewModel depends on protocols, not concretions
+@MainActor
+final class FeedViewModel: ObservableObject {
+    @Published private(set) var posts: [Post] = []
+    @Published private(set) var isLoading = false
+
+    // Dependencies are abstractions — injectable and mockable
+    private let postFetcher: PostFetching
+    private let postCreator: PostCreating
+
+    init(postFetcher: PostFetching, postCreator: PostCreating) {
+        self.postFetcher = postFetcher
+        self.postCreator = postCreator
+    }
+
+    func loadPosts() async {
+        isLoading = true
+        defer { isLoading = false }
+        posts = (try? await postFetcher.fetchPosts()) ?? []
+    }
+
+    func createPost(title: String) async {
+        guard !title.isEmpty else { return }  // SRP: validation in ViewModel
+        if let post = try? await postCreator.createPost(title: title) {
+            posts.append(post)
+        }
+    }
+}
+
+// OCP: add caching without changing PostService
+class CachingPostService: PostFetching {
+    private let wrapped: PostFetching
+    private var cache: [Post]?
+
+    init(wrapping service: PostFetching) { self.wrapped = service }
+
+    func fetchPosts() async throws -&gt; [Post] {
+        if let cached = cache { return cached }   // extend behaviour, no edit to PostService
+        let posts = try await wrapped.fetchPosts()
+        cache = posts
+        return posts
+    }
+}
+
+// LSP: any PostFetching can substitute for another
+let liveService: PostFetching = PostService()
+let cachedService: PostFetching = CachingPostService(wrapping: PostService())
+// Both work identically as a PostFetching; the ViewModel doesn't care which
+
+// Mock for tests
+class MockPostFetcher: PostFetching {
+    var stubbedPosts: [Post] = [Post(id: 1, title: "Test")]
+    func fetchPosts() async throws -&gt; [Post] { stubbedPosts }
+}
+
+class MockPostCreator: PostCreating {
+    var createdPost: Post = Post(id: 99, title: "Created")
+    func createPost(title: String) async throws -&gt; Post { createdPost }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What does the Single Responsibility Principle mean in practice for an iOS ViewController?</strong></p>
+
+<p>A: SRP means a ViewController should have one reason to change — one primary responsibility. In practice, its responsibility is <strong>UI lifecycle management</strong>: display data, forward user events, manage its view hierarchy. Everything else is a violation: networking belongs in a service layer, JSON parsing in a model layer, navigation in a Coordinator, and presentation logic in a ViewModel or Presenter. When you find yourself adding a <code>URLSession</code> call or a switch statement on a data enum inside a VC, that is an SRP violation. The fix is to extract that logic into a dedicated, focused object.</p>
+
+<p><strong>Q: What is the Dependency Inversion Principle and why does it matter for testing?</strong></p>
+
+<p>A: DIP says high-level modules (ViewModels, Presenters) should not depend on concrete low-level modules (URLSession, UserDefaults, a specific third-party library). Both should depend on <strong>abstractions</strong> (protocols). This matters for testing because: if a ViewModel creates <code>let service = NetworkService()</code> directly, any test that instantiates the ViewModel makes real network calls — slow, flaky, and environment-dependent. By having <code>init(service: NetworkServiceProtocol)</code>, you inject a <code>MockNetworkService</code> in tests with controlled, deterministic responses. DIP is what makes protocol-oriented mock injection possible.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: Explain the Open/Closed Principle with an iOS example and describe a scenario where its absence caused a bug.</strong></p>
+
+<p>A: OCP says a type should be open for extension (new functionality added) but closed for modification (existing behaviour unchanged). A common iOS scenario: an analytics service with a <code>func track(event: String)</code> that dispatches to a specific analytics provider. When the team adds a second provider, the developer edits <code>track(event:)</code> to add an <code>if/else</code>. When a third provider arrives, another <code>if/else</code>. Each edit risks breaking the existing provider paths, and the method grows without bound. The OCP solution: define <code>protocol AnalyticsProvider { func track(event: String) }</code>. The analytics service holds a <code>[AnalyticsProvider]</code> array. New providers are added by creating a new type — no changes to existing code. The bug class eliminated: touching existing code for new providers would sometimes break existing provider logic due to variable shadowing or early-return regressions.</p>
+
+<p><strong>Q: How does composition over inheritance apply to Swift's protocol-oriented design?</strong></p>
+
+<p>A: Swift is designed around protocols rather than class hierarchies. Instead of <code>class Button: View: UIResponder: NSObject</code>, you express behaviour via protocol conformances: <code>struct RoundedButton: Tappable, Displayable, Accessible</code>. Protocol extensions provide default implementations, enabling shared behaviour without inheritance. This matters because: (1) multiple protocols can be combined without the diamond-inheritance problem; (2) structs (value types) can participate — not just classes; (3) each protocol can be tested independently; (4) removing a protocol conformance is localised — no superclass methods to worry about. In practice, a SwiftUI <code>View</code> conformance, <code>Identifiable</code>, <code>Hashable</code>, and <code>Codable</code> on the same struct is idiomatic Swift composition.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Where does SOLID break down or create over-engineering in a typical iOS app?</strong></p>
+
+<p>A: (1) <strong>ISP over-applied</strong>: Creating a protocol for every single method (one method per protocol) produces "protocol soup" — dozens of protocols with identical names like <code>UserFetching</code>, <code>UserSaving</code>, <code>UserDeleting</code>. The indirection cost (reading through 10 protocols to understand a service) outweighs the benefit. Group related operations into sensible interfaces. (2) <strong>OCP rigidity</strong>: Applying OCP strictly means never editing a class. But some changes are genuine fixes to wrong behaviour, not extensions. Treating every bug fix as "must not edit" is wrong. OCP applies to <em>extension points</em> — places deliberately designed for variation. (3) <strong>DIP over-applied</strong>: Protocol-per-class for every type, including trivial ones, creates a maintenance burden with no testing benefit (e.g., creating a <code>JSONDecoderProtocol</code>). Apply DIP at boundaries that matter: at the seam between your code and external systems (networking, persistence, device APIs).</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Adding a new feature requires editing 5 existing files.</strong></p>
+
+<p>Solution: Likely an OCP/SRP violation. Identify the extension point, define a protocol for it, and let new features add new implementations rather than editing existing types.</p>
+
+<p><strong>Issue: Every class in the app imports every other class — tight coupling.</strong></p>
+
+<p>Solution: DIP violation. Introduce protocols at the boundaries between layers. Use dependency injection (constructor injection) to decouple concrete types. Draw the dependency graph: arrows should point inward (presentation → domain → data), never outward.</p>
+
+<p><strong>Issue: A class implementing a protocol has 10 stub methods it doesn't use.</strong></p>
+
+<p>Solution: ISP violation. Split the protocol into smaller, focused protocols. Each class implements only the protocols relevant to its purpose.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="dependency-injection.md">Dependency Injection</a> — the mechanism that enables DIP in practice</li>
+<li><a href="mvc.md">MVC</a> — SRP violations that lead to Massive VC</li>
+<li><a href="mvvm.md">MVVM</a> — SRP and DIP applied to the presentation layer</li>
+<li><a href="mvp-viper.md">MVP &amp; VIPER</a> — VIPER is a direct application of SOLID to iOS modules</li>
+<li><a href="modularization.md">Modularization</a> — SOLID at the module level</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

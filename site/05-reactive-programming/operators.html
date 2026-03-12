@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operators — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../05-reactive-programming/index.html">Reactive Programming</a></span>
+    <span>Operators</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html" class="active">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="operators">Operators</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Operators are methods defined on <code>Publisher</code> that return new publishers, transforming the stream of values flowing through a Combine pipeline. They are the core vocabulary of reactive programming: they map, filter, combine, time-gate, and error-handle values declaratively. Because each operator returns a new <code>Publisher</code>, operators chain naturally — creating a readable, composable data pipeline from source to subscriber.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of a Combine pipeline as a water treatment plant. Operators are the individual processing stations the water passes through: a filter station (removes impurities), a purification station (transforms water quality), a blending station (mixes two sources), a flow regulator (controls the rate). Each station receives water from the previous one and passes treated water to the next. The final output — clean, processed water — is what the subscriber receives.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="operator-categories">Operator Categories</h3>
+
+<p>Combine's operators fall into five categories:</p>
+
+<table>
+<tr><td>Category</td><td>Examples</td></tr>
+<tr><td>Transforming</td><td><code>map</code>, <code>flatMap</code>, <code>compactMap</code>, <code>scan</code>, <code>reduce</code>, <code>replaceNil</code></td></tr>
+<tr><td>Filtering</td><td><code>filter</code>, <code>removeDuplicates</code>, <code>first</code>, <code>last</code>, <code>drop</code>, <code>prefix</code></td></tr>
+<tr><td>Combining</td><td><code>merge</code>, <code>zip</code>, <code>combineLatest</code>, <code>switchToLatest</code></td></tr>
+<tr><td>Error Handling</td><td><code>catch</code>, <code>retry</code>, <code>replaceError</code>, <code>assertNoFailure</code></td></tr>
+<tr><td>Timing</td><td><code>debounce</code>, <code>throttle</code>, <code>delay</code>, <code>timeout</code>, <code>measureInterval</code></td></tr>
+<tr><td>Threading</td><td><code>receive(on:)</code>, <code>subscribe(on:)</code></td></tr>
+<tr><td>Lifecycle</td><td><code>handleEvents</code>, <code>print</code>, <code>share</code>, <code>multicast</code></td></tr>
+</table>
+
+<h3 id="transforming-operators">Transforming Operators</h3>
+
+<p><strong>map</strong>: Apply a transform function to each value.</p>
+<pre><code class="language-swift">[1, 2, 3].publisher.map { $0 * 2 }   // emits 2, 4, 6</code></pre>
+
+<p><strong>flatMap</strong>: Transform each value into a new publisher and flatten the results. The inner publisher's output becomes the outer pipeline's output. Used for chaining async operations:</p>
+<pre><code class="language-swift">userIDPublisher
+    .flatMap { id in fetchUser(id: id) }   // each id → fetch → User</code></pre>
+<p><code>flatMap(maxPublishers:)</code> limits concurrent inner subscriptions — important for controlling concurrency.</p>
+
+<p><strong>compactMap</strong>: Like <code>map</code>, but drops <code>nil</code> values (analogous to <code>compactMap</code> on sequences).</p>
+<pre><code class="language-swift">["1", "abc", "3"].publisher
+    .compactMap { Int($0) }   // emits 1, 3 — "abc" dropped</code></pre>
+
+<p><strong>scan</strong>: Accumulate values like <code>reduce</code>, but emits intermediate results:</p>
+<pre><code class="language-swift">[1, 2, 3, 4].publisher
+    .scan(0) { acc, value in acc + value }   // emits 1, 3, 6, 10</code></pre>
+
+<h3 id="filtering-operators">Filtering Operators</h3>
+
+<p><strong>filter</strong>: Pass only values matching a predicate.</p>
+
+<p><strong>removeDuplicates</strong>: Drop consecutive equal values — essential for performance, prevents unnecessary UI updates when the same value is published twice:</p>
+<pre><code class="language-swift">$searchText
+    .removeDuplicates()   // don't re-trigger search if text hasn't changed</code></pre>
+
+<p><strong>first(where:) / last(where:)</strong>: Take only the first/last matching value, then complete.</p>
+
+<p><strong>dropFirst(_:) / prefix(_:)</strong>: Skip or take a fixed number of values.</p>
+
+<h3 id="combining-operators">Combining Operators</h3>
+
+<p><strong>merge</strong>: Combines multiple publishers of the same type. Emits values from any publisher as they arrive. Completes when <strong>all</strong> source publishers complete.</p>
+<pre><code class="language-swift">merge(publisher1, publisher2)   // values from either arrive in temporal order</code></pre>
+
+<p><strong>zip</strong>: Pairs values from two publishers in order — emits only when both have emitted a new value. Used to combine two parallel async results. Completes when either publisher completes.</p>
+<pre><code class="language-swift">zip(userPublisher, postsPublisher)   // emits (User, [Post]) pairs</code></pre>
+
+<p><strong>combineLatest</strong>: Emits a tuple of the <strong>latest value</strong> from each publisher whenever any one emits. Requires each publisher to have emitted at least one value before the first combined emission. Perfect for form validation:</p>
+<pre><code class="language-swift">combineLatest($email, $password)
+    .map { email, password in isValid(email) &amp;&amp; password.count &gt;= 8 }
+    .assign(to: \.isLoginEnabled, on: viewModel)</code></pre>
+
+<p><strong>switchToLatest</strong>: When a publisher-of-publishers emits a new inner publisher, subscribes to the new one and cancels the previous. Used to implement "cancel previous search, start new one":</p>
+<pre><code class="language-swift">$searchText
+    .map { query in searchPublisher(query: query) }  // returns Publisher each time
+    .switchToLatest()   // only subscribes to most recent search publisher</code></pre>
+
+<h3 id="error-handling-operators">Error Handling Operators</h3>
+
+<p><strong>catch</strong>: Replace a failed publisher with a fallback publisher:</p>
+<pre><code class="language-swift">dataPublisher
+    .catch { _ in Just(cachedData) }   // on failure, return cached data</code></pre>
+
+<p><strong>retry(_:)</strong>: Re-subscribe to the upstream publisher up to N times on failure:</p>
+<pre><code class="language-swift">networkPublisher
+    .retry(3)   // try up to 4 times total (1 + 3 retries)</code></pre>
+
+<p><strong>replaceError(with:)</strong>: Absorb errors and emit a default value:</p>
+<pre><code class="language-swift">networkPublisher
+    .replaceError(with: [])   // on error, emit empty array</code></pre>
+
+<h3 id="timing-operators">Timing Operators</h3>
+
+<p><strong>debounce</strong>: Waits for the publisher to go quiet for a specified interval before emitting the last value. Classic use case: search-as-you-type.</p>
+<pre><code class="language-swift">$searchText
+    .debounce(for: .milliseconds(300), scheduler: RunLoop.main)</code></pre>
+
+<p><strong>throttle</strong>: Emits at most one value per interval — takes either the first or last value in each window.</p>
+<pre><code class="language-swift">buttonTapPublisher
+    .throttle(for: .seconds(1), scheduler: RunLoop.main, latest: false)</code></pre>
+
+<p><strong>delay</strong>: Shifts every value forward in time by a fixed interval.</p>
+
+<p><strong>timeout</strong>: Completes with an error if no value arrives within an interval.</p>
+
+<h3 id="threading-operators">Threading Operators</h3>
+
+<p><strong>subscribe(on:)</strong>: Specifies the scheduler (thread/queue) where the subscription occurs — i.e., where upstream work runs. Applied once per pipeline, typically to move the source's work off the main thread.</p>
+
+<p><strong>receive(on:)</strong>: Specifies the scheduler where downstream values are delivered. Applied just before a subscriber that must run on a specific thread (usually <code>.main</code> before UI updates).</p>
+
+<pre><code class="language-swift">URLSession.shared.dataTaskPublisher(for: url)
+    .subscribe(on: DispatchQueue.global())    // subscribe/upstream on background
+    .receive(on: DispatchQueue.main)          // deliver values on main thread
+    .sink { ... }</code></pre>
+
+<h3 id="share-and-multicast">share and multicast</h3>
+
+<p>By default, each <code>sink</code>/<code>assign</code> creates an independent subscription — two subscribers trigger two separate upstream operations (two network requests). <code>share()</code> multicasts an upstream publisher to multiple subscribers:</p>
+
+<pre><code class="language-swift">let shared = networkPublisher.share()
+shared.sink { handleResult($0) }.store(in: &amp;cancellables)
+shared.sink { logResult($0) }.store(in: &amp;cancellables)
+// Only ONE network request is made</code></pre>
+
+<p><code>multicast(subject:)</code> gives more control — you call <code>connect()</code> manually to start the upstream work.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Combine
+import Foundation
+
+var cancellables = Set&lt;AnyCancellable&gt;()
+
+// ── Search pipeline with debounce + switchToLatest ─────────────
+class SearchViewModel: ObservableObject {
+    @Published var query = ""
+    @Published var results: [String] = []
+
+    init() {
+        $query
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)  // wait for typing to stop
+            .removeDuplicates()                   // skip if query hasn't changed
+            .filter { !$0.isEmpty }               // don't search empty strings
+            .map { query in                       // map to a publisher of results
+                self.performSearch(query: query)
+            }
+            .switchToLatest()                     // cancel previous search, use newest
+            .receive(on: DispatchQueue.main)       // deliver on main thread
+            .assign(to: &amp;$results)                // assign to @Published
+    }
+
+    private func performSearch(query: String) -&gt; AnyPublisher&lt;[String], Never&gt; {
+        // Simulated async search returning results after a delay
+        Just(["Result for: \(query)"])
+            .delay(for: .milliseconds(100), scheduler: DispatchQueue.global())
+            .eraseToAnyPublisher()
+    }
+}
+
+// ── Form validation with combineLatest ────────────────────────
+class LoginFormViewModel: ObservableObject {
+    @Published var email = ""
+    @Published var password = ""
+    @Published var isSubmitEnabled = false
+
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    init() {
+        // Combine latest values of both fields — fires whenever either changes
+        Publishers.CombineLatest($email, $password)
+            .map { email, password in
+                let emailValid = email.contains("@") &amp;&amp; email.contains(".")
+                let passwordValid = password.count &gt;= 8
+                return emailValid &amp;&amp; passwordValid
+            }
+            .assign(to: &amp;$isSubmitEnabled)
+    }
+}
+
+// ── Zip two parallel async requests ──────────────────────────
+func loadDashboard() -&gt; AnyPublisher&lt;(User, [Post]), Error&gt; {
+    let userPublisher = fetchUser()           // publisher&lt;User, Error&gt;
+    let postsPublisher = fetchPosts()         // publisher&lt;[Post], Error&gt;
+
+    return Publishers.Zip(userPublisher, postsPublisher)
+        .eraseToAnyPublisher()                // emit (User, [Post]) when both complete
+}
+
+// ── Error handling with catch + retry ─────────────────────────
+func resilientFetch(url: URL) -&gt; AnyPublisher&lt;Data, Never&gt; {
+    URLSession.shared.dataTaskPublisher(for: url)
+        .retry(2)                             // retry up to 2 additional times on failure
+        .map(\.data)
+        .catch { _ in Just(Data()) }          // on persistent failure, return empty Data
+        .eraseToAnyPublisher()
+}
+
+// ── scan for running total ────────────────────────────────────
+[10, 20, 30, 40].publisher
+    .scan(0, +)                               // 10, 30, 60, 100 — running sum
+    .sink { print("Running total: \($0)") }
+    .store(in: &amp;cancellables)
+
+// ── flatMap with maxPublishers to limit concurrency ───────────
+let urls = [URL(string: "https://a.com")!, URL(string: "https://b.com")!]
+
+urls.publisher
+    .flatMap(maxPublishers: .max(2)) { url in         // at most 2 concurrent requests
+        URLSession.shared.dataTaskPublisher(for: url)
+            .map(\.data)
+            .replaceError(with: Data())               // absorb individual errors
+    }
+    .sink { data in print("Got \(data.count) bytes") }
+    .store(in: &amp;cancellables)
+
+// ── receive(on:) for UI updates ───────────────────────────────
+func fetchAndDisplay(url: URL, label: UILabel) {
+    URLSession.shared.dataTaskPublisher(for: url)
+        .map(\.data)
+        .compactMap { String(data: $0, encoding: .utf8) }
+        .receive(on: DispatchQueue.main)              // ensure UI update on main thread
+        .sink(
+            receiveCompletion: { _ in },
+            receiveValue: { text in label.text = text }
+        )
+        .store(in: &amp;cancellables)
+}
+
+// ── share to avoid duplicate network requests ─────────────────
+let sharedPublisher = URLSession.shared
+    .dataTaskPublisher(for: URL(string: "https://api.example.com/data")!)
+    .share()                                          // one request, multiple subscribers
+
+sharedPublisher.sink { print("Subscriber A: \($0)") }.store(in: &amp;cancellables)
+sharedPublisher.sink { print("Subscriber B: \($0)") }.store(in: &amp;cancellables)
+// Only ONE network request fires
+
+// Stubs
+struct User {}
+struct Post {}
+class UILabel { var text: String? = nil }
+func fetchUser() -&gt; AnyPublisher&lt;User, Error&gt; { Just(User()).setFailureType(to: Error.self).eraseToAnyPublisher() }
+func fetchPosts() -&gt; AnyPublisher&lt;[Post], Error&gt; { Just([Post()]).setFailureType(to: Error.self).eraseToAnyPublisher() }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>map</code> and <code>flatMap</code> in Combine?<em></em></p>
+
+<p>A: <code>map</code> transforms each emitted value into a new value of a different type — the transformation is synchronous and returns a plain value. <code>flatMap</code> transforms each emitted value into a new <strong>publisher</strong>, then subscribes to that publisher and emits its values into the outer pipeline. <code>flatMap</code> is used when the transformation itself is asynchronous — e.g., turning a user ID into a network request that returns a <code>User</code>. The key difference: <code>map</code> wraps the transform result in the same publisher, <code>flatMap</code> unwraps (flattens) the inner publisher into the outer stream.</p>
+
+<p><em></em>Q: What does <code>removeDuplicates()</code> do and why is it important for UI binding?<em></em></p>
+
+<p>A: <code>removeDuplicates()</code> drops consecutive values that are equal to the previous value. Without it, every keystroke in a bound text field would trigger downstream work (network requests, database queries) even if the user typed and then immediately deleted a character, returning to the same string. By filtering out consecutive equal emissions, <code>removeDuplicates()</code> ensures downstream operators only fire when the value meaningfully changes, reducing unnecessary work and preventing flickering UI updates.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: What is the difference between <code>merge</code>, <code>zip</code>, and <code>combineLatest</code>?<em></em></p>
+
+<p>A: <code>merge(publisher1, publisher2)</code>: All publishers must have the same Output type. Values from any publisher are emitted immediately as they arrive, interleaved in time order. <code>zip(p1, p2)</code>: Publishers can have different Output types. Values are paired one-to-one — the first value from p1 pairs with the first from p2, the second with the second, etc. Emits only when both have produced a new value. <code>combineLatest(p1, p2)</code>: Each publisher can have a different Output. Emits the <strong>latest</strong> value from each publisher whenever <strong>either</strong> one emits — after both have emitted at least one value. Use <code>merge</code> when any source's events should flow through, <code>zip</code> when you need matched pairs (parallel tasks that should be combined), and <code>combineLatest</code> when you want a running combination of the most recent state from multiple sources (form validation, multi-filter UI).</p>
+
+<p><em></em>Q: What is <code>switchToLatest</code> and what problem does it solve?<em></em></p>
+
+<p>A: <code>switchToLatest</code> operates on a publisher-of-publishers (<code>Publisher where Output: Publisher</code>). When a new inner publisher is emitted, it unsubscribes from the previous inner publisher and subscribes to the new one. This solves the "superseded search" problem: if a user types quickly and each keystroke generates a new network request publisher, <code>switchToLatest</code> ensures only the most recent request's results arrive downstream — previous in-flight requests are cancelled. Without it, all responses would arrive and potentially overwrite results in wrong order (race condition).</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Explain the threading model of a Combine pipeline — what do <code>subscribe(on:)</code> and <code>receive(on:)</code> actually control?<em></em></p>
+
+<p>A: <code>subscribe(on:)</code> controls where the <strong>upstream subscription work</strong> begins — i.e., the thread on which the <code>receive(subscriber:)</code> call propagates up through the chain and where the publisher starts producing values. It should appear as early in the chain as possible. <code>receive(on:)</code> controls where <strong>downstream values are delivered</strong> — every call to <code>receive(_ input:)</code> and <code>receive(completion:)</code> on the downstream subscriber happens on the specified scheduler. In a typical network pipeline: <code>subscribe(on: DispatchQueue.global())</code> means the URL session task starts on a background queue; <code>receive(on: DispatchQueue.main)</code> means the final <code>sink</code> closure runs on the main thread. Note: <code>subscribe(on:)</code> has no effect on operators that themselves specify their scheduler (like <code>debounce(scheduler:)</code> or <code>Timer.publish(on:)</code>), which always deliver on their own scheduler.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>flatMap</code> triggers multiple concurrent network requests, overwhelming the server.<em></em></p>
+
+<p>Solution: Use <code>flatMap(maxPublishers: .max(n))</code> to limit concurrent inner subscriptions. For strictly serial execution (one at a time), use <code>maxPublishers: .max(1)</code>. Alternatively, use <code>switchToLatest</code> if only the most recent result matters.</p>
+
+<p><em></em>Issue: <code>combineLatest</code> doesn't emit until all publishers have emitted at least one value.<em></em></p>
+
+<p>Solution: This is expected behaviour. If you need an initial value before a publisher has emitted, prepend a default with <code>.prepend(initialValue)</code> or use <code>CurrentValueSubject</code> (which always holds a value) instead of a plain publisher.</p>
+
+<p><em></em>Issue: <code>debounce</code> fires on the wrong thread, causing a UIKit warning.<em></em></p>
+
+<p>Solution: Specify <code>scheduler: RunLoop.main</code> or <code>scheduler: DispatchQueue.main</code> in the <code>debounce</code> call. <code>debounce</code> delivers on the scheduler you provide — if you don't specify the main scheduler, values may arrive on a background thread.</p>
+
+<p><em></em>Issue: <code>retry</code> causes duplicate side effects (e.g., multiple POST requests).<em></em></p>
+
+<p>Solution: <code>retry</code> re-subscribes to the entire upstream chain — for a <code>dataTaskPublisher</code> that makes a POST, this creates a new POST for each retry. Use <code>retry</code> only for idempotent requests (GET). For non-idempotent requests, implement custom retry logic with <code>catch</code> + <code>Future</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="publishers-subscribers.md">Publishers &amp; Subscribers</a> — the protocol layer operators are built on</li>
+<li><a href="subjects.md">Subjects</a> — imperative sources often used with operators</li>
+<li><a href="combine-networking.md">Combine Networking</a> — operators applied to network pipelines</li>
+<li><a href="combine-swiftui-uikit.md">Combine + UIKit &amp; SwiftUI</a> — debounce/combineLatest in data binding</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

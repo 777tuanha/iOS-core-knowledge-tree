@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Combine Networking — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../05-reactive-programming/index.html">Reactive Programming</a></span>
+    <span>Combine Networking</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html" class="active">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="combine-networking">Combine Networking</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>URLSession</code> provides a first-party Combine integration via <code>dataTaskPublisher(for:)</code>, returning a publisher that emits a <code>(Data, URLResponse)</code> tuple or a <code>URLError</code>. Combined with Combine's operators (<code>map</code>, <code>decode</code>, <code>retry</code>, <code>catch</code>, <code>tryMap</code>), this enables composable, declarative networking pipelines. Combine networking is most valuable when you need to coordinate multiple requests, apply retry/recovery logic, or integrate network responses directly into a reactive data binding pipeline.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>A Combine networking pipeline is like a assembly line. At one end, a <code>dataTaskPublisher</code> is the factory worker who fetches raw materials (Data). Operators are the quality control stations: one checks the HTTP status code, one extracts the materials, one converts raw materials into a finished product (decodes JSON into a Swift type). The final subscriber receives the finished product. If any station fails, the error handling path kicks in — like a defect response process.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="datataskpublisher">dataTaskPublisher</h3>
+
+<p><code>URLSession.dataTaskPublisher(for: url)</code> returns <code>URLSession.DataTaskPublisher</code>:</p>
+<ul>
+<li><strong>Output</strong>: <code>(data: Data, response: URLResponse)</code></li>
+<li><strong>Failure</strong>: <code>URLError</code></li>
+</ul>
+
+<p>The publisher creates a <code>URLSessionDataTask</code> when subscribed and cancels it when the subscription is cancelled.</p>
+
+<h3 id="standard-networking-pipeline">Standard Networking Pipeline</h3>
+
+<pre><code class="language-swift">URLSession.shared
+    .dataTaskPublisher(for: url)             // fetch
+    .tryMap { data, response in              // validate HTTP status
+        guard let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return data
+    }
+    .decode(type: T.self, decoder: JSONDecoder())  // decode JSON
+    .receive(on: DispatchQueue.main)         // deliver on main thread
+    .eraseToAnyPublisher()</code></pre>
+
+<h3 id="trymap-vs-map">tryMap vs map</h3>
+
+<ul>
+<li><code>map</code> — synchronous, non-throwing transform. Cannot introduce errors into the pipeline.</li>
+<li><code>tryMap</code> — synchronous transform that can <code>throw</code>. On throw, the publisher fails with the thrown error. This is how you validate HTTP status codes and convert them to pipeline errors.</li>
+</ul>
+
+<p>After <code>tryMap</code>, the <code>Failure</code> type widens from <code>URLError</code> to <code>Error</code>.</p>
+
+<h3 id="decode">decode</h3>
+
+<p><code>decode(type:decoder:)</code> decodes <code>Data</code> into any <code>Decodable</code> type using the specified <code>Decoder</code>. On decoding failure it emits a <code>DecodingError</code>. The <code>Failure</code> type must be <code>Error</code> (or <code>DecodingError</code>) — incompatible with <code>Never</code> failure pipelines.</p>
+
+<h3 id="error-handling-patterns">Error Handling Patterns</h3>
+
+<p><strong>Retry</strong>: Re-subscribe to the upstream publisher on failure. Creates a new request:</p>
+<pre><code class="language-swift">.retry(3)</code></pre>
+
+<p><strong>catch with fallback</strong>: On failure, switch to a fallback publisher:</p>
+<pre><code class="language-swift">.catch { error in
+    Just(cachedData)   // return cached data on failure
+}</code></pre>
+
+<p><strong>replaceError</strong>: Absorb the error and emit a default value:</p>
+<pre><code class="language-swift">.replaceError(with: [])</code></pre>
+
+<p><strong>mapError</strong>: Transform the error type without recovering:</p>
+<pre><code class="language-swift">.mapError { AppError.network($0) }</code></pre>
+
+<h3 id="scheduling">Scheduling</h3>
+
+<p>Network responses arrive on a background thread. Add <code>receive(on: DispatchQueue.main)</code> before any UI-bound operator or subscriber. Do not place <code>receive(on:)</code> before <code>decode</code> — decoding on a background thread is fine and avoids main-thread contention.</p>
+
+<h3 id="request-configuration">Request Configuration</h3>
+
+<p>For POST/PUT/DELETE requests, use <code>URLRequest</code>:</p>
+<pre><code class="language-swift">var request = URLRequest(url: url)
+request.httpMethod = "POST"
+request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+request.httpBody = try? JSONEncoder().encode(body)
+
+URLSession.shared.dataTaskPublisher(for: request)</code></pre>
+
+<h3 id="chaining-requests-flatmap">Chaining Requests (flatMap)</h3>
+
+<pre><code class="language-swift">// Step 1: fetch token, Step 2: fetch user with token
+tokenPublisher
+    .flatMap { token in
+        userPublisher(token: token)
+    }</code></pre>
+
+<h3 id="parallel-requests-zip--merge">Parallel Requests (zip / merge)</h3>
+
+<pre><code class="language-swift">// Wait for both
+Publishers.Zip(userPublisher, postsPublisher)
+    .sink { user, posts in configure(user: user, posts: posts) }</code></pre>
+
+<h3 id="comparison-combine-vs-asyncawait-for-networking">Comparison: Combine vs async/await for networking</h3>
+
+<table>
+<tr><td>Aspect</td><td>Combine</td><td>async/await</td></tr>
+<tr><td>Single request</td><td>Verbose</td><td>Concise</td></tr>
+<tr><td>Chained requests</td><td><code>.flatMap</code></td><td>Sequential <code>await</code></td></tr>
+<tr><td>Parallel requests</td><td><code>.zip</code> / <code>Publishers.Zip</code></td><td><code>async let</code></td></tr>
+<tr><td>UI binding</td><td>Native (<code>.assign</code>, <code>@Published</code>)</td><td>Requires explicit assignment</td></tr>
+<tr><td>Error handling</td><td><code>.catch</code>, <code>.retry</code></td><td><code>do/catch</code>, <code>try</code></td></tr>
+<tr><td>Cancellation</td><td><code>AnyCancellable</code></td><td><code>Task.cancel()</code></td></tr>
+<tr><td>iOS requirement</td><td>iOS 13</td><td>iOS 15</td></tr>
+</table>
+
+<p>For new code targeting iOS 15+, prefer async/await for networking. Use Combine when the result feeds directly into a reactive binding pipeline.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Combine
+import Foundation
+
+// ── Generic Decodable fetch ────────────────────────────────────
+struct APIClient {
+    private let session: URLSession
+    private let decoder: JSONDecoder
+
+    init(session: URLSession = .shared, decoder: JSONDecoder = .init()) {
+        self.session = session
+        self.decoder = decoder
+    }
+
+    func fetch&lt;T: Decodable&gt;(_ type: T.Type, from url: URL) -&gt; AnyPublisher&lt;T, Error&gt; {
+        session.dataTaskPublisher(for: url)        // (Data, URLResponse) | URLError
+            .tryMap { data, response in
+                guard let http = response as? HTTPURLResponse else {
+                    throw URLError(.badServerResponse)
+                }
+                guard (200...299).contains(http.statusCode) else {
+                    throw HTTPError.statusCode(http.statusCode)
+                }
+                return data
+            }
+            .decode(type: T.self, decoder: decoder) // Data → T
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+
+    func fetchWithRetry&lt;T: Decodable&gt;(
+        _ type: T.Type,
+        from url: URL,
+        retries: Int = 3
+    ) -&gt; AnyPublisher&lt;T, Error&gt; {
+        fetch(type, from: url)
+            .retry(retries)                        // retry up to N times on failure
+            .eraseToAnyPublisher()
+    }
+}
+
+enum HTTPError: Error {
+    case statusCode(Int)
+}
+
+// ── POST request ──────────────────────────────────────────────
+struct LoginRequest: Encodable { let email: String; let password: String }
+struct LoginResponse: Decodable { let token: String }
+
+func login(email: String, password: String) -&gt; AnyPublisher&lt;LoginResponse, Error&gt; {
+    let url = URL(string: "https://api.example.com/login")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try? JSONEncoder().encode(LoginRequest(email: email, password: password))
+
+    return URLSession.shared.dataTaskPublisher(for: request)
+        .tryMap { data, response in
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else {
+                throw URLError(.badServerResponse)
+            }
+            return data
+        }
+        .decode(type: LoginResponse.self, decoder: JSONDecoder())
+        .receive(on: DispatchQueue.main)
+        .eraseToAnyPublisher()
+}
+
+// ── Chained requests: login then fetch profile ─────────────────
+struct UserProfile: Decodable { let name: String }
+
+func loadDashboard(email: String, password: String) -&gt; AnyPublisher&lt;UserProfile, Error&gt; {
+    login(email: email, password: password)
+        .flatMap { response in                     // use token to fetch profile
+            let url = URL(string: "https://api.example.com/profile")!
+            var request = URLRequest(url: url)
+            request.setValue("Bearer \(response.token)", forHTTPHeaderField: "Authorization")
+            return URLSession.shared.dataTaskPublisher(for: request)
+                .tryMap { data, _ in data }
+                .decode(type: UserProfile.self, decoder: JSONDecoder())
+                .mapError { $0 as Error }
+        }
+        .receive(on: DispatchQueue.main)
+        .eraseToAnyPublisher()
+}
+
+// ── Parallel requests with Zip ────────────────────────────────
+struct Post: Decodable { let title: String }
+
+func loadFeed() -&gt; AnyPublisher&lt;(UserProfile, [Post]), Error&gt; {
+    let client = APIClient()
+    let profileURL = URL(string: "https://api.example.com/profile")!
+    let postsURL = URL(string: "https://api.example.com/posts")!
+
+    return Publishers.Zip(
+        client.fetch(UserProfile.self, from: profileURL),
+        client.fetch([Post].self, from: postsURL)
+    )
+    .eraseToAnyPublisher()
+}
+
+// ── ViewModel using Combine networking ────────────────────────
+class FeedViewModel: ObservableObject {
+    @Published var posts: [Post] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+    private let client = APIClient()
+
+    func loadPosts() {
+        isLoading = true
+        errorMessage = nil
+
+        client.fetch([Post].self, from: URL(string: "https://api.example.com/posts")!)
+            .handleEvents(receiveCompletion: { [weak self] _ in
+                self?.isLoading = false            // always stop loading on completion
+            })
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    if case .failure(let error) = completion {
+                        self?.errorMessage = error.localizedDescription
+                    }
+                },
+                receiveValue: { [weak self] posts in
+                    self?.posts = posts
+                }
+            )
+            .store(in: &amp;cancellables)
+    }
+}
+
+// ── Error recovery — fallback to cache ────────────────────────
+func fetchWithFallback(url: URL, cached: [Post]) -&gt; AnyPublisher&lt;[Post], Never&gt; {
+    URLSession.shared.dataTaskPublisher(for: url)
+        .map(\.data)
+        .decode(type: [Post].self, decoder: JSONDecoder())
+        .catch { _ in Just(cached) }               // on any error, use cached posts
+        .receive(on: DispatchQueue.main)
+        .eraseToAnyPublisher()
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What does <code>dataTaskPublisher</code> emit and when does it fail?<em></em></p>
+
+<p>A: <code>URLSession.DataTaskPublisher</code> emits a <code>(data: Data, response: URLResponse)</code> tuple when the HTTP response is received — regardless of the HTTP status code. It fails with a <code>URLError</code> only for network-level failures (no internet, timeout, SSL error). A 404 or 500 HTTP response is <strong>not</strong> a failure at the publisher level — you must add a <code>tryMap</code> operator to inspect the HTTP status code and throw an error for non-2xx responses.</p>
+
+<p><em></em>Q: What is the difference between <code>map</code> and <code>tryMap</code> in a networking pipeline?<em></em></p>
+
+<p>A: <code>map</code> applies a non-throwing transformation and cannot change the <code>Failure</code> type of the pipeline. <code>tryMap</code> applies a throwing transformation — if the closure throws, the publisher fails with the thrown error (widening <code>Failure</code> to <code>Error</code>). In a networking pipeline, <code>tryMap</code> is used to inspect the <code>URLResponse</code>, check the HTTP status code, and throw an error for non-success responses — converting a successful-at-network-layer but failed-at-HTTP-layer response into a pipeline failure.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you chain two dependent network requests in Combine and what is the threading model?</strong></p>
+
+<p>A: Use <code>flatMap</code>: the first publisher emits a value (e.g., an auth token), and <code>flatMap</code>'s closure uses that value to create and return a second publisher (e.g., fetch a profile using the token). The result is a pipeline that emits the second publisher's output. Threading: both <code>dataTaskPublisher</code> instances run their network tasks on <code>URLSession</code>'s internal queue. Each publisher delivers its response on a background thread. A single <code>receive(on: DispatchQueue.main)</code> at the end of the chain (after the last <code>flatMap</code>) is sufficient to deliver the final result to the main thread. Adding <code>receive(on:)</code> between the chained publishers is unnecessary and adds scheduling overhead.</p>
+
+<p><strong>Q: When would you choose Combine networking over async/await?</strong></p>
+
+<p>A: Combine networking is preferable when: (1) The result feeds directly into an existing reactive binding pipeline — e.g., assigning the result to a <code>@Published</code> property using <code>assign(to:)</code>. (2) You need complex operator-based transformations — multiple <code>retry</code>, <code>catch</code>, <code>combineLatest</code> with other publishers. (3) The codebase is already heavily Combine-based (iOS 13 apps). Async/await is preferable for: single or sequentially chained requests (simpler <code>try await</code> syntax), new code targeting iOS 15+, and when you want structured concurrency's cancellation and task tree semantics. For bridging: <code>publisher.values</code> (iOS 15+) converts any publisher to an <code>AsyncSequence</code>, enabling use in <code>for await</code> loops.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a Combine-based API client with request deduplication — identical concurrent requests share one response.</strong></p>
+
+<p>A: Use <code>share()</code> paired with a dictionary of in-flight publishers. When a request arrives: check if an <code>AnyPublisher</code> for this URL is already in the dictionary. If yes, return the shared publisher. If no, create a new <code>dataTaskPublisher</code>, apply <code>.share()</code>, store it in the dictionary, and return it. Add a <code>handleEvents(receiveCompletion:)</code> to remove the entry from the dictionary when the request completes. The <code>share()</code> operator multicasts one network response to all subscribers that subscribed before completion. If a subscriber arrives after completion, <code>share()</code> does not replay — use <code>makeConnectable()</code> + <code>autoconnect()</code> with a <code>ReplaySubject</code> (3rd party or custom) for replay semantics. This pattern prevents N identical requests being fired when N views bind to the same data simultaneously.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Sink receives no values from a network publisher.</strong></p>
+
+<p>Solution: <code>AnyCancellable</code> not stored. Also check that the URL is valid and the network is reachable. Add <code>.print()</code> operator before <code>sink</code> to trace events.</p>
+
+<p><strong>Issue: "Cannot convert return expression" error when chaining requests with flatMap.</strong></p>
+
+<p>Solution: The inner publisher's <code>Failure</code> type must match the outer pipeline's <code>Failure</code> type. Use <code>.mapError { $0 as Error }</code> on the inner publisher to convert <code>URLError</code> to <code>Error</code>, or ensure the outer pipeline's failure is also typed as <code>URLError</code>.</p>
+
+<p><strong>Issue: UI flickers — publisher fires multiple times for one network response.</strong></p>
+
+<p>Solution: Add <code>removeDuplicates()</code> before the UI-bound operator if the model is <code>Equatable</code>. Also check that you're not accidentally creating multiple subscriptions (e.g., calling <code>bind()</code> on every <code>viewWillAppear</code>). Use <code>share()</code> if multiple UI components observe the same request.</p>
+
+<p><strong>Issue: Decoding fails silently — completion fires with no values.</strong></p>
+
+<p>Solution: Add a <code>sink(receiveCompletion:)</code> that logs the error. <code>DecodingError</code> descriptions are verbose but informative. Also add <code>.print("network")</code> operator to trace all events through the pipeline.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="publishers-subscribers.md">Publishers &amp; Subscribers</a> — dataTaskPublisher conforms to Publisher</li>
+<li><a href="operators.md">Operators</a> — tryMap, decode, retry, catch used in this section</li>
+<li><a href="backpressure-cancellation.md">Backpressure &amp; Cancellation</a> — AnyCancellable cancels the URLSessionDataTask</li>
+<li><a href="../03-concurrency/async-await.md">async/await</a> — modern alternative for networking</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

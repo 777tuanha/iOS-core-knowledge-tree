@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Composable Architecture (TCA) — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../06-architecture/index.html">Architecture</a></span>
+    <span>Tca</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html" class="active">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="the-composable-architecture-tca">The Composable Architecture (TCA)</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>The Composable Architecture (TCA), created by Brandon Williams and Stephen Celis at Point-Free, is an opinionated Swift framework for building applications in a <strong>unidirectional data-flow</strong> style. All application state lives in a single <code>State</code> struct; all state mutations happen in a pure <code>Reducer</code> function in response to <code>Action</code> values; all side effects (networking, timers, notifications) are modelled as <code>Effect</code> values returned from the Reducer and executed by the <code>Store</code>. TCA provides strong guarantees around testability, state mutation, and composition — at the cost of a steeper learning curve and a required framework dependency.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine TCA as a vending machine. The <strong>State</strong> is what's currently displayed on the screen (selected item, price, change available). An <strong>Action</strong> is a button press (press B3, insert coin). The <strong>Reducer</strong> is the machine's internal logic — given the current state and an action, it produces the next state (deterministic, no surprises). An <strong>Effect</strong> is something the machine does in the outside world — dispense a product, make change, call the maintenance company. The <strong>Store</strong> is the machine itself — it wires all of this together and drives the display. You never mutate the display directly — you send an action to the machine and trust the reducer.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="core-tca-types">Core TCA Types</h3>
+
+<p><strong>State</strong>: A value type (<code>struct</code>) containing all data a feature needs to display its UI and manage its logic. No mutable logic — pure data.</p>
+
+<p><strong>Action</strong>: An enum listing every event a feature can receive — user gestures, system callbacks, async results. Actions are the only way state can change.</p>
+
+<p><strong>Reducer</strong>: A function <code>(inout State, Action) -&gt; Effect&lt;Action&gt;</code> that mutates state and returns side effects. It must be pure — given the same state and action, always produces the same new state and effects.</p>
+
+<p><strong>Effect</strong>: Represents async work to be performed outside the reducer. Effects are run by the Store and their results are fed back as new Actions. Effects in modern TCA use Swift's async/await.</p>
+
+<p><strong>Store</strong>: The runtime that holds <code>State</code>, runs the <code>Reducer</code>, executes <code>Effect</code>s, and allows Views to observe state and send actions.</p>
+
+<h3 id="unidirectional-data-flow">Unidirectional Data Flow</h3>
+
+<pre><code>┌─────────────────────────────────────────┐
+│                   Store                 │
+│                                         │
+│  State ──▶ View (read-only observation) │
+│                  │                      │
+│               Action (send)             │
+│                  │                      │
+│  Reducer(state, action) → new State     │
+│                  │                      │
+│              Effect ──▶ async work      │
+│                          │              │
+│                       Action (result)   │
+│                          │              │
+│              Reducer again...           │
+└─────────────────────────────────────────┘</code></pre>
+
+<p>No side effects in the Reducer. No mutable state outside the Store. This makes every state transition <strong>traceable, reproducible, and testable</strong>.</p>
+
+<h3 id="composition">Composition</h3>
+
+<p>TCA's key promise: features compose cleanly. A parent feature can embed a child feature's <code>State</code> and <code>Action</code>, and delegate to the child <code>Reducer</code>. Navigation (sheet, alert, navigation stack) is driven by optional state — when state is non-nil, the destination appears; when nil, it disappears.</p>
+
+<pre><code class="language-swift">@Reducer
+struct ParentFeature {
+    struct State: Equatable {
+        var child: ChildFeature.State?  // nil = not presented
+    }
+    enum Action {
+        case child(ChildFeature.Action)
+        case showChild
+    }
+    var body: some ReducerOf&lt;Self&gt; {
+        Reduce { state, action in
+            switch action {
+            case .showChild:
+                state.child = ChildFeature.State()
+                return .none
+            case .child: return .none
+            }
+        }
+        .ifLet(\.child, action: \.child) {
+            ChildFeature()
+        }
+    }
+}</code></pre>
+
+<h3 id="effects">Effects</h3>
+
+<p>Side effects are returned from the Reducer as <code>Effect&lt;Action&gt;</code> values:</p>
+
+<pre><code class="language-swift">case .loadButtonTapped:
+    state.isLoading = true
+    return .run { send in
+        let users = try await userService.fetchUsers()
+        await send(.usersLoaded(users))
+    }</code></pre>
+
+<p><code>.run</code> executes an async closure on TCA's internal task infrastructure and feeds results back as actions. Effects can be cancelled with IDs.</p>
+
+<h3 id="testing">Testing</h3>
+
+<p>TCA's <code>TestStore</code> is its most powerful feature — it provides a step-by-step assertion API:</p>
+
+<pre><code class="language-swift">let store = TestStore(initialState: CounterFeature.State()) {
+    CounterFeature()
+}
+
+await store.send(.incrementButtonTapped) {
+    $0.count = 1   // assert state mutation
+}
+
+await store.receive(.timerTicked) {
+    $0.count = 2   // assert effect-driven action and state
+}</code></pre>
+
+<p>Every sent action and every action received from an effect must be explicitly accounted for — unaccounted actions fail the test. This gives exhaustive, step-by-step test coverage of state machines.</p>
+
+<h3 id="dependencies-in-tca">Dependencies in TCA</h3>
+
+<p>TCA provides a <code>@Dependency</code> system that replaces constructor injection:</p>
+
+<pre><code class="language-swift">struct UserFeature: Reducer {
+    @Dependency(\.userClient) var userClient   // injected at use site
+}</code></pre>
+
+<p>In tests, override dependencies inline:</p>
+
+<pre><code class="language-swift">let store = TestStore(...) {
+    UserFeature()
+} withDependencies: {
+    $0.userClient.fetchUsers = { .mock }
+}</code></pre>
+
+<h3 id="tca-vs-mvvm-tradeoffs">TCA vs MVVM Tradeoffs</h3>
+
+<table>
+<tr><td></td><td>MVVM</td><td>TCA</td></tr>
+<tr><td>State mutability</td><td>Mutable ViewModel properties</td><td>Only via Reducer (pure)</td></tr>
+<tr><td>Side effects</td><td>Async methods on ViewModel</td><td><code>Effect</code> values</td></tr>
+<tr><td>Testing</td><td>Mock service injection</td><td><code>TestStore</code> exhaustive assertions</td></tr>
+<tr><td>Learning curve</td><td>Low</td><td>High</td></tr>
+<tr><td>Framework dependency</td><td>Optional (Combine)</td><td>Required (TCA library)</td></tr>
+<tr><td>State traceability</td><td>Manual logging</td><td>Built-in (reducers log actions)</td></tr>
+<tr><td>Composition</td><td>Coordinator for navigation</td><td>State-driven <code>.ifLet</code>, <code>.forEach</code></td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import ComposableArchitecture
+import SwiftUI
+
+// ── Simple counter feature ────────────────────────────────────
+@Reducer
+struct CounterFeature {
+    // All feature state in one struct
+    struct State: Equatable {
+        var count = 0
+        var isTimerRunning = false
+    }
+
+    // All events as an enum
+    enum Action {
+        case incrementTapped
+        case decrementTapped
+        case toggleTimerTapped
+        case timerTicked
+    }
+
+    // Cancellation ID for the timer effect
+    enum CancelID { case timer }
+
+    // Reducer — pure function: (state, action) → next state + effects
+    var body: some ReducerOf&lt;Self&gt; {
+        Reduce { state, action in
+            switch action {
+            case .incrementTapped:
+                state.count += 1
+                return .none                      // no side effects
+
+            case .decrementTapped:
+                state.count -= 1
+                return .none
+
+            case .toggleTimerTapped:
+                state.isTimerRunning.toggle()
+                if state.isTimerRunning {
+                    return .run { send in          // start async effect
+                        while true {
+                            try await Task.sleep(for: .seconds(1))
+                            await send(.timerTicked)   // feed action back
+                        }
+                    }
+                    .cancellable(id: CancelID.timer)  // register cancellation ID
+                } else {
+                    return .cancel(id: CancelID.timer) // cancel on stop
+                }
+
+            case .timerTicked:
+                state.count += 1
+                return .none
+            }
+        }
+    }
+}
+
+// ── SwiftUI View — observes Store ─────────────────────────────
+struct CounterView: View {
+    // ViewStore holds a reference to the Store and provides state + action send
+    let store: StoreOf&lt;CounterFeature&gt;
+
+    var body: some View {
+        WithViewStore(self.store, observe: { $0 }) { viewStore in
+            VStack(spacing: 16) {
+                Text("\(viewStore.count)")
+                    .font(.largeTitle)
+
+                HStack {
+                    Button("−") { viewStore.send(.decrementTapped) }
+                    Button("+") { viewStore.send(.incrementTapped) }
+                }
+
+                Button(viewStore.isTimerRunning ? "Stop Timer" : "Start Timer") {
+                    viewStore.send(.toggleTimerTapped)
+                }
+                .foregroundStyle(viewStore.isTimerRunning ? .red : .green)
+            }
+        }
+    }
+}
+
+// ── Network effect with dependency injection ──────────────────
+struct User: Equatable { let id: Int; let name: String }
+
+struct UserClient {
+    var fetchUsers: () async throws -&gt; [User]
+}
+
+extension UserClient: DependencyKey {
+    static let liveValue = UserClient(
+        fetchUsers: { [] }   // replace with real URLSession call
+    )
+    static let testValue = UserClient(
+        fetchUsers: { [User(id: 1, name: "Test")] }
+    )
+}
+
+extension DependencyValues {
+    var userClient: UserClient {
+        get { self[UserClient.self] }
+        set { self[UserClient.self] = newValue }
+    }
+}
+
+@Reducer
+struct UsersFeature {
+    struct State: Equatable {
+        var users: [User] = []
+        var isLoading = false
+        var errorMessage: String?
+    }
+
+    enum Action {
+        case onAppear
+        case usersResponse(Result&lt;[User], Error&gt;)
+    }
+
+    @Dependency(\.userClient) var userClient    // injected — no constructor arg needed
+
+    var body: some ReducerOf&lt;Self&gt; {
+        Reduce { state, action in
+            switch action {
+            case .onAppear:
+                state.isLoading = true
+                return .run { send in
+                    await send(.usersResponse(
+                        Result { try await userClient.fetchUsers() }
+                    ))
+                }
+
+            case .usersResponse(.success(let users)):
+                state.isLoading = false
+                state.users = users
+                return .none
+
+            case .usersResponse(.failure(let error)):
+                state.isLoading = false
+                state.errorMessage = error.localizedDescription
+                return .none
+            }
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is unidirectional data flow and how does TCA implement it?</strong></p>
+
+<p>A: Unidirectional data flow means state can only flow in one direction: state → view (read), view → action (send), action → reducer (mutation), reducer → effect (side effect), effect result → action. There is no bidirectional binding and no direct state mutation from the view. TCA enforces this by making <code>State</code> a value type, mutations only possible inside the <code>Reducer</code>, and all async work returned as <code>Effect</code> values. This makes every state transition explicit, traceable, and reproducible — you can replay any sequence of actions and always arrive at the same state.</p>
+
+<p><em></em>Q: What is the role of <code>Effect</code> in TCA?<em></em></p>
+
+<p>A: <code>Effect</code> represents async work that the Reducer cannot do directly (networking, timers, persistence). Reducers are pure functions — they cannot call <code>await</code> or perform side effects. Instead, they return an <code>Effect&lt;Action&gt;</code> value describing what work to do. The <code>Store</code> executes these effects, and when they produce results, feeds them back as new <code>Action</code> values into the Reducer. This keeps the Reducer pure and all side effects explicit, observable, and cancellable.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How does TCA's <code>TestStore</code> provide stronger test guarantees than injecting a mock into a ViewModel?<em></em></p>
+
+<p>A: A <code>TestStore</code> requires you to account for every action sent and every action received from effects. If a test sends <code>.loadButtonTapped</code> and the Reducer returns an effect that fires <code>.usersLoaded([...])</code>, you must explicitly handle that with <code>store.receive(.usersLoaded([...]))</code> and assert the resulting state mutation. Any unhandled action fails the test. This means you cannot accidentally ignore state changes — the test will catch them. With a ViewModel + mock, tests only check the properties you assert — if the ViewModel changes an additional property you didn't check, the test passes silently. TCA's <code>TestStore</code> is <strong>exhaustive</strong> by default; MVVM tests are asserting specific outcomes only.</p>
+
+<p><strong>Q: How does TCA handle navigation between screens?</strong></p>
+
+<p>A: Navigation in TCA is <strong>state-driven</strong>: a parent feature's <code>State</code> contains an optional child feature <code>State</code> (for sheet/popover) or an enum of possible destinations. When the optional is non-nil, the destination is presented; when set to nil, it is dismissed. Navigation actions (<code>.destinationPresented</code>, <code>.destinationDismissed</code>) trigger state mutations. The <code>Store</code> is scoped to the child feature via <code>.scope(state:action:)</code>. This approach means navigation is fully testable — asserting that a button tap sets <code>state.destination = .some(ChildFeature.State())</code> is a plain equality assertion.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you incrementally adopt TCA in an existing MVC/MVVM codebase?</strong></p>
+
+<p>A: Incrementally, feature by feature: (1) Identify a new feature or a high-churn existing feature. (2) Build it as a TCA <code>Reducer</code> with <code>State</code>, <code>Action</code>, and <code>Effect</code>. (3) Present it from the existing UIKit coordinator using <code>UIHostingController(rootView: TCAFeatureView(store: store))</code>. The existing code outside this feature remains unchanged. (4) When navigating from the TCA feature to a legacy UIKit screen, use the Router/Coordinator pattern — the TCA feature's Reducer sets a navigation flag, an <code>Effect</code> calls a callback on the Coordinator, and the Coordinator performs the UIKit push. (5) Gradually expand the TCA surface while retiring MVC/MVVM screens. The key integration points: <code>UIHostingController</code> to embed SwiftUI TCA views in UIKit, and callback effects to cross the TCA/UIKit boundary for navigation.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Reducer becomes very large for a complex feature.</strong></p>
+
+<p>Solution: Decompose using <code>Scope</code> and child reducers. Extract sub-domains (e.g., a form, a list, a filter panel) into their own <code>Reducer</code> types and combine with <code>Scope(state:action:) { ChildReducer() }</code>. TCA's composition model is designed for this.</p>
+
+<p><em></em>Issue: <code>TestStore</code> fails because an effect fires an unexpected action.<em></em></p>
+
+<p>Solution: Use <code>store.exhaustivity = .off</code> for a specific test to make it non-exhaustive, or account for all actions explicitly. The exhaustive mode is intentional — it makes your tests catch unintended state changes. Fix the test to handle all actions, or scope the store to just the sub-feature being tested.</p>
+
+<p><strong>Issue: State struct is too large — every view re-renders on any state change.</strong></p>
+
+<p>Solution: Use <code>observe:</code> in <code>WithViewStore</code> to extract only the slice of state the View reads: <code>WithViewStore(store, observe: { $0.items })</code>. The view re-renders only when <code>items</code> changes, not when unrelated state mutates.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="mvp-viper.md">MVP &amp; VIPER</a> — VIPER's Clean Architecture foundation, which TCA also applies</li>
+<li><a href="mvvm.md">MVVM</a> — the simpler alternative for most apps</li>
+<li><a href="dependency-injection.md">Dependency Injection</a> — TCA's @Dependency system</li>
+<li><a href="../03-concurrency/async-await.md">async/await</a> — TCA Effects use structured concurrency internally</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

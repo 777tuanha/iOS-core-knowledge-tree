@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Modularization — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../06-architecture/index.html">Architecture</a></span>
+    <span>Modularization</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html" class="active">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="modularization">Modularization</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Modularization is the practice of splitting a monolithic iOS app into separate, independently buildable units — <strong>modules</strong> — each owning a well-defined slice of functionality or shared infrastructure. As iOS apps grow, a single-module monolith produces long build times, tight coupling, large teams blocked on each other, and impossible-to-test boundaries. Modularization with Swift Package Manager (SPM) creates hard dependency boundaries, dramatically improves incremental build times, enables parallel development, and makes each module independently testable and releasable.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a large city where every building is physically connected to every other building — if one building renovates, the whole city is blocked. Modularization is like zoning the city into independent districts (modules): a residential district, a commercial district, a transit hub. Each district has clear boundaries and defined roads in and out (public interfaces). Renovating one district doesn't block the others. The transit hub (shared core) is shared by all districts but owned by nobody.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="why-modularize">Why Modularize?</h3>
+
+<table>
+<tr><td>Problem (Monolith)</td><td>Solution (Modules)</td></tr>
+<tr><td>10-minute full build</td><td>Each module builds independently; clean builds hit cache</td></tr>
+<tr><td>One change breaks unrelated features</td><td>Explicit import boundaries; compile errors catch leakage</td></tr>
+<tr><td>Can't test a feature without the whole app</td><td>Feature module has its own test target</td></tr>
+<tr><td>Large team — merge conflicts everywhere</td><td>Teams own separate packages; no shared file churn</td></tr>
+<tr><td>Feature can't be reused in another app</td><td>Module is a standalone package</td></tr>
+<tr><td>Long Xcode project file</td><td>Each module has its own <code>Package.swift</code></td></tr>
+</table>
+
+<h3 id="module-types">Module Types</h3>
+
+<table>
+<tr><td>Type</td><td>Description</td><td>Examples</td></tr>
+<tr><td><strong>Feature module</strong></td><td>One user-facing feature, vertical slice (UI + logic)</td><td><code>FeedFeature</code>, <code>AuthFeature</code>, <code>ProfileFeature</code></td></tr>
+<tr><td><strong>Domain module</strong></td><td>Pure business logic, entities, use cases — no UI</td><td><code>FeedDomain</code>, <code>AuthDomain</code></td></tr>
+<tr><td><strong>Data module</strong></td><td>Networking, persistence, external services</td><td><code>NetworkKit</code>, <code>DatabaseKit</code></td></tr>
+<tr><td><strong>Core module</strong></td><td>Shared utilities used by all features</td><td><code>DesignSystem</code>, <code>Analytics</code>, <code>Logger</code></td></tr>
+<tr><td><strong>App module</strong></td><td>Top-level app target — wires everything together</td><td>The Xcode project <code>.app</code> target</td></tr>
+</table>
+
+<h3 id="layered-architecture">Layered Architecture</h3>
+
+<pre><code>┌─────────────────────────────────┐
+│           App Target            │  (composition root — wires modules)
+├─────────────────────────────────┤
+│  Feature Modules                │  FeedFeature  AuthFeature  ProfileFeature
+│  (depend on Domain + Core)      │
+├─────────────────────────────────┤
+│  Domain Modules                 │  FeedDomain  AuthDomain
+│  (depend on Data + Core)        │
+├─────────────────────────────────┤
+│  Data Modules                   │  NetworkKit  DatabaseKit  KeychainKit
+│  (depend on Core only)          │
+├─────────────────────────────────┤
+│  Core Modules                   │  DesignSystem  Analytics  Logger  Extensions
+│  (no internal dependencies)     │
+└─────────────────────────────────┘</code></pre>
+
+<p>Dependencies flow <strong>downward only</strong> — upper layers depend on lower layers; lower layers never import upper layers. Violating this (a Domain importing a Feature) creates circular dependencies that SPM will reject at compile time.</p>
+
+<h3 id="swift-package-manager-modularization">Swift Package Manager Modularization</h3>
+
+<p>Each module is a Swift Package (or a local package referenced from the Xcode project):</p>
+
+<pre><code>MyApp/
+├── MyApp.xcodeproj
+├── Packages/
+│   ├── FeedFeature/
+│   │   ├── Package.swift
+│   │   └── Sources/FeedFeature/
+│   ├── NetworkKit/
+│   │   ├── Package.swift
+│   │   └── Sources/NetworkKit/
+│   └── DesignSystem/
+│       ├── Package.swift
+│       └── Sources/DesignSystem/
+└── App/  (main Xcode target)</code></pre>
+
+<p><code>Package.swift</code> for a feature module:</p>
+<pre><code class="language-swift">// swift-tools-version:5.9
+.package(name: "FeedFeature", products: [
+    .library(name: "FeedFeature", targets: ["FeedFeature"])
+], dependencies: [
+    .package(path: "../NetworkKit"),
+    .package(path: "../DesignSystem"),
+    .package(path: "../FeedDomain"),
+], targets: [
+    .target(
+        name: "FeedFeature",
+        dependencies: ["NetworkKit", "DesignSystem", "FeedDomain"]
+    ),
+    .testTarget(
+        name: "FeedFeatureTests",
+        dependencies: ["FeedFeature"]
+    )
+])</code></pre>
+
+<h3 id="access-control-as-module-api">Access Control as Module API</h3>
+
+<p>Swift's access control defines a module's public API:</p>
+<ul>
+<li><code>public</code> / <code>open</code>: part of the module's API — intentionally visible</li>
+<li><code>internal</code>: implementation detail — invisible to importers</li>
+<li><code>private</code> / <code>fileprivate</code>: within the file/type</li>
+</ul>
+
+<p>A tight public API surface reduces coupling and communicates intent. Design modules with minimal public surfaces — expose protocols, not concrete types.</p>
+
+<h3 id="module-boundaries-and-protocols">Module Boundaries and Protocols</h3>
+
+<p>At module boundaries, depend on protocols not concrete types:</p>
+
+<pre><code class="language-swift">// NetworkKit module
+public protocol NetworkClientProtocol {
+    func fetch&lt;T: Decodable&gt;(_ type: T.Type, from url: URL) async throws -&gt; T
+}
+
+// FeedDomain module — imports NetworkKit, depends on protocol
+import NetworkKit
+public class FeedRepository {
+    private let client: NetworkClientProtocol
+    public init(client: NetworkClientProtocol) { self.client = client }
+}</code></pre>
+
+<p>The concrete <code>URLSessionNetworkClient</code> is an internal implementation detail of <code>NetworkKit</code>.</p>
+
+<h3 id="monolith-vs-modular">Monolith vs Modular</h3>
+
+<table>
+<tr><td></td><td>Monolith</td><td>Modular</td></tr>
+<tr><td>Build time</td><td>Grows linearly</td><td>Incremental per-module</td></tr>
+<tr><td>Team scalability</td><td>Difficult (shared files)</td><td>Natural (per-module ownership)</td></tr>
+<tr><td>Feature reuse</td><td>Hard (implicit deps)</td><td>Easy (explicit imports)</td></tr>
+<tr><td>Test isolation</td><td>Hard</td><td>Easy (each module has tests)</td></tr>
+<tr><td>Initial setup</td><td>Low</td><td>Higher</td></tr>
+<tr><td>Complexity</td><td>Low</td><td>Medium-High</td></tr>
+</table>
+
+<p><strong>Rule</strong>: Start modular as soon as you have 2+ teams or 3+ features with shared code. Don't modularize a solo 1-screen prototype.</p>
+
+<h3 id="preview-providers-in-modular-apps">Preview Providers in Modular Apps</h3>
+
+<p>Each feature module can provide SwiftUI preview content without depending on the app target:</p>
+
+<pre><code class="language-swift">// Inside FeedFeature module
+#Preview {
+    FeedView(viewModel: FeedViewModel(service: MockFeedService()))
+}</code></pre>
+
+<p><code>MockFeedService</code> lives in the feature module's test utilities, making previews self-contained.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ─────────────────────────────────────────────────────────────
+// NetworkKit — Core data module
+// Package.swift targets: NetworkKit, NetworkKitMocks
+// ─────────────────────────────────────────────────────────────
+
+// Sources/NetworkKit/NetworkClientProtocol.swift
+import Foundation
+
+public protocol NetworkClientProtocol {
+    func fetch&lt;T: Decodable&gt;(_ type: T.Type, from url: URL) async throws -&gt; T
+}
+
+// Sources/NetworkKit/URLSessionNetworkClient.swift
+import Foundation
+
+public final class URLSessionNetworkClient: NetworkClientProtocol {
+    private let session: URLSession
+    private let decoder: JSONDecoder
+
+    public init(session: URLSession = .shared, decoder: JSONDecoder = .init()) {
+        self.session = session
+        self.decoder = decoder
+    }
+
+    public func fetch&lt;T: Decodable&gt;(_ type: T.Type, from url: URL) async throws -&gt; T {
+        let (data, _) = try await session.data(from: url)
+        return try decoder.decode(T.self, from: data)
+    }
+}
+
+// Sources/NetworkKitMocks/MockNetworkClient.swift   (test helper, separate target)
+import NetworkKit
+
+public final class MockNetworkClient: NetworkClientProtocol {
+    public var stubbedData: Any?
+    public var stubbedError: Error?
+    public init() {}
+
+    public func fetch&lt;T: Decodable&gt;(_ type: T.Type, from url: URL) async throws -&gt; T {
+        if let error = stubbedError { throw error }
+        return stubbedData as! T
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// FeedDomain — Domain module
+// ─────────────────────────────────────────────────────────────
+
+// Sources/FeedDomain/FeedPost.swift
+public struct FeedPost: Identifiable, Decodable, Equatable {
+    public let id: Int
+    public let title: String
+    public let body: String
+    public init(id: Int, title: String, body: String) {
+        self.id = id; self.title = title; self.body = body
+    }
+}
+
+// Sources/FeedDomain/FeedRepositoryProtocol.swift
+public protocol FeedRepositoryProtocol {
+    func fetchPosts() async throws -&gt; [FeedPost]
+}
+
+// Sources/FeedDomain/FeedRepository.swift
+import NetworkKit
+
+public final class FeedRepository: FeedRepositoryProtocol {
+    private let client: NetworkClientProtocol
+
+    public init(client: NetworkClientProtocol) { self.client = client }
+
+    public func fetchPosts() async throws -&gt; [FeedPost] {
+        let url = URL(string: "https://jsonplaceholder.typicode.com/posts")!
+        return try await client.fetch([FeedPost].self, from: url)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// FeedFeature — Feature module (UI layer)
+// ─────────────────────────────────────────────────────────────
+
+import SwiftUI
+import FeedDomain
+
+@MainActor
+public final class FeedViewModel: ObservableObject {
+    @Published public private(set) var posts: [FeedPost] = []
+    @Published public private(set) var isLoading = false
+
+    private let repository: FeedRepositoryProtocol
+
+    public init(repository: FeedRepositoryProtocol) {
+        self.repository = repository
+    }
+
+    public func onAppear() async {
+        isLoading = true
+        defer { isLoading = false }
+        posts = (try? await repository.fetchPosts()) ?? []
+    }
+}
+
+public struct FeedView: View {
+    @StateObject private var vm: FeedViewModel
+
+    public init(repository: FeedRepositoryProtocol) {
+        _vm = StateObject(wrappedValue: FeedViewModel(repository: repository))
+    }
+
+    public var body: some View {
+        List(vm.posts) { post in
+            VStack(alignment: .leading) {
+                Text(post.title).font(.headline)
+                Text(post.body).font(.subheadline).lineLimit(2)
+            }
+        }
+        .task { await vm.onAppear() }
+        .overlay { if vm.isLoading { ProgressView() } }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// App target — composition root
+// ─────────────────────────────────────────────────────────────
+import FeedFeature
+import FeedDomain
+import NetworkKit
+
+// @main
+struct MyApp: App {
+    // Compose dependencies at the root
+    private let networkClient = URLSessionNetworkClient()
+
+    var body: some Scene {
+        WindowGroup {
+            FeedView(repository: FeedRepository(client: networkClient))
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the main motivation for modularizing an iOS app?</strong></p>
+
+<p>A: The primary motivations are <strong>build time</strong> and <strong>team scalability</strong>. In a monolith, every change triggers a rebuild of all code. With modules, only the changed module and its dependents rebuild — dramatically reducing incremental build times for large codebases. Team scalability: different teams or engineers own separate modules, preventing merge conflicts and allowing parallel development. Additional benefits: modules create hard dependency boundaries (a module cannot accidentally import another), enable independent testing (each module has its own test target), and allow feature reuse across multiple apps.</p>
+
+<p><strong>Q: What is the difference between a feature module and a core module?</strong></p>
+
+<p>A: A <strong>feature module</strong> is a vertical slice of a user-facing feature — it contains the UI, ViewModel, and feature-specific logic for one piece of user-visible functionality (e.g., <code>AuthFeature</code>, <code>FeedFeature</code>). Feature modules depend on domain and core modules but never on other feature modules. A <strong>core module</strong> is horizontal infrastructure shared by all features — utilities, design systems, analytics wrappers, logging, extensions. Core modules have no dependencies on feature or domain modules (they sit at the bottom of the dependency graph). The distinction ensures shared code is only in one place and feature modules remain independent.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does Swift's access control enforce module API boundaries?</strong></p>
+
+<p>A: Swift has five access levels: <code>open</code>, <code>public</code>, <code>package</code> (Swift 5.9+), <code>internal</code>, and <code>private</code>/<code>fileprivate</code>. <code>public</code> and <code>open</code> are the module's public API — visible to any importer. <code>internal</code> is the default — visible within the module only, invisible to importers. This means a module author explicitly chooses what becomes API. A <code>public protocol</code> defines a contract; a <code>class</code> that implements it can remain <code>internal</code>, hiding the implementation from consumers. <code>package</code> access (Swift 5.9) allows visibility within the same package (across targets in one <code>Package.swift</code>) without exposing to external importers — useful for sharing implementation details between related targets like <code>FeedDomain</code> and <code>FeedDomainTests</code>.</p>
+
+<p><strong>Q: What are the risks of a poorly designed modular dependency graph?</strong></p>
+
+<p>A: (1) <strong>Circular dependencies</strong>: Module A imports B, B imports A — SPM rejects this at build time. This usually signals that shared code should be extracted to a common module C. (2) <strong>God modules</strong>: A <code>CoreKit</code> that grows to include everything becomes a second monolith — every change rebuilds all dependents. Prefer many small, focused core modules. (3) <strong>Leaked abstractions</strong>: A module exposes internal types (concrete classes instead of protocols) — consumers become tightly coupled to implementation details. (4) <strong>Over-modularization</strong>: Splitting a 5-file feature into 5 modules creates overhead without benefit. Modules should be sized around team ownership and feature boundaries, not individual files. (5) <strong>Diamond dependencies</strong>: A depends on B and C; both B and C depend on D at different versions — SPM resolves this to one version, but incompatible APIs can cause subtle issues.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design the module structure for a large e-commerce iOS app with 10 features and a team of 15 engineers.</strong></p>
+
+<p>A: (1) <strong>Core layer</strong> (owned by platform team): <code>DesignSystem</code> (UI components, colors, fonts), <code>NetworkKit</code> (URLSession wrapper + protocols), <code>DatabaseKit</code> (CoreData/SQLite abstraction), <code>AnalyticsKit</code> (event tracking protocol + Firebase impl), <code>AuthKit</code> (token storage, auth state). (2) <strong>Domain layer</strong> (owned by feature teams): <code>CatalogDomain</code>, <code>CartDomain</code>, <code>OrdersDomain</code>, <code>UserProfileDomain</code> — pure business logic, entities, use cases; depend on <code>NetworkKit</code> and <code>DatabaseKit</code> protocols only. (3) <strong>Feature layer</strong> (owned by squads, one squad per 2–3 features): <code>CatalogFeature</code>, <code>CartFeature</code>, <code>CheckoutFeature</code>, <code>OrderHistoryFeature</code>, <code>ProfileFeature</code>, <code>SearchFeature</code>, <code>WishlistFeature</code>, <code>AuthFeature</code>, <code>NotificationsFeature</code>, <code>ReviewsFeature</code>. (4) <strong>App target</strong>: Composition root — imports all feature modules, creates <code>AppDependencies.live</code>, passes to root coordinator. Feature flags determine which features are shown. Build time is 2-5 minutes for full clean build but 15-30 seconds for incremental changes in one feature.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Circular dependency between two modules.</strong></p>
+
+<p>Solution: Extract the shared protocol or type into a third module that both depend on. Example: <code>FeedFeature</code> and <code>ProfileFeature</code> both need <code>UserModel</code> — create a <code>SharedModels</code> module.</p>
+
+<p><strong>Issue: Long full clean build even after modularization.</strong></p>
+
+<p>Solution: Ensure modules don't have excessive transitive dependencies. Profile with <code>xcodebuild -showBuildTimingSummary</code>. Consider splitting large modules, improving parallelism by reducing serial dependency chains, and enabling explicit module builds in Xcode.</p>
+
+<p><strong>Issue: Xcode previews fail in a feature module.</strong></p>
+
+<p>Solution: The preview tries to instantiate objects that require app-level setup (e.g., environment objects, a database that's not initialised). Move the preview to use mock data from a <code>TestMocks</code> target included in the module. Ensure all preview dependencies are self-contained within the feature module.</p>
+
+<p><strong>Issue: Team confusion about what belongs in a module.</strong></p>
+
+<p>Solution: Define and document the <strong>one-sentence purpose</strong> for each module. If a piece of code doesn't fit the purpose, it belongs elsewhere. Create a <code>MODULES.md</code> at the repo root listing each module, its purpose, its owners, and its allowed dependencies.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="dependency-injection.md">Dependency Injection</a> — DI at module boundaries; composition root in the app target</li>
+<li><a href="solid-principles.md">SOLID Principles</a> — SOLID at the module level (SRP, OCP, DIP)</li>
+<li><a href="mvp-viper.md">MVP &amp; VIPER</a> — VIPER modules align well with SPM modules</li>
+<li><a href="tca.md">The Composable Architecture</a> — TCA features compose across module boundaries</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VIP — Clean Swift Architecture — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../06-architecture/index.html">Architecture</a></span>
+    <span>Vip Clean Swift</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html" class="active">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="vip--clean-swift-architecture">VIP — Clean Swift Architecture</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>VIP (View-Interactor-Presenter) is the iOS architecture pattern introduced by Raymond Law as <strong>Clean Swift</strong>. It applies Robert Martin's Clean Architecture to individual UIKit scenes, creating a <strong>unidirectional data flow</strong> cycle: the View sends requests to the Interactor, the Interactor processes them and sends responses to the Presenter, and the Presenter formats them into view models that are displayed by the View. Unlike VIPER, VIP has no central Presenter-owned Router — each scene has its own <code>Router</code> object responsible for navigation and data passing. VIP is UIKit-native, fully protocol-driven, and generates every layer from Xcode templates.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of a restaurant with a very strict workflow. The customer (View) can only talk to the waiter (Interactor) — they submit an order. The waiter goes to the kitchen, does the cooking (business logic), and passes the finished plate to the plating station (Presenter). The plating station arranges the food nicely on a plate (view model) and sends it back to the customer's table (View). The customer never goes to the kitchen, and the kitchen never comes to the table. The path is always: View → Interactor → Presenter → View. Circular, strict, one direction.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="vip-vs-viper">VIP vs VIPER</h3>
+
+<p>Both apply Clean Architecture, but with key differences:</p>
+
+<table>
+<tr><td>Dimension</td><td>VIP (Clean Swift)</td><td>VIPER</td></tr>
+<tr><td>Data flow</td><td>Unidirectional cycle (V→I→P→V)</td><td>Bidirectional (Presenter mediates V↔I)</td></tr>
+<tr><td>Navigation</td><td>Router: owned by ViewController</td><td>Router: owned by Presenter</td></tr>
+<tr><td>Who holds what</td><td>VC holds Interactor; Interactor holds Presenter; Presenter holds VC (weak)</td><td>Presenter holds View (weak) and Interactor</td></tr>
+<tr><td>Scene ownership</td><td>Each VC has its own VIP cycle</td><td>Presenter coordinates all layers</td></tr>
+<tr><td>Code generation</td><td>Xcode templates (cleanswift.com)</td><td>Custom or manual</td></tr>
+<tr><td>Coupling</td><td>Very low — strict protocol boundaries</td><td>Low — also protocol-driven</td></tr>
+</table>
+
+<h3 id="the-vip-cycle">The VIP Cycle</h3>
+
+<pre><code>┌─────────────────────────────────────────────────────┐
+│                      Scene                          │
+│                                                     │
+│  ViewController ──Request──▶ Interactor             │
+│       ▲                          │                  │
+│       │                       Response              │
+│    ViewModel                     │                  │
+│       │                          ▼                  │
+│  Presenter ◀──────────── Presenter                  │
+│  (formats response → ViewModel → display)           │
+└─────────────────────────────────────────────────────┘</code></pre>
+
+<h3 id="layer-responsibilities">Layer Responsibilities</h3>
+
+<p><strong>ViewController (View)</strong>:</p>
+<ul>
+<li>Implements <code>DisplayLogic</code> protocol</li>
+<li>Calls <code>interactor.doSomething(request:)</code> on user events</li>
+<li>Receives <code>displaySomething(viewModel:)</code> calls from Presenter</li>
+<li>No business logic, no data formatting</li>
+</ul>
+
+<p><strong>Interactor</strong>:</p>
+<ul>
+<li>Implements <code>BusinessLogic</code> protocol</li>
+<li>Performs use-case logic: calls workers/services, applies business rules</li>
+<li>Passes <code>Response</code> objects to the Presenter</li>
+<li>No UIKit, no formatting, no knowledge of how data will be displayed</li>
+</ul>
+
+<p><strong>Presenter</strong>:</p>
+<ul>
+<li>Implements <code>PresentationLogic</code> protocol</li>
+<li>Receives <code>Response</code> from Interactor, formats it into <code>ViewModel</code></li>
+<li>Calls <code>viewController?.displaySomething(viewModel:)</code></li>
+<li>No UIKit layout code, no business logic</li>
+<li>Holds a <strong>weak</strong> reference to the ViewController (to break the cycle)</li>
+</ul>
+
+<p><strong>Router</strong>:</p>
+<ul>
+<li>Implements <code>RoutingLogic</code> and <code>DataPassing</code> protocols</li>
+<li>Navigates to other scenes and passes data between them</li>
+<li>Holds a weak reference to the ViewController</li>
+<li>Is the only layer that creates the next scene's <code>Configurator</code></li>
+</ul>
+
+<p><strong>Models (Request / Response / ViewModel)</strong>:</p>
+<ul>
+<li>Plain structs, one set per use case</li>
+<li><code>Request</code>: data from ViewController to Interactor (e.g., user input)</li>
+<li><code>Response</code>: data from Interactor to Presenter (e.g., raw model data)</li>
+<li><code>ViewModel</code>: data from Presenter to ViewController (e.g., formatted strings)</li>
+</ul>
+
+<p><strong>Configurator / Scene</strong>:</p>
+<ul>
+<li>Wires all five layers together</li>
+<li>Usually a <code>static func createScene()</code> or a <code>configure(viewController:)</code> method</li>
+</ul>
+
+<h3 id="data-flow-per-use-case">Data Flow Per Use Case</h3>
+
+<p>Every user action follows the same path:</p>
+
+<pre><code>1. User taps "Load Feed"
+2. VC calls interactor.fetchFeed(request: FetchFeed.Request())
+3. Interactor fetches data, creates FetchFeed.Response(posts: [...])
+4. Interactor calls presenter.presentFeed(response:)
+5. Presenter formats: FetchFeed.ViewModel(rows: [Row(title: "...")])
+6. Presenter calls viewController?.displayFeed(viewModel:)
+7. VC updates table with viewModel.rows</code></pre>
+
+<p>All data passed between layers is via <strong>value types</strong> (structs). Layers never share references.</p>
+
+<h3 id="protocol-structure-per-scene">Protocol Structure (per scene)</h3>
+
+<pre><code class="language-swift">// VC → Interactor
+protocol FeedBusinessLogic {
+    func fetchFeed(request: FeedModels.FetchFeed.Request)
+}
+
+// Interactor → Presenter
+protocol FeedPresentationLogic {
+    func presentFeed(response: FeedModels.FetchFeed.Response)
+    func presentError(response: FeedModels.ShowError.Response)
+}
+
+// Presenter → VC
+protocol FeedDisplayLogic: AnyObject {
+    func displayFeed(viewModel: FeedModels.FetchFeed.ViewModel)
+    func displayError(viewModel: FeedModels.ShowError.ViewModel)
+}
+
+// Router
+protocol FeedRoutingLogic {
+    func routeToDetail()
+}
+
+protocol FeedDataPassing {
+    var dataStore: FeedDataStore? { get }
+}</code></pre>
+
+<h3 id="data-passing-between-scenes">Data Passing Between Scenes</h3>
+
+<p>VIP uses a <strong>DataStore</strong> protocol on the Interactor to hold data that needs to be passed to the next scene. The Router reads from the current scene's <code>DataStore</code> and writes to the destination scene's <code>DataStore</code>:</p>
+
+<pre><code class="language-swift">protocol FeedDataStore {
+    var selectedPost: Post? { get set }
+}
+
+class FeedRouter: FeedRoutingLogic, FeedDataPassing {
+    weak var viewController: FeedViewController?
+    var dataStore: FeedDataStore?
+
+    func routeToDetail() {
+        let dest = PostDetailViewController()
+        var destDS = dest.router?.dataStore
+        passDataToDetail(source: dataStore!, destination: &amp;destDS)
+        viewController?.navigationController?.pushViewController(dest, animated: true)
+    }
+
+    private func passDataToDetail(
+        source: FeedDataStore,
+        destination: inout PostDetailDataStore?
+    ) {
+        destination?.post = source.selectedPost
+    }
+}</code></pre>
+
+<p>This eliminates the need to pass data through segues or init parameters across scenes.</p>
+
+<h3 id="testability">Testability</h3>
+
+<p>VIP's strict protocol boundaries make each layer independently testable:</p>
+<ul>
+<li>Test the <strong>Interactor</strong> by calling business logic methods and asserting <code>presenter.presentX(response:)</code> was called with expected values.</li>
+<li>Test the <strong>Presenter</strong> by passing a <code>Response</code> and asserting the <code>viewController.displayX(viewModel:)</code> was called with correctly formatted values.</li>
+<li>Test the <strong>ViewController</strong> by calling <code>displayX(viewModel:)</code> and asserting UI state.</li>
+</ul>
+
+<p>Each test mocks only the adjacent layer's protocol.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – Models (value types, grouped by use case)
+// ─────────────────────────────────────────────────────────────
+
+struct Post { let id: Int; let title: String; let body: String }
+
+enum FeedModels {
+    enum FetchFeed {
+        struct Request {}                                     // VC → Interactor (no params needed)
+        struct Response { let posts: [Post]; let error: Error? }  // Interactor → Presenter
+        struct ViewModel {
+            struct Row { let title: String; let summary: String }
+            let rows: [Row]
+            let errorMessage: String?
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – Protocols
+// ─────────────────────────────────────────────────────────────
+
+protocol FeedBusinessLogic {
+    func fetchFeed(request: FeedModels.FetchFeed.Request)
+}
+
+protocol FeedDataStore {
+    var selectedPost: Post? { get set }
+}
+
+protocol FeedPresentationLogic {
+    func presentFeed(response: FeedModels.FetchFeed.Response)
+}
+
+protocol FeedDisplayLogic: AnyObject {
+    func displayFeed(viewModel: FeedModels.FetchFeed.ViewModel)
+}
+
+protocol FeedRoutingLogic {
+    func routeToPostDetail()
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – Interactor (business logic + data store)
+// ─────────────────────────────────────────────────────────────
+
+class FeedInteractor: FeedBusinessLogic, FeedDataStore {
+    var presenter: FeedPresentationLogic?
+    var worker: FeedWorker = FeedWorker()
+
+    // DataStore — holds data for inter-scene passing
+    var selectedPost: Post?
+
+    func fetchFeed(request: FeedModels.FetchFeed.Request) {
+        worker.fetchPosts { [weak self] result in
+            switch result {
+            case .success(let posts):
+                self?.presenter?.presentFeed(
+                    response: .init(posts: posts, error: nil)
+                )
+            case .failure(let error):
+                self?.presenter?.presentFeed(
+                    response: .init(posts: [], error: error)
+                )
+            }
+        }
+    }
+}
+
+// Worker — handles external service calls (keeps Interactor focused on logic)
+class FeedWorker {
+    func fetchPosts(completion: @escaping (Result&lt;[Post], Error&gt;) -&gt; Void) {
+        // URLSession or service call here
+        completion(.success([
+            Post(id: 1, title: "Hello VIP", body: "Clean architecture is satisfying.")
+        ]))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – Presenter (formats Response → ViewModel)
+// ─────────────────────────────────────────────────────────────
+
+class FeedPresenter: FeedPresentationLogic {
+    weak var viewController: FeedDisplayLogic?   // weak — breaks the cycle
+
+    func presentFeed(response: FeedModels.FetchFeed.Response) {
+        if let error = response.error {
+            let vm = FeedModels.FetchFeed.ViewModel(rows: [], errorMessage: error.localizedDescription)
+            viewController?.displayFeed(viewModel: vm)
+            return
+        }
+        // Format raw Post into display rows
+        let rows = response.posts.map { post in
+            FeedModels.FetchFeed.ViewModel.Row(
+                title: post.title.capitalized,              // formatting lives here — not in VC
+                summary: String(post.body.prefix(80))
+            )
+        }
+        let vm = FeedModels.FetchFeed.ViewModel(rows: rows, errorMessage: nil)
+        viewController?.displayFeed(viewModel: vm)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – ViewController (display logic only)
+// ─────────────────────────────────────────────────────────────
+
+class FeedViewController: UIViewController, FeedDisplayLogic {
+    var interactor: FeedBusinessLogic?
+    var router: (FeedRoutingLogic &amp; FeedDataPassing)?  // optional: only navigation logic
+
+    private var displayedRows: [FeedModels.FetchFeed.ViewModel.Row] = []
+    private let tableView = UITableView()
+
+    // MARK: – Lifecycle
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupTableView()
+        fetchFeed()
+    }
+
+    // MARK: – VIP Input (user actions → Interactor)
+    private func fetchFeed() {
+        interactor?.fetchFeed(request: .init())  // send Request — no data needed here
+    }
+
+    // MARK: – VIP Output (Presenter calls → update UI)
+    func displayFeed(viewModel: FeedModels.FetchFeed.ViewModel) {
+        DispatchQueue.main.async { [weak self] in
+            if let error = viewModel.errorMessage {
+                self?.showError(message: error)
+                return
+            }
+            self?.displayedRows = viewModel.rows
+            self?.tableView.reloadData()
+        }
+    }
+
+    private func showError(message: String) {
+        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func setupTableView() {
+        tableView.frame = view.bounds
+        tableView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Cell")
+        tableView.dataSource = self
+        view.addSubview(tableView)
+    }
+}
+
+extension FeedViewController: UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -&gt; Int {
+        displayedRows.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -&gt; UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
+        let row = displayedRows[indexPath.row]
+        var config = UIListContentConfiguration.subtitleCell()
+        config.text = row.title
+        config.secondaryText = row.summary
+        cell.contentConfiguration = config
+        return cell
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – Router
+// ─────────────────────────────────────────────────────────────
+
+class FeedRouter: FeedRoutingLogic, FeedDataPassing {
+    weak var viewController: FeedViewController?
+    var dataStore: FeedDataStore?
+
+    func routeToPostDetail() {
+        // Create destination, pass data via DataStore
+        // viewController?.navigationController?.push(...)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – Scene Configurator (wires all layers together)
+// ─────────────────────────────────────────────────────────────
+
+extension FeedViewController {
+    func configure() {
+        let interactor = FeedInteractor()
+        let presenter = FeedPresenter()
+        let router = FeedRouter()
+
+        // Wire the cycle
+        self.interactor = interactor       // VC → Interactor (strong)
+        interactor.presenter = presenter   // Interactor → Presenter (strong)
+        presenter.viewController = self    // Presenter → VC (WEAK — breaks cycle)
+        self.router = router
+        router.viewController = self
+        router.dataStore = interactor
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the VIP cycle and how does data flow through it?</strong></p>
+
+<p>A: VIP stands for View-Interactor-Presenter, representing a strict unidirectional cycle. (1) The <strong>View</strong> (UIViewController) receives a user event and packages it into a <code>Request</code> struct, calling a method on the <strong>Interactor</strong>. (2) The <strong>Interactor</strong> contains the business logic — it fetches data, applies rules, and packages the result into a <code>Response</code> struct, calling a method on the <strong>Presenter</strong>. (3) The <strong>Presenter</strong> formats the <code>Response</code> into a <code>ViewModel</code> (display-ready strings, booleans) and calls a <code>display...</code> method on the <strong>View</strong>. The cycle is always V→I→P→V. No layer skips a step or communicates backward.</p>
+
+<p><strong>Q: How does VIP differ from VIPER?</strong></p>
+
+<p>A: Both use the same Clean Architecture layers, but their data flow and ownership differ. VIPER has the <strong>Presenter</strong> as the central mediator — it receives data from the Interactor and tells the View what to show. VIP enforces a <strong>unidirectional cycle</strong> — the Presenter does not call the Interactor; it only calls the View. Navigation in VIPER is the Presenter's responsibility; in VIP the <strong>Router</strong> is owned by the ViewController and handles navigation and inter-scene data passing via the <code>DataStore</code> protocol. VIP also introduces a <strong>Worker</strong> class to keep the Interactor focused on business logic rather than external API calls.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does VIP handle data passing between two scenes, and why is the DataStore approach safer than passing data via init parameters?</strong></p>
+
+<p>A: In VIP, each Interactor implements a <code>DataStore</code> protocol exposing the data it holds. When navigating, the Router reads from the current scene's <code>DataStore</code> and writes into the destination scene's <code>DataStore</code> via a dedicated <code>passData(to:)</code> method. This is safer than passing data through <code>init</code> parameters or segues because: (1) the destination ViewController can be created independently of the data — the <code>configure()</code> step and the data-passing step are separate, keeping the composition cleaner; (2) it works naturally with storyboard segues (<code>prepare(for:)</code> calls the Router which moves data between stores); (3) the data contract is explicit in the <code>DataStore</code> protocol — what is passed is documented and type-checked at the boundary.</p>
+
+<p><em></em>Q: Why does the Presenter hold a <code>weak</code> reference to the ViewController, and what cycle does this break?<em></em></p>
+
+<p>A: The reference ownership in VIP is: ViewController → Interactor (strong), Interactor → Presenter (strong), Presenter → ViewController. Without <code>weak</code>, this creates a retain cycle: VC → Interactor → Presenter → VC. None of the three objects would deallocate when the VC is popped from the navigation stack. Making <code>Presenter.viewController</code> a <code>weak var</code> breaks the cycle — the reference from Presenter to VC does not contribute to the retain count, so when the navigation stack releases the VC, it deallocates, which releases the Interactor and Presenter in turn.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Compare VIP and MVVM for a feature with complex user input validation and multi-step async workflows. What are the concrete tradeoffs?</strong></p>
+
+<p>A: <strong>VIP</strong>: Each use case (validate form, submit step 1, submit step 2) has its own <code>Request</code>/<code>Response</code>/<code>ViewModel</code> triplet. The Interactor owns the workflow state and calls workers for each step. The Presenter formats intermediate states (loading, partial success, error) into ViewModels. The VC is completely passive — it never decides what to show. Advantage: scaling to 10 use cases is mechanical — add another triplet and another pair of methods. Disadvantage: high boilerplate (5 objects per scene, 3 structs per use case), and the strict cycle can feel over-engineered for simple screens. <strong>MVVM</strong>: The ViewModel holds all state as <code>@Published</code> properties, async logic as <code>async</code> functions, and validation as computed properties. Less boilerplate, reactive binding via Combine or SwiftUI. Disadvantage: as use cases grow, the ViewModel risks becoming a Massive ViewModel — the same concentration problem as Massive ViewController but one layer removed. For complex, multi-step flows with many use cases, VIP's mechanical structure scales better; for standard CRUD screens, MVVM is more concise.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Retain cycle — ViewController not deallocating after pop.</strong></p>
+
+<p>Solution: Verify <code>presenter.viewController</code> is declared <code>weak var</code>. In Swift, a plain <code>var viewController: FeedDisplayLogic?</code> without <code>weak</code> will retain the VC. Use <code>weak var viewController: FeedDisplayLogic?</code> — note that <code>weak</code> requires the protocol to be class-constrained (<code>protocol FeedDisplayLogic: AnyObject</code>).</p>
+
+<p><em></em>Issue: UI not updating — <code>displayFeed</code> is not being called.<em></em></p>
+
+<p>Solution: Check that <code>configure()</code> was called (all layers are wired). Verify that <code>presenter.viewController</code> was set and is not nil. Add a breakpoint in <code>presentFeed</code> to confirm the Presenter's method is being reached.</p>
+
+<p><strong>Issue: Massive Interactor — Interactor grows to hundreds of lines.</strong></p>
+
+<p>Solution: Introduce <strong>Workers</strong> — separate objects that the Interactor delegates external calls to. <code>FeedWorker</code> handles network fetching; <code>FeedCacheWorker</code> handles persistence. The Interactor calls workers and processes their results — keeping it focused on business rules rather than I/O details.</p>
+
+<p><strong>Issue: Boilerplate feels excessive for simple screens.</strong></p>
+
+<p>Solution: VIP is not appropriate for every screen. Use MVC or MVVM for simple display-only screens. Reserve VIP for screens with significant business logic, multiple use cases, or frequent change by a team. Use Clean Swift Xcode templates to generate the boilerplate automatically.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="mvp-viper.md">MVP &amp; VIPER</a> — VIPER shares the same Clean Architecture roots; compare both</li>
+<li><a href="mvvm.md">MVVM</a> — the simpler reactive alternative</li>
+<li><a href="mvc.md">MVC</a> — the problem VIP solves (Massive ViewController)</li>
+<li><a href="dependency-injection.md">Dependency Injection</a> — each VIP layer is injected via protocol</li>
+<li><a href="solid-principles.md">SOLID Principles</a> — VIP is a direct application of SRP, OCP, and DIP</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

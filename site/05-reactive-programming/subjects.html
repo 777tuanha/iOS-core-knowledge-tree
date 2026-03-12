@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subjects — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../05-reactive-programming/index.html">Reactive Programming</a></span>
+    <span>Subjects</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html" class="active">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="subjects">Subjects</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>A <code>Subject</code> is a special Combine <code>Publisher</code> that also exposes an imperative <code>send(_:)</code> method, allowing code outside the reactive pipeline to push values into it. Subjects are the primary bridge between the traditional iOS imperative world (delegates, callbacks, target-action) and the Combine reactive world. There are two concrete <code>Subject</code> types: <code>PassthroughSubject</code> (stateless — only forwards values to current subscribers) and <code>CurrentValueSubject</code> (stateful — holds the latest value and replays it to new subscribers).</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a radio station. A regular Combine publisher is a pre-recorded broadcast — you tune in and hear whatever was recorded. A <code>Subject</code> is a live broadcast: the DJ (your imperative code) can push any sound into the microphone at any time, and all current listeners (subscribers) hear it in real time. <code>PassthroughSubject</code> is pure live radio — if you tune in mid-show, you missed what was said before. <code>CurrentValueSubject</code> is like a digital radio that also shows the currently playing track — even if you tune in late, you see the current state immediately.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="passthroughsubject">PassthroughSubject</h3>
+
+<pre><code class="language-swift">let subject = PassthroughSubject&lt;String, Never&gt;()</code></pre>
+
+<ul>
+<li><strong>Stateless</strong>: No stored value. Subscribers receive only values emitted after they subscribe.</li>
+<li><strong>Use case</strong>: Events with no meaningful "current state" — button taps, network responses, notifications.</li>
+<li>Sends completion when <code>send(completion: .finished)</code> is called, after which further <code>send</code> calls are ignored.</li>
+</ul>
+
+<h3 id="currentvaluesubject">CurrentValueSubject</h3>
+
+<pre><code class="language-swift">let subject = CurrentValueSubject&lt;String, Never&gt;("")</code></pre>
+
+<ul>
+<li><strong>Stateful</strong>: Holds the current value in <code>.value</code>. New subscribers immediately receive this value upon subscription.</li>
+<li>Mutable via <code>.value</code> property or <code>.send(_:)</code>.</li>
+<li><strong>Use case</strong>: State that always has a current value — authentication status, user settings, selection state.</li>
+</ul>
+
+<h3 id="passthroughsubject-vs-currentvaluesubject">PassthroughSubject vs CurrentValueSubject</h3>
+
+<table>
+<tr><td></td><td>PassthroughSubject</td><td>CurrentValueSubject</td></tr>
+<tr><td>Stores current value?</td><td>No</td><td>Yes</td></tr>
+<tr><td>New subscriber gets?</td><td>Nothing (only future values)</td><td>Current value immediately</td></tr>
+<tr><td>Mutable via</td><td><code>.send(_:)</code> only</td><td><code>.send(_:)</code> or <code>.value = x</code></td></tr>
+<tr><td>Analogy</td><td>Live event</td><td>State variable</td></tr>
+</table>
+
+<h3 id="published-vs-currentvaluesubject">@Published vs CurrentValueSubject</h3>
+
+<p><code>@Published var x: T</code> is essentially a <code>CurrentValueSubject&lt;T, Never&gt;</code> wrapped in a property wrapper. The main differences:</p>
+<ul>
+<li><code>@Published</code> can only be used inside a class (accessed via <code>$x</code>).</li>
+<li><code>CurrentValueSubject</code> can be used anywhere, including as a standalone or injected object.</li>
+<li><code>@Published</code> does not expose a <code>send(completion:)</code> method — it never completes.</li>
+<li><code>CurrentValueSubject</code> can complete or fail, making it more flexible for representing finite streams.</li>
+</ul>
+
+<h3 id="thread-safety">Thread Safety</h3>
+
+<p><code>Subject</code> is <strong>not</strong> thread-safe by default. Calling <code>send(_:)</code> from multiple threads concurrently without synchronisation is a data race. If multiple threads need to send values to the same subject, protect access with a serial queue or an actor:</p>
+
+<pre><code class="language-swift">actor SafeSubject&lt;T, E: Error&gt; {
+    private let subject: PassthroughSubject&lt;T, E&gt;
+    init() { subject = PassthroughSubject() }
+    func send(_ value: T) { subject.send(value) }
+    var publisher: AnyPublisher&lt;T, E&gt; { subject.eraseToAnyPublisher() }
+}</code></pre>
+
+<h3 id="erasing-to-anypublisher">Erasing to AnyPublisher</h3>
+
+<p>When exposing a subject as part of a public API, erase it to <code>AnyPublisher</code> to prevent callers from calling <code>send</code>:</p>
+
+<pre><code class="language-swift">class ViewModel {
+    private let _events = PassthroughSubject&lt;Event, Never&gt;()
+    var events: AnyPublisher&lt;Event, Never&gt; { _events.eraseToAnyPublisher() }
+
+    func triggerEvent(_ event: Event) {
+        _events.send(event)   // only ViewModel can push; callers can only subscribe
+    }
+}</code></pre>
+
+<h3 id="bridging-delegates-and-callbacks">Bridging Delegates and Callbacks</h3>
+
+<p>Subjects are ideal for wrapping legacy APIs:</p>
+
+<pre><code class="language-swift">class LocationPublisher: NSObject, CLLocationManagerDelegate {
+    private let locationSubject = PassthroughSubject&lt;CLLocation, Never&gt;()
+    var locationPublisher: AnyPublisher&lt;CLLocation, Never&gt; {
+        locationSubject.eraseToAnyPublisher()
+    }
+
+    func locationManager(_ manager: CLLocationManager,
+                         didUpdateLocations locations: [CLLocation]) {
+        if let location = locations.last {
+            locationSubject.send(location)   // push delegate callback into pipeline
+        }
+    }
+}</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Combine
+import Foundation
+
+var cancellables = Set&lt;AnyCancellable&gt;()
+
+// ── PassthroughSubject — stateless event bus ───────────────────
+let tapSubject = PassthroughSubject&lt;Void, Never&gt;()
+
+tapSubject
+    .sink { print("Button tapped") }
+    .store(in: &amp;cancellables)
+
+tapSubject.send()   // prints "Button tapped"
+tapSubject.send()   // prints "Button tapped"
+
+// No stored value — subscriber who joined after the first send misses it
+let lateSub = tapSubject.sink { print("Late subscriber received tap") }
+// lateSub will only receive FUTURE taps, not past ones
+
+// ── CurrentValueSubject — stateful stream ────────────────────
+let authSubject = CurrentValueSubject&lt;Bool, Never&gt;(false)
+
+// Subscriber immediately gets current value (false)
+authSubject
+    .sink { isLoggedIn in
+        print("Auth status: \(isLoggedIn ? "logged in" : "logged out")")
+    }
+    .store(in: &amp;cancellables)
+// prints "Auth status: logged out" immediately
+
+authSubject.send(true)   // prints "Auth status: logged in"
+
+// Read current value synchronously
+print("Currently logged in: \(authSubject.value)")   // true
+
+// Mutate directly
+authSubject.value = false   // triggers subscribers
+
+// ── Exposing read-only publisher from private subject ─────────
+class EventBus {
+    private let _events = PassthroughSubject&lt;String, Never&gt;()
+
+    // Callers get AnyPublisher — cannot call send() from outside
+    var events: AnyPublisher&lt;String, Never&gt; {
+        _events.eraseToAnyPublisher()
+    }
+
+    func publish(_ event: String) {
+        _events.send(event)
+    }
+
+    func shutdown() {
+        _events.send(completion: .finished)   // signal no more events
+    }
+}
+
+let bus = EventBus()
+bus.events
+    .sink { print("Event: \($0)") }
+    .store(in: &amp;cancellables)
+
+bus.publish("UserLoggedIn")
+bus.publish("ProfileUpdated")
+bus.shutdown()
+// Further publish calls are ignored after completion
+
+// ── Bridging a delegate to Combine ────────────────────────────
+import CoreLocation
+
+class LocationService: NSObject, CLLocationManagerDelegate {
+    private let locationSubject = PassthroughSubject&lt;CLLocation, Error&gt;()
+    private let manager = CLLocationManager()
+
+    var locations: AnyPublisher&lt;CLLocation, Error&gt; {
+        locationSubject.eraseToAnyPublisher()
+    }
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.startUpdatingLocation()
+    }
+
+    func locationManager(_ manager: CLLocationManager,
+                         didUpdateLocations locations: [CLLocation]) {
+        locations.forEach { locationSubject.send($0) }   // push into pipeline
+    }
+
+    func locationManager(_ manager: CLLocationManager,
+                         didFailWithError error: Error) {
+        locationSubject.send(completion: .failure(error))   // propagate error
+    }
+}
+
+// ── CurrentValueSubject as observable state ───────────────────
+class AppState {
+    // Subjects as state — alternative to @Published for non-class contexts
+    let themeSubject = CurrentValueSubject&lt;ColorTheme, Never&gt;(.light)
+    let fontSizeSubject = CurrentValueSubject&lt;CGFloat, Never&gt;(16.0)
+
+    // Computed publisher: combine theme and font size
+    var displayConfig: AnyPublisher&lt;(ColorTheme, CGFloat), Never&gt; {
+        Publishers.CombineLatest(themeSubject, fontSizeSubject)
+            .eraseToAnyPublisher()
+    }
+}
+
+enum ColorTheme { case light, dark }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>PassthroughSubject</code> and <code>CurrentValueSubject</code>?<em></em></p>
+
+<p>A: <code>PassthroughSubject</code> is stateless — it has no stored value. Subscribers only receive values emitted after they subscribe. If no one is subscribed when <code>send</code> is called, the value is lost. <code>CurrentValueSubject</code> stores the most recently emitted value. New subscribers immediately receive this current value on subscription, making it appropriate for state (something that always has a current value). You can also read <code>CurrentValueSubject.value</code> synchronously, which is not possible with <code>PassthroughSubject</code>. In practice: use <code>PassthroughSubject</code> for events (button taps, notifications), use <code>CurrentValueSubject</code> for state (authentication status, selected item).</p>
+
+<p><strong>Q: How do you prevent callers from sending values into a Subject you expose from a class?</strong></p>
+
+<p>A: Erase the Subject to <code>AnyPublisher</code> before exposing it: <code>var events: AnyPublisher&lt;Event, Never&gt; { _events.eraseToAnyPublisher() }</code>. The internal <code>PassthroughSubject</code> (or <code>CurrentValueSubject</code>) is stored as a private property. Callers receive only the <code>AnyPublisher</code> interface, which has no <code>send</code> method. The class itself controls when values enter the pipeline via its private <code>send</code> calls.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How does <code>@Published</code> relate to <code>CurrentValueSubject</code>?<em></em></p>
+
+<p>A: <code>@Published</code> is implemented on top of Combine's publisher machinery and behaves similarly to <code>CurrentValueSubject&lt;T, Never&gt;</code>. Both hold a current value and emit it to new subscribers. Key differences: <code>@Published</code> is a property wrapper — it requires being declared inside a class and is accessed via the <code>$</code> prefix. It cannot emit a completion event and has no <code>send(completion:)</code> method. <code>CurrentValueSubject</code> is a standalone object that can be stored anywhere, can emit errors, and can complete. For <code>ObservableObject</code> view models, <code>@Published</code> is idiomatic. For injectable state containers or non-class contexts, <code>CurrentValueSubject</code> is more flexible.</p>
+
+<p><em></em>Q: A Subject receives <code>send</code> calls from multiple threads. What happens?<em></em></p>
+
+<p>A: This is a data race — <code>Subject</code> is not thread-safe. Concurrent <code>send</code> calls can corrupt internal state. The fix: serialise access. Options: (1) Use a serial <code>DispatchQueue</code> and dispatch <code>send</code> calls to it. (2) Use an <code>actor</code> to wrap the subject (as shown in the example). (3) Use <code>@Published</code> inside a <code>@MainActor</code> class, ensuring all sends happen on the main thread. (4) Use the <code>receive(on:)</code> operator downstream to coalesce values onto a single thread — this doesn't protect the send, but if all senders happen to be on the same thread, it's safe.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a type-safe event bus using Subjects that supports multiple event types without a common base type.</strong></p>
+
+<p>A: Use a generic <code>EventBus&lt;Event&gt;</code> where <code>Event</code> is constrained to <code>Hashable</code>. Internally, maintain a dictionary from <code>ObjectIdentifier</code> (or a typed key) to <code>PassthroughSubject</code>. Each event type gets its own subject. Publishers expose typed <code>AnyPublisher&lt;EventType, Never&gt;</code> and the send method accepts the specific type: <code>func send&lt;E: AppEvent&gt;(_ event: E)</code>. The subscriber side: <code>bus.publisher(for: LoginEvent.self).sink { ... }</code>. This gives compile-time type safety — subscribers only receive the exact event type they register for — without boxing everything into an <code>Any</code>-typed envelope. The tradeoff is that the bus must store subjects in a <code>[String: Any]</code> (or use <code>AnyHashable</code> keys) to support heterogeneous event types, so some runtime casting is required internally, isolated to the bus implementation.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>PassthroughSubject</code> values are lost — subscriber receives nothing.<em></em></p>
+
+<p>Solution: The subscriber was added after <code>send</code> was called, or the <code>AnyCancellable</code> token was not stored. For state that must be received by late subscribers, switch to <code>CurrentValueSubject</code>.</p>
+
+<p><em></em>Issue: Calling <code>subject.send()</code> after <code>send(completion:)</code> has no effect.<em></em></p>
+
+<p>Solution: This is correct behaviour — once a Subject has completed or failed, it ignores all further <code>send</code> calls. If you need to restart, create a new Subject instance.</p>
+
+<p><strong>Issue: Memory leak — Subject holds strong reference to subscriber via closure.</strong></p>
+
+<p>Solution: Use <code>[weak self]</code> in the <code>sink</code> closure. The Subject retains its subscribers for the lifetime of the subscription. If the subscriber's closure captures <code>self</code> strongly, and <code>self</code> holds the <code>AnyCancellable</code>, there is a retain cycle: VC → cancellable → Subject → closure → VC. Use <code>[weak self]</code> or <code>assign(to: &amp;$property)</code> (which breaks the cycle).</p>
+
+<p><strong>Issue: Multiple subscribers receive values in a non-deterministic order.</strong></p>
+
+<p>Solution: Subjects deliver to subscribers in the order they subscribed, on the thread that called <code>send</code>. If order matters, maintain a single subscriber or use <code>share()</code> with a multicast subject to control dispatch.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="publishers-subscribers.md">Publishers &amp; Subscribers</a> — Subject conforms to Publisher</li>
+<li><a href="operators.md">Operators</a> — operators applied to subject outputs</li>
+<li><a href="backpressure-cancellation.md">Backpressure &amp; Cancellation</a> — AnyCancellable lifetime for subject subscriptions</li>
+<li><a href="combine-swiftui-uikit.md">Combine + UIKit &amp; SwiftUI</a> — Subject as an event source for UI binding</li>
+<li><a href="../04-ui-frameworks/swiftui-state-management.md">SwiftUI State Management</a> — @Published as the SwiftUI equivalent</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

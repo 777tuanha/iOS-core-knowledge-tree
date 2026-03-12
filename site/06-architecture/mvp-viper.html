@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MVP & VIPER — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../06-architecture/index.html">Architecture</a></span>
+    <span>Mvp Viper</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html" class="active">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="mvp--viper">MVP &amp; VIPER</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><strong>MVP</strong> (Model-View-Presenter) and <strong>VIPER</strong> (View-Interactor-Presenter-Entity-Router) are architectural patterns that enforce stricter separation of concerns than MVC or MVVM, at the cost of more boilerplate. MVP is a thin step beyond MVC: it extracts presentation logic into a <code>Presenter</code> that talks to a passive, protocol-based <code>View</code>, making it testable without UIKit. <strong>VIPER</strong> goes further, applying <strong>Clean Architecture</strong> principles to separate every distinct responsibility — navigation, business logic, data fetching, entities — into its own layer with explicit protocols between them. VIPER is most valuable in large teams where different engineers own different layers.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>In MVC, a VC is a do-everything waiter. MVP says: make the VC a dumb screen (just display what you're told) and hire a Presenter who does the thinking and tells the screen what to show. The View holds a reference to the Presenter; the Presenter holds a weak reference back to the View (via a protocol).</p>
+
+<p>VIPER takes this further by hiring an entire team for one feature: the <strong>View</strong> displays, the <strong>Presenter</strong> formats, the <strong>Interactor</strong> does business logic, the <strong>Entity</strong> holds the data model, and the <strong>Router</strong> handles navigation. Each team member talks to the next through a strict contract.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="mvp-architecture">MVP Architecture</h3>
+
+<pre><code>View  ←──────── Presenter ────────▶ Model/Service
+(UIViewController)  ▲         (protocol-based dependency)
+                     │
+                  protocol
+                  (ViewProtocol)</code></pre>
+
+<p><strong>View</strong> (UIViewController):</p>
+<ul>
+<li>Implements a <code>ViewProtocol</code> (e.g., <code>ArticleListView</code>)</li>
+<li>Calls <code>presenter.viewDidLoad()</code>, <code>presenter.didSelectItem(at:)</code> for user events</li>
+<li>Has no logic — just updates UI from presenter calls</li>
+</ul>
+
+<p><strong>Presenter</strong>:</p>
+<ul>
+<li>Holds a <code>weak var view: ArticleListView?</code></li>
+<li>Calls <code>view?.showArticles(...)</code>, <code>view?.showError(...)</code></li>
+<li>Has no UIKit imports — testable with a mock View</li>
+<li>Calls service/interactor for data</li>
+</ul>
+
+<p><strong>Model</strong>:</p>
+<ul>
+<li>Service objects, entities, and data access</li>
+</ul>
+
+<h3 id="mvp-vs-mvvm">MVP vs MVVM</h3>
+
+<table>
+<tr><td></td><td>MVP</td><td>MVVM</td></tr>
+<tr><td>View updates</td><td>Presenter calls View methods explicitly</td><td>View observes ViewModel state</td></tr>
+<tr><td>View protocol</td><td>Required</td><td>Not required</td></tr>
+<tr><td>Passive view</td><td>Yes — explicit push</td><td>No — View pulls via binding</td></tr>
+<tr><td>Framework dependency</td><td>None (pure Swift)</td><td>Combine / SwiftUI</td></tr>
+<tr><td>Verbosity</td><td>Higher (explicit calls)</td><td>Lower (reactive)</td></tr>
+</table>
+
+<p>MVP is preferable in UIKit codebases without Combine where you still want full testability — the View protocol can be mocked trivially.</p>
+
+<h3 id="viper-architecture">VIPER Architecture</h3>
+
+<p>Each letter is a distinct layer:</p>
+
+<table>
+<tr><td>Layer</td><td>Responsibility</td></tr>
+<tr><td><strong>V</strong>iew</td><td>UIViewController subclass; displays data; forwards events to Presenter</td></tr>
+<tr><td><strong>I</strong>nteractor</td><td>Business logic; data fetching; pure computation; knows nothing about UI</td></tr>
+<tr><td><strong>P</strong>resenter</td><td>Mediates between View and Interactor; formats data for display</td></tr>
+<tr><td><strong>E</strong>ntity</td><td>Plain data models (structs); owned by the Interactor</td></tr>
+<tr><td><strong>R</strong>outer</td><td>Navigation: creates scenes, pushes/presents VCs</td></tr>
+</table>
+
+<h3 id="viper-communication-flow">VIPER Communication Flow</h3>
+
+<pre><code>User Action
+    │
+    ▼
+View ──────▶ Presenter ──────▶ Interactor
+ ▲                │                │
+ │           (formats)        (fetches data,
+ │                │             applies rules)
+ │                ▼                │
+ └──────── Presenter          Entities
+           (updates view ◀────────┘
+            via protocol)
+
+Navigation:
+Presenter ──────▶ Router ──────▶ UINavigationController</code></pre>
+
+<h3 id="viper-protocols">VIPER Protocols</h3>
+
+<p>VIPER typically defines five protocols per module:</p>
+
+<pre><code class="language-swift">protocol ArticleListViewProtocol: AnyObject {
+    func showArticles(_ articles: [ArticleViewModel])
+    func showError(_ message: String)
+}
+
+protocol ArticleListPresenterProtocol: AnyObject {
+    func viewDidLoad()
+    func didSelectArticle(at index: Int)
+}
+
+protocol ArticleListInteractorProtocol: AnyObject {
+    func fetchArticles()
+}
+
+protocol ArticleListInteractorOutputProtocol: AnyObject {
+    func didFetchArticles(_ articles: [Article])
+    func didFailWithError(_ error: Error)
+}
+
+protocol ArticleListRouterProtocol: AnyObject {
+    func navigateToDetail(article: Article)
+    static func createModule() -&gt; UIViewController
+}</code></pre>
+
+<h3 id="clean-architecture-mapping">Clean Architecture Mapping</h3>
+
+<p>VIPER is an iOS implementation of Robert Martin's Clean Architecture:</p>
+
+<table>
+<tr><td>Clean Architecture</td><td>VIPER</td></tr>
+<tr><td>Presentation layer</td><td>View + Presenter</td></tr>
+<tr><td>Use Case layer</td><td>Interactor</td></tr>
+<tr><td>Domain / Entity layer</td><td>Entity</td></tr>
+<tr><td>Infrastructure layer</td><td>Router + external services</td></tr>
+</table>
+
+<p>The <strong>Dependency Rule</strong>: inner layers (Entity, Interactor) must not depend on outer layers (View, Router). Dependencies point inward.</p>
+
+<h3 id="viper-module-assembler">VIPER Module Assembler</h3>
+
+<p>The Router or a dedicated Assembler creates all five objects and wires them together:</p>
+
+<pre><code class="language-swift">static func createModule() -&gt; UIViewController {
+    let view = ArticleListViewController()
+    let interactor = ArticleListInteractor()
+    let presenter = ArticleListPresenter()
+    let router = ArticleListRouter()
+
+    view.presenter = presenter
+    presenter.view = view
+    presenter.interactor = interactor
+    presenter.router = router
+    interactor.output = presenter
+    router.viewController = view
+
+    return view
+}</code></pre>
+
+<h3 id="when-to-use-each">When to Use Each</h3>
+
+<table>
+<tr><td>Pattern</td><td>When</td></tr>
+<tr><td>MVC</td><td>Simple screens, prototypes</td></tr>
+<tr><td>MVVM</td><td>Standard production apps, SwiftUI</td></tr>
+<tr><td>MVP</td><td>UIKit-heavy teams that want testability without Combine</td></tr>
+<tr><td>VIPER</td><td>Large teams (4+ devs per feature), complex business logic, Clean Architecture mandate</td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – MVP Example
+// ─────────────────────────────────────────────────────────────
+
+struct Article { let id: Int; let title: String }
+
+// View protocol — what the Presenter calls
+protocol ArticleListViewProtocol: AnyObject {
+    func displayArticles(_ articles: [Article])
+    func displayError(_ message: String)
+    func setLoadingVisible(_ visible: Bool)
+}
+
+// Presenter — no UIKit, fully testable
+class ArticleListPresenter {
+    weak var view: ArticleListViewProtocol?
+    private let service: ArticleServiceProtocol
+
+    init(service: ArticleServiceProtocol) {
+        self.service = service
+    }
+
+    // Called by View in viewDidLoad
+    func viewDidLoad() {
+        view?.setLoadingVisible(true)
+        service.fetchArticles { [weak self] result in
+            DispatchQueue.main.async {
+                self?.view?.setLoadingVisible(false)
+                switch result {
+                case .success(let articles):
+                    self?.view?.displayArticles(articles)
+                case .failure(let error):
+                    self?.view?.displayError(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func didSelectArticle(at index: Int, articles: [Article]) {
+        // Navigation — would call router in VIPER
+        print("Selected: \(articles[index].title)")
+    }
+}
+
+// View — UIViewController is a passive display layer
+class ArticleListViewController: UIViewController, ArticleListViewProtocol {
+    var presenter: ArticleListPresenter!
+    private var articles: [Article] = []
+    private let tableView = UITableView()
+    private let activityIndicator = UIActivityIndicatorView(style: .medium)
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        presenter.viewDidLoad()   // delegate to presenter; no logic here
+    }
+
+    // ArticleListViewProtocol
+    func displayArticles(_ articles: [Article]) {
+        self.articles = articles
+        tableView.reloadData()
+    }
+
+    func displayError(_ message: String) {
+        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    func setLoadingVisible(_ visible: Bool) {
+        visible ? activityIndicator.startAnimating() : activityIndicator.stopAnimating()
+    }
+}
+
+protocol ArticleServiceProtocol {
+    func fetchArticles(completion: @escaping (Result&lt;[Article], Error&gt;) -&gt; Void)
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – VIPER Example (simplified)
+// ─────────────────────────────────────────────────────────────
+
+// Entity
+struct ArticleEntity { let id: Int; let title: String; let body: String }
+
+// View protocol
+protocol ArticleViewProtocol: AnyObject {
+    func showArticles(_ viewModels: [ArticleDisplayModel])
+    func showError(_ message: String)
+}
+
+// Display model (entity formatted for display by Presenter)
+struct ArticleDisplayModel { let title: String; let shortSummary: String }
+
+// Interactor output protocol
+protocol ArticleInteractorOutputProtocol: AnyObject {
+    func didFetch(_ articles: [ArticleEntity])
+    func didFail(error: Error)
+}
+
+// Interactor — pure business logic, no UIKit
+class ArticleInteractor {
+    weak var output: ArticleInteractorOutputProtocol?
+    private let service: ArticleServiceProtocol
+
+    init(service: ArticleServiceProtocol) { self.service = service }
+
+    func fetchArticles() {
+        service.fetchArticles { [weak self] result in
+            switch result {
+            case .success(let articles):
+                // Map to Entity
+                let entities = articles.map { ArticleEntity(id: $0.id, title: $0.title, body: "") }
+                self?.output?.didFetch(entities)
+            case .failure(let error):
+                self?.output?.didFail(error: error)
+            }
+        }
+    }
+}
+
+// Presenter — formats Entity for display; mediates View ↔ Interactor
+class ArticlePresenter: ArticleInteractorOutputProtocol {
+    weak var view: ArticleViewProtocol?
+    var interactor: ArticleInteractor?
+    var router: ArticleRouter?
+
+    func viewDidLoad() {
+        interactor?.fetchArticles()
+    }
+
+    // Interactor output
+    func didFetch(_ articles: [ArticleEntity]) {
+        // Format for display
+        let displayModels = articles.map {
+            ArticleDisplayModel(
+                title: $0.title,
+                shortSummary: String($0.body.prefix(80))
+            )
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.view?.showArticles(displayModels)
+        }
+    }
+
+    func didFail(error: Error) {
+        DispatchQueue.main.async { [weak self] in
+            self?.view?.showError(error.localizedDescription)
+        }
+    }
+}
+
+// Router — navigation; creates the module
+class ArticleRouter {
+    weak var viewController: UIViewController?
+
+    static func createModule(service: ArticleServiceProtocol) -&gt; UIViewController {
+        let view = ArticleViewController()
+        let presenter = ArticlePresenter()
+        let interactor = ArticleInteractor(service: service)
+        let router = ArticleRouter()
+
+        view.presenter = presenter   // wire all together
+        presenter.view = view
+        presenter.interactor = interactor
+        presenter.router = router
+        interactor.output = presenter
+        router.viewController = view
+
+        return view
+    }
+
+    func navigateToDetail(article: ArticleEntity, from vc: UIViewController) {
+        // push detail VC
+    }
+}
+
+// View — UIViewController, passive display
+class ArticleViewController: UIViewController, ArticleViewProtocol {
+    var presenter: ArticlePresenter?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        presenter?.viewDidLoad()
+    }
+
+    func showArticles(_ viewModels: [ArticleDisplayModel]) { /* update table */ }
+    func showError(_ message: String) { /* show alert */ }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between MVP and MVC?</strong></p>
+
+<p>A: The key difference is where UI logic lives and how it is tested. In MVC, the Controller (<code>UIViewController</code>) contains both routing and presentation logic and is tightly coupled to the View — making it hard to test. In MVP, the <code>UIViewController</code> is a <strong>passive View</strong> that implements a lightweight protocol — it has no logic. All presentation logic moves to a <code>Presenter</code> that holds a <code>weak</code> reference to the View via the protocol. The Presenter has no UIKit imports and can be unit-tested by injecting a mock View. MVP makes the View almost completely passive, whereas in MVC the ViewController is an active participant in logic decisions.</p>
+
+<p><strong>Q: What does each letter in VIPER stand for and what is each layer's responsibility?</strong></p>
+
+<p>A: <strong>V</strong>iew: UIViewController — displays data, forwards user events to Presenter; no business logic. <strong>I</strong>nteactor: business logic and data fetching — calls services, applies rules, returns entities. <strong>P</strong>resenter: mediates View and Interactor — formats entities into display models for the View; instructs the Router for navigation. <strong>E</strong>ntity: plain data model structs — owned by the Interactor; no business logic. <strong>R</strong>outer: navigation — creates the module, pushes/presents other VCs, receives navigation commands from the Presenter.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: What is the Dependency Rule in Clean Architecture and how does VIPER enforce it?</strong></p>
+
+<p>A: The Dependency Rule states that source-code dependencies can only point <strong>inward</strong> — toward higher-level, more abstract layers. Outer layers (View, Router) depend on inner layer protocols but inner layers (Interactor, Entity) never import or reference outer layers. In VIPER: the Interactor defines its output via a protocol (<code>InteractorOutputProtocol</code>). The Presenter implements that protocol. The Interactor never imports UIKit or knows about the Presenter's concrete type — it only knows about the output protocol. This allows the business logic (Interactor) to be tested, swapped, or reused independently of any UI technology.</p>
+
+<p><strong>Q: How does the VIPER module assembler work and why is it important?</strong></p>
+
+<p>A: The assembler (typically a <code>static func createModule()</code> on the Router) is responsible for creating all five VIPER objects and wiring their inter-references. Without the assembler, each object would need to know how to find the others, creating coupling. The assembler is the only place that knows about all five concrete types simultaneously. It constructs the dependency graph and hands the caller only a <code>UIViewController</code>, hiding all internal VIPER plumbing. This pattern also serves as the single place to swap implementations (e.g., inject a mock Interactor for testing).</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Compare VIPER and TCA for a feature with complex async state. What are the concrete tradeoffs?</strong></p>
+
+<p>A: <strong>VIPER</strong>: Five separate objects communicate via protocols. Async work lives in the Interactor and results flow back via the output protocol. State is mutable — the Presenter updates View state imperatively. Testing requires mock protocols for each boundary. Scaling to a team of engineers is natural because each layer can be owned independently. Weakness: no guaranteed unidirectional flow; state mutation is spread across layers; hard to reason about combined state. <strong>TCA</strong>: All state is in a single <code>State</code> struct; all mutations happen in a pure <code>Reducer</code> function. Side effects (network, persistence) are expressed as <code>Effect</code> values and executed by the <code>Store</code>. This makes every state transition an explicit, testable, logged event — ideal for debugging and reproducibility. Weakness: significant learning curve, all action/state types are centralised (risk of large reducers in complex features), and requires the Point-Free TCA dependency. Choose VIPER for large UIKit teams with separate ownership per layer; choose TCA for teams that need strong state debuggability and are comfortable with functional patterns.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: VIPER module is hard to set up — too much boilerplate for a simple screen.</strong></p>
+
+<p>Solution: VIPER is inappropriate for simple screens. Use MVC or MVVM there. Reserve VIPER for complex screens with significant business logic, multiple async operations, and multiple developers. Consider a code generator (templates, Sourcery) to reduce boilerplate.</p>
+
+<p><strong>Issue: Presenter holds a strong reference to the ViewController, causing a retain cycle.</strong></p>
+
+<p>Solution: The Presenter must always hold the View via <code>weak var view: ArticleListViewProtocol?</code>. The View holds the Presenter strongly. The direction is: View → Presenter (strong), Presenter → View (weak).</p>
+
+<p><strong>Issue: Unit test for Presenter fails because Interactor fetches real data.</strong></p>
+
+<p>Solution: The Interactor should conform to a protocol. In tests, inject a <code>MockInteractor</code> that immediately calls the output with stub data. The Presenter should never create its dependencies — use constructor injection.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="mvc.md">MVC</a> — the simpler starting point</li>
+<li><a href="mvvm.md">MVVM</a> — the standard modern alternative to MVP</li>
+<li><a href="tca.md">The Composable Architecture</a> — a modern alternative to VIPER for complex state</li>
+<li><a href="dependency-injection.md">Dependency Injection</a> — protocol injection is the backbone of MVP/VIPER testability</li>
+<li><a href="../04-ui-frameworks/mvvm-coordinator.md">MVVM &amp; Coordinator</a> — Coordinator pattern as a lightweight Router</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

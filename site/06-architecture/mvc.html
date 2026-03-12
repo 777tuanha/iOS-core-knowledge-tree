@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MVC — Model-View-Controller — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../06-architecture/index.html">Architecture</a></span>
+    <span>Mvc</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html" class="active">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="mvc--model-view-controller">MVC — Model-View-Controller</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>MVC is Apple's built-in architectural pattern for iOS, baked into UIKit since the beginning. It divides app code into three layers: the <strong>Model</strong> holds data and business logic, the <strong>View</strong> displays data and receives input, and the <strong>Controller</strong> mediates between them. In theory, MVC cleanly separates concerns. In practice, UIKit's tight coupling between <code>UIViewController</code> and its view causes the Controller to absorb responsibilities that belong elsewhere, leading to <strong>Massive View Controller</strong> — one of the most common iOS anti-patterns.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a restaurant. The <strong>Model</strong> is the kitchen: it prepares food, stores recipes, and manages inventory — pure logic, no customer contact. The <strong>View</strong> is the dining room: it displays the food and receives orders. The <strong>Controller</strong> is the waiter: they take the customer's order to the kitchen, and bring the food back to the table. The problem with UIKit's MVC is that the waiter (ViewController) ends up cooking half the food, washing dishes, managing inventory, and taking reservations — they become overwhelmed because UIKit physically couples the Controller to the View.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="apples-uikit-mvc">Apple's UIKit MVC</h3>
+
+<p>UIKit's MVC is often called <strong>"Massive View Controller" MVC</strong> because:</p>
+<ul>
+<li><code>UIViewController</code> is both the controller and the view's owner (<code>self.view</code>)</li>
+<li>The VC manages the view hierarchy, responds to lifecycle events, handles user actions, performs networking, parses data, and navigates</li>
+<li>There is no natural boundary preventing logic from accumulating in the VC</li>
+</ul>
+
+<p>Strict Apple MVC theory says the Controller should be a thin mediator — but UIKit provides no mechanism to enforce this.</p>
+
+<h3 id="mvc-layers-in-uikit">MVC Layers in UIKit</h3>
+
+<table>
+<tr><td>Layer</td><td>Role</td><td>iOS type</td></tr>
+<tr><td>Model</td><td>Business entities, data access, domain rules</td><td><code>struct</code>/<code>class</code>, service objects, <code>CoreData</code> NSManagedObject</td></tr>
+<tr><td>View</td><td>Display only, no business logic</td><td><code>UIView</code> subclasses, XIBs, Storyboards</td></tr>
+<tr><td>Controller</td><td>Glue: owns the view, responds to events, calls model</td><td><code>UIViewController</code></td></tr>
+</table>
+
+<h3 id="communication-patterns">Communication Patterns</h3>
+
+<pre><code>Model ──────────────────▶ Controller ──────────────────▶ View
+       (notification/KVO)              (direct update)
+       (data source callbacks)
+
+View ───────────────────▶ Controller ──────────────────▶ Model
+      (delegate/target-action)         (method call)</code></pre>
+
+<ul>
+<li><strong>Model → Controller</strong>: <code>NotificationCenter</code>, KVO, delegate callbacks, completion handlers</li>
+<li><strong>Controller → View</strong>: Direct property access (<code>label.text = ...</code>)</li>
+<li><strong>View → Controller</strong>: Target-action, <code>UITableViewDelegate</code>, <code>UITextFieldDelegate</code></li>
+<li><strong>Controller → Model</strong>: Method calls on service/model objects</li>
+</ul>
+
+<h3 id="the-massive-view-controller-problem">The Massive View Controller Problem</h3>
+
+<p>A VC accumulates responsibilities because UIKit APIs make it the natural destination:</p>
+<ul>
+<li><code>UITableViewDataSource</code> and <code>UITableViewDelegate</code> are almost always on the VC</li>
+<li>Networking is called from <code>viewDidLoad</code></li>
+<li>JSON is parsed and assigned in the completion handler</li>
+<li>Navigation is triggered directly (<code>navigationController?.pushViewController(...)</code>)</li>
+</ul>
+
+<p>The result is a 500–2000 line VC that is untestable (because it extends <code>UIViewController</code> and requires a view to instantiate) and impossible to reuse.</p>
+
+<h3 id="when-mvc-is-appropriate">When MVC is Appropriate</h3>
+
+<p>MVC is not always wrong. It is appropriate when:</p>
+<ul>
+<li>The screen is simple and unlikely to grow (settings, about, onboarding)</li>
+<li>Speed of development matters more than long-term maintainability (prototype, MVP product)</li>
+<li>The team is small and communication overhead of VIPER is not worth it</li>
+</ul>
+
+<h3 id="improving-mvc-without-switching-patterns">Improving MVC Without Switching Patterns</h3>
+
+<p>Extract responsibilities into smaller objects:</p>
+<ul>
+<li><strong>Model layer</strong>: Create service objects and repository classes. The VC calls services, not URLSession directly.</li>
+<li><strong>DataSource object</strong>: Create a separate <code>UITableViewDataSource</code>/<code>UITableViewDelegate</code> class.</li>
+<li><strong>Coordinator</strong>: Extract navigation into a Coordinator.</li>
+<li><strong>Child VCs</strong>: Decompose complex screens into container + child VCs.</li>
+</ul>
+
+<p>These improvements move toward MVVM or MVP incrementally without a full rewrite.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+
+// ── Model ───────────────────────────────────────────────────────
+struct Article: Decodable {
+    let id: Int
+    let title: String
+    let summary: String
+}
+
+// Service object — not in the VC
+class ArticleService {
+    func fetchArticles(completion: @escaping (Result&lt;[Article], Error&gt;) -&gt; Void) {
+        // URLSession networking here
+        completion(.success([]))
+    }
+}
+
+// ── Poor MVC — Massive VC (don't do this) ──────────────────────
+class BadArticleViewController: UIViewController, UITableViewDataSource {
+    private var articles: [Article] = []
+    private let tableView = UITableView()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // VC does networking, parsing, layout, and data source — too much
+        URLSession.shared.dataTask(with: URL(string: "https://api.example.com/articles")!) {
+            data, _, _ in
+            if let data = data,
+               let articles = try? JSONDecoder().decode([Article].self, from: data) {
+                DispatchQueue.main.async {
+                    self.articles = articles          // direct self capture — retain cycle risk
+                    self.tableView.reloadData()
+                }
+            }
+        }.resume()
+    }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -&gt; Int {
+        articles.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -&gt; UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
+        cell.textLabel?.text = articles[indexPath.row].title
+        return cell
+    }
+}
+
+// ── Better MVC — VC as a thin coordinator ────────────────────
+class ArticleDataSource: NSObject, UITableViewDataSource {
+    var articles: [Article] = []
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -&gt; Int {
+        articles.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -&gt; UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
+        configure(cell: cell, with: articles[indexPath.row])
+        return cell
+    }
+
+    private func configure(cell: UITableViewCell, with article: Article) {
+        var config = UIListContentConfiguration.subtitleCell()
+        config.text = article.title
+        config.secondaryText = article.summary
+        cell.contentConfiguration = config
+    }
+}
+
+class ArticleViewController: UIViewController {
+    private let tableView = UITableView()
+    private let dataSource = ArticleDataSource()   // separate object — not on VC
+    private let service = ArticleService()          // injected or created here
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        tableView.dataSource = dataSource
+        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Cell")
+        setupLayout()
+        loadArticles()
+    }
+
+    private func loadArticles() {
+        service.fetchArticles { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let articles):
+                    self?.dataSource.articles = articles
+                    self?.tableView.reloadData()
+                case .failure(let error):
+                    self?.showError(error)
+                }
+            }
+        }
+    }
+
+    private func setupLayout() {
+        tableView.frame = view.bounds
+        tableView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(tableView)
+    }
+
+    private func showError(_ error: Error) {
+        let alert = UIAlertController(
+            title: "Error", message: error.localizedDescription, preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What are the three layers of MVC and what is each responsible for?</strong></p>
+
+<p>A: The <strong>Model</strong> layer owns business entities, data access logic, and domain rules — it is completely independent of UI. The <strong>View</strong> layer renders the UI and forwards user input; it knows nothing about business logic. The <strong>Controller</strong> layer mediates: it receives user events from the View, instructs the Model, and updates the View with Model changes. In UIKit, <code>UIViewController</code> is the Controller, <code>UIView</code> subclasses are the View, and plain Swift/Objective-C types (structs, classes, services) are the Model.</p>
+
+<p><strong>Q: What is the "Massive View Controller" problem?</strong></p>
+
+<p>A: Because UIKit physically couples the ViewController to the view (VC owns <code>self.view</code>, receives all lifecycle events, and is the natural delegate for most UIKit controls), it becomes the path of least resistance for adding code. Over time, VCs accumulate: networking code, JSON parsing, navigation logic, form validation, data source implementation, and presentation logic. The resulting 1000+ line VC is impossible to unit-test (it requires UIKit to instantiate), cannot be reused, and is difficult for teams to work on in parallel. The solution is to extract each responsibility into its own object.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does Apple's MVC differ from the classical MVC described in design-pattern literature?</strong></p>
+
+<p>A: Classical MVC (Smalltalk-80) makes the View a direct observer of the Model — the View subscribes to model change notifications and updates itself without going through the Controller. Apple's Cocoa MVC breaks this: the View and Model must never communicate directly. The Controller is the exclusive mediator. This "Mediating Controller" pattern was chosen because the View (built in Interface Builder, sometimes generic and reusable) should not know about a specific Model type. The practical consequence is that the Controller's responsibility is larger, making accumulation of logic easier. In classical MVC, the View has more responsibility and can be simpler; in Cocoa MVC, the Controller is the chokepoint.</p>
+
+<p><strong>Q: Describe three concrete techniques to slim down a Massive View Controller.</strong></p>
+
+<p>A: (1) <em></em>Extract a separate <code>UITableViewDataSource</code> class<em></em> — move all <code>numberOfRowsInSection</code>, <code>cellForRowAt</code>, and <code>cellForHeader</code> methods into a dedicated class. The VC holds it as a property and sets <code>tableView.dataSource = myDataSource</code>. (2) <strong>Move networking and parsing into a service layer</strong> — create <code>UserService</code>, <code>ArticleService</code>, etc. The VC calls service methods and receives results. The VC itself never uses <code>URLSession</code>. (3) <strong>Extract navigation into a Coordinator</strong> — the VC exposes delegate callbacks or closures when the user takes an action, and the Coordinator responds by pushing/presenting the appropriate VC. The VC no longer imports or knows about any other VCs.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Is MVC inherently bad for iOS, or are there situations where it remains the right choice?</strong></p>
+
+<p>A: MVC is not inherently bad. The problems are: (1) UIKit's tight VC-View coupling makes the Controller an attractive accumulation point; (2) there's no language- or framework-level enforcement of boundaries. In situations where screens are genuinely simple — a pure display screen with one model type and no user input — a thin VC with a service call is perfectly maintainable. The cost of MVVM (a ViewModel class, binding code) or VIPER (five layer objects) is only justified when the screen has complex state, multiple data sources, or needs to be independently testable. Senior engineers choose the minimum architecture that handles the actual complexity — over-engineering a settings screen into VIPER is just as problematic as under-engineering a 10-feature dashboard as a single VC.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: ViewController is over 500 lines and untestable.</strong></p>
+
+<p>Solution: Incrementally extract: (1) a dedicated data source class, (2) a service layer for networking, (3) a Coordinator for navigation. Each extraction reduces the VC and creates a unit-testable pure Swift object.</p>
+
+<p><em></em>Issue: Notification/KVO observer added in <code>viewDidLoad</code> but never removed.<em></em></p>
+
+<p>Solution: Remove observers in <code>deinit</code> or use the block-based <code>NotificationCenter.addObserver(forName:using:)</code> form and store the token, removing it in <code>deinit</code>.</p>
+
+<p><strong>Issue: Model objects imported into Views.</strong></p>
+
+<p>Solution: Views should only receive display-ready values (strings, booleans, colors) — not model types. Transform model data in the Controller (or better, in a ViewModel/Presenter) before passing it to the View.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="mvvm.md">MVVM</a> — the natural evolution from MVC for testable presentation logic</li>
+<li><a href="mvp-viper.md">MVP &amp; VIPER</a> — stricter boundaries for larger teams</li>
+<li><a href="dependency-injection.md">Dependency Injection</a> — inject services rather than creating them in the VC</li>
+<li><a href="../04-ui-frameworks/mvvm-coordinator.md">MVVM &amp; Coordinator</a> — practical UIKit MVVM implementation</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>
