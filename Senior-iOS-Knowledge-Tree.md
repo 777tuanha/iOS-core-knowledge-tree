@@ -1,19 +1,20 @@
 # Senior iOS Knowledge Tree
 
+---
+
 ## 1. Swift Language
 
 ### Core Concepts
 - Value vs Reference types
 - Struct vs Class
 - Copy-on-write
-- ARC
+- ARC basics
 - weak vs unowned
-- Retain cycles
 
 ### Generics & Protocols
 - Generics
 - Associated types
-- Protocol oriented programming
+- Protocol-oriented programming
 - Existential types
 - Type erasure
 
@@ -29,9 +30,9 @@
 ## 2. Memory Management
 
 ### ARC
-- Strong reference
-- Weak reference
-- Unowned reference
+- Strong references
+- Weak references
+- Unowned references
 - Retain cycles
 
 ### Closures
@@ -39,10 +40,10 @@
 - Escaping vs non-escaping
 - Autoclosure
 
-### Performance
+### Memory Performance
 - Stack vs Heap
-- Copy-on-write
-- Memory allocation
+- Copy-on-write optimization
+- Memory allocation patterns
 
 ---
 
@@ -66,8 +67,8 @@
 ### Concurrency Problems
 - Race conditions
 - Deadlocks
-- Priority inversion
 - Thread safety
+- Priority inversion
 
 ---
 
@@ -112,8 +113,8 @@
 
 ### Concepts
 - Reactive streams
+- Data pipelines
 - Data binding
-- Async pipelines
 
 ---
 
@@ -179,8 +180,8 @@
 - SQLite
 - Realm
 
-### Data Sync
-- Offline-first design
+### Data Synchronization
+- Offline-first architecture
 - Conflict resolution
 - Data migration
 
@@ -193,13 +194,13 @@
 - SceneDelegate
 - App states
 
-### System Features
+### System Capabilities
 - Background tasks
 - Push notifications
 - Deep links
 - Universal links
 
-### Frameworks
+### Platform Frameworks
 - CoreLocation
 - AVFoundation
 - MapKit
@@ -214,24 +215,25 @@
 - CocoaPods
 - Carthage
 
-### Binary Frameworks
-- XCFramework
-- Static vs dynamic libraries
+### Framework Types
+- Static libraries
+- Dynamic frameworks
+- XCFrameworks
 
 ---
 
 ## 11. Testing & Quality
 
 ### Testing Types
-- Unit tests
-- Integration tests
-- UI tests
-- Snapshot tests
+- Unit testing
+- Integration testing
+- UI testing
+- Snapshot testing
 
-### Test Design
+### Testable Architecture
 - Dependency injection
 - Mocking
-- Testable architecture
+- Test doubles
 
 ### Tools
 - XCTest
@@ -249,15 +251,36 @@
 - Leaks
 - Energy Log
 
-### Optimization
-- App launch time
-- Lazy loading
+### Optimization Techniques
 - Memory optimization
-- Reducing main thread work
+- Reducing main-thread work
+- Efficient data structures
+- Lazy loading
 
 ---
 
-## 13. Security
+## 13. App Startup & Runtime
+
+### App Launch Process
+- dyld
+- Dynamic library loading
+- App launch stages
+- Initial view controller setup
+
+### Startup Optimization
+- Reducing startup work
+- Lazy initialization
+- Deferred loading
+- Minimizing dynamic frameworks
+
+### Runtime Behavior
+- RunLoop
+- Main thread scheduling
+- Event processing
+
+---
+
+## 14. Security
 
 ### Data Security
 - Keychain
@@ -267,14 +290,16 @@
 ### Network Security
 - HTTPS
 - Certificate pinning
+- Secure transport
 
 ### App Security
 - Jailbreak detection
 - Code obfuscation
+- Secure coding practices
 
 ---
 
-## 14. Design Patterns
+## 15. Design Patterns
 
 ### Creational
 - Factory
@@ -293,19 +318,20 @@
 - Command
 - State
 
-### iOS Common Patterns
+### iOS Patterns
 - Delegate
 - Coordinator
 - Dependency injection
 
 ---
 
-## 15. Refactoring
+## 16. Refactoring
 
 ### Code Smells
 - Long methods
 - Large classes
 - Duplicate code
+- Tight coupling
 
 ### Refactoring Techniques
 - Extract method
@@ -317,7 +343,7 @@ Reference: https://refactoring.guru
 
 ---
 
-## 16. Observability
+## 17. Observability
 
 ### Crash Reporting
 - Crashlytics
@@ -335,11 +361,53 @@ Reference: https://refactoring.guru
 
 ---
 
-## 17. Mobile System Design
+## 18. Accessibility (a11y)
+
+### Core Accessibility
+- VoiceOver
+- Accessibility labels
+- Accessibility traits
+- Accessibility hints
+
+### UI Support
+- Dynamic Type
+- Color contrast
+- Reduce motion
+
+### Tools
+- Accessibility Inspector
+- VoiceOver testing
+
+---
+
+## 19. App Distribution
+
+### Code Signing
+- Certificates
+- Provisioning profiles
+- Development vs Distribution
+
+### Entitlements
+- Push notifications
+- Keychain access
+- App groups
+
+### Distribution
+- TestFlight
+- App Store submission
+- Enterprise distribution
+
+### Automation
+- Fastlane
+- CI/CD pipelines
+
+---
+
+## 20. Mobile System Design
 
 ### Architecture
 - Offline-first architecture
-- API driven UI
+- API-driven UI
 - Feature flags
 - Remote config
 
@@ -348,7 +416,7 @@ Reference: https://refactoring.guru
 - Pagination
 - Sync strategies
 
-### Large Apps
+### Large Scale Apps
 - Modular architecture
 - Shared components
 - SDK design
