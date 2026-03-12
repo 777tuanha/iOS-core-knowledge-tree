@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weak vs Unowned — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../01-swift-language/index.html">Swift Language</a></span>
+    <span>Weak Vs Unowned</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="weak-vs-unowned">Weak vs Unowned</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>weak</code> and <code>unowned</code> are non-strong reference qualifiers that break retain cycles in ARC-managed code. A <code>weak</code> reference becomes <code>nil</code> when the referenced object is deallocated; it is always declared as <code>Optional</code>. An <code>unowned</code> reference does not become <code>nil</code> — it assumes the referenced object will outlive the reference holder. Choosing the wrong qualifier causes either unnecessary <code>Optional</code> unwrapping (<code>weak</code>) or crashes from dangling pointers (<code>unowned</code>).</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine you lend someone your contact card.</p>
+
+<ul>
+<li><em></em><code>weak</code><em></em> is like a sticky note with a phone number: if the person moves away (deallocation), you check the note and find it blank — no crash, just <code>nil</code>.</li>
+<li><em></em><code>unowned</code><em></em> is like an engraved plaque on their office door with their name: you assume they're still there. If they've left and you knock on the door anyway, you get a crash — the plaque points to an empty office.</li>
+</ul>
+
+<p>Use <code>weak</code> when the referenced object might be gone. Use <code>unowned</code> when you are certain it will outlive you.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="how-weak-works">How <code>weak</code> Works</h3>
+
+<p>A <code>weak</code> reference is stored in a side table rather than inline. When the object is deallocated, ARC zeroes every <code>weak</code> reference that points to it. This zeroing is thread-safe. Because the value can become <code>nil</code>, <code>weak</code> references are always typed as <code>Optional</code>.</p>
+
+<ul>
+<li>Declared as: <code>weak var delegate: SomeDelegate?</code></li>
+<li>Access pattern: <code>guard let d = delegate else { return }</code></li>
+<li>Safe: accessing a <code>weak</code> reference after deallocation returns <code>nil</code></li>
+</ul>
+
+<h3 id="how-unowned-works">How <code>unowned</code> Works</h3>
+
+<p>An <code>unowned</code> reference skips the side table. It is stored as a raw pointer (or a tagged pointer in the unowned table for safe <code>unowned</code>). Two flavours exist:</p>
+
+<ol>
+<li><em></em><code>unowned(safe)</code><em></em> (default <code>unowned</code>): Accessing after deallocation triggers a Swift runtime trap with a clear error message. This is safer than a dangling pointer crash.</li>
+<li><em></em><code>unowned(unsafe)</code><em></em>: Truly a raw pointer — accessing after deallocation is undefined behaviour and will likely corrupt memory silently. Only use when you have external guarantees and need every nanosecond.</li>
+</ol>
+
+<p>Declared as: <code>unowned let parent: ParentClass</code></p>
+
+<h3 id="when-to-use-which">When to Use Which</h3>
+
+<table>
+<tr><td>Situation</td><td>Use</td></tr>
+<tr><td>Delegate pattern (view holds delegate, delegate may be deallocated)</td><td><code>weak</code></td></tr>
+<tr><td>Child → parent back-reference (parent owns child, child outlives parent? no)</td><td><code>unowned</code></td></tr>
+<tr><td>Closure capturing <code>self</code> where self may be deallocated before closure runs</td><td><code>weak</code></td></tr>
+<tr><td>Closure capturing <code>self</code> guaranteed alive for closure's life (e.g., same object)</td><td><code>unowned</code></td></tr>
+<tr><td>You are not certain of the lifetime relationship</td><td><code>weak</code> (safer default)</td></tr>
+</table>
+
+<h3 id="weak-in-closures"><code>weak</code> in Closures</h3>
+
+<pre><code class="language-swift">networkManager.fetch { [weak self] result in
+    guard let self else { return }  // modern Swift: re-binds self
+    self.handleResult(result)
+}</code></pre>
+
+<p>The guard prevents work when <code>self</code> is gone. Without it, the closure silently does nothing, which is often the correct behaviour for view controllers that may have been dismissed.</p>
+
+<h3 id="unowned-in-closures"><code>unowned</code> in Closures</h3>
+
+<pre><code class="language-swift">// Safe only if self is guaranteed alive during the closure's lifetime
+let formatter = NumberFormatter()
+let format: (Double) -&gt; String = { [unowned formatter] value in
+    formatter.string(from: NSNumber(value: value)) ?? ""
+}</code></pre>
+
+<p>Useful in lazy property initialisers and short-lived closures where the owning object's lifetime contains the closure's lifetime.</p>
+
+<h3 id="unowned-vs-unownedunsafe-performance"><code>unowned</code> vs <code>unowned(unsafe)</code> Performance</h3>
+
+<p>Standard <code>unowned</code> (safe) uses a second side-table entry to detect use-after-deallocation. <code>unowned(unsafe)</code> eliminates this overhead but is dangerous. In practice, the cost difference is negligible; only use <code>unowned(unsafe)</code> in ultra-hot paths with verified lifetime guarantees.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Delegate with weak reference ─────────────────────────────
+protocol ImageLoaderDelegate: AnyObject {
+    func imageLoader(_ loader: ImageLoader, didLoad image: UIImage)
+}
+
+class ImageLoader {
+    weak var delegate: ImageLoaderDelegate?   // weak — delegate may be gone
+
+    func load(url: URL) {
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let self, let data, let image = UIImage(data: data) else { return }
+            DispatchQueue.main.async {
+                self.delegate?.imageLoader(self, didLoad: image)
+            }
+        }.resume()
+    }
+}
+
+// ── Parent-child with unowned back-reference ──────────────────
+class TreeNode {
+    var value: Int
+    var children: [TreeNode] = []
+    unowned var parent: TreeNode   // parent always outlives child in this tree
+
+    init(value: Int, parent: TreeNode) {
+        self.value = value
+        self.parent = parent
+    }
+}
+
+// ── Closure capture: weak self ────────────────────────────────
+class ViewController: UIViewController {
+    var viewModel: ViewModel?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        viewModel?.onUpdate = { [weak self] newData in
+            // self might be nil if VC was dismissed before closure fires
+            self?.refreshUI(with: newData)
+        }
+    }
+
+    private func refreshUI(with data: Data) { /* update views */ }
+}
+
+// ── Closure capture: unowned (guarantee: timer owns self) ─────
+class Animator {
+    private var displayLink: CADisplayLink?
+
+    func start() {
+        // displayLink is owned by self; self outlives the displayLink callback
+        displayLink = CADisplayLink(target: self, selector: #selector(tick))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+
+    @objc private func tick() {
+        // `self` is guaranteed alive here because displayLink is owned by self
+    }
+
+    // Note: CADisplayLink has its own retain of target, so actually
+    // weak is safer here — example shows the concept only.
+    deinit { displayLink?.invalidate() }
+}
+
+// ── Guard vs if let pattern ───────────────────────────────────
+class DataProcessor {
+    private var session: URLSession?
+
+    func process() {
+        session?.dataTask(with: URL(string: "https://example.com")!) { [weak self] data, _, error in
+            // Option 1: early return on nil
+            guard let self else { return }
+            self.handle(data: data, error: error)
+        }.resume()
+    }
+
+    private func handle(data: Data?, error: Error?) { /* ... */ }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>weak</code> and <code>unowned</code>?<em></em></p>
+
+<p>A: Both break retain cycles by creating non-strong references. <code>weak</code> is always <code>Optional</code> and becomes <code>nil</code> when the referenced object is deallocated — safe for objects that may outlive you. <code>unowned</code> is non-optional and assumes the referenced object will always outlive the reference holder; accessing it after deallocation causes a runtime crash.</p>
+
+<p><em></em>Q: Why must <code>weak</code> references be declared as <code>var</code> and not <code>let</code>?<em></em></p>
+
+<p>A: Because ARC must be able to zero the reference when the object is deallocated. A <code>let</code> binding is immutable after initialisation. Since the reference must be capable of being set to <code>nil</code> by ARC, it must be <code>var</code>.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: When is it safe to use <code>unowned</code> instead of <code>weak</code> in a closure capture list?<em></em></p>
+
+<p>A: <code>unowned</code> is safe when the captured object's lifetime strictly contains the closure's lifetime — meaning the captured object can never be deallocated while the closure is still alive. A common valid pattern: a parent object creates a child, and the child stores a closure that captures the parent with <code>unowned</code> — since the child is owned by the parent, the parent will always outlive the child (and the closure). Typical examples: lazy property closures on the same object, and short-lived animation blocks created inside the owning view controller.</p>
+
+<p><em></em>Q: How does ARC zero a <code>weak</code> reference when the object is deallocated?<em></em></p>
+
+<p>A: Swift maintains a <strong>side table</strong> — a separate heap allocation per object that stores weak reference pointers, an unowned reference count, and other metadata. When the strong reference count reaches zero, before freeing the object, ARC iterates over the side-table entry and sets every recorded <code>weak</code> pointer to <code>nil</code>. This zeroing is done atomically. The side table itself is freed when both the strong count and the unowned count reach zero.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Describe a subtle retain cycle involving <code>unowned</code> that can still cause issues.<em></em></p>
+
+<p>A: <code>unowned</code> breaks the retain cycle but can introduce a crash-on-access bug. Suppose a child object holds an <code>unowned</code> reference to its parent. If the parent is deallocated (perhaps due to another cycle being broken elsewhere, or unexpected ownership transfer), the child's <code>unowned</code> reference becomes a dangling pointer. Accessing it causes a runtime trap. The subtlety is that <code>unowned</code> communicates a lifetime contract — violating that contract silently changes a memory-management bug (leak) into a crash bug (dangling pointer). Prefer <code>weak</code> in any situation where the lifetime contract could change as the codebase evolves, and reserve <code>unowned</code> only for architecturally enforced parent-owns-child trees.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Closure with <code>[weak self]</code> does nothing after the view controller is dismissed.<em></em></p>
+
+<p>Solution: This is usually correct behaviour — if the VC is gone, there's nothing to update. If the work still needs to happen (e.g., writing to a database), move it outside the UI update closure or hold a strong reference to the relevant model/service, not the view controller.</p>
+
+<p><em></em>Issue: Using <code>unowned self</code> in an escaping closure that can outlive <code>self</code> — crash at runtime.<em></em></p>
+
+<p>Solution: Replace <code>unowned</code> with <code>weak</code> and add a <code>guard let self</code> check. The crash is a use-after-free; the fix is to make the reference optional and handle the nil case.</p>
+
+<p><strong>Issue: Delegate retained strongly, preventing view controller deallocation.</strong></p>
+
+<p>Solution: Declare the delegate property as <code>weak var delegate: ProtocolName?</code>. Ensure the protocol is constrained to <code>AnyObject</code> (or <code>class</code>) so <code>weak</code> can be applied.</p>
+
+<p><em></em>Issue: <code>weak</code> reference nil even though the object should still exist.<em></em></p>
+
+<p>Solution: Check where the only strong reference is held. If only a local variable, the object may be deallocated at the end of that scope. Store the object in a <code>var</code> or <code>let</code> at the appropriate scope to keep it alive.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="arc-basics.md">ARC Basics</a> — how reference counting works</li>
+<li><a href="../02-memory-management/retain-cycles.md">Retain Cycles</a> — cycle patterns and detection</li>
+<li><a href="../02-memory-management/closures-capture-lists.md">Closures &amp; Capture Lists</a> — escaping closures, <code>[weak]</code>, <code>[unowned]</code></li>
+<li><a href="struct-vs-class.md">Struct vs Class</a> — when to avoid reference types entirely</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Struct vs Class — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../01-swift-language/index.html">Swift Language</a></span>
+    <span>Struct Vs Class</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="struct-vs-class">Struct vs Class</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Swift provides both <code>struct</code> and <code>class</code> as nominal types for encapsulating data and behaviour. Choosing between them is one of the most consequential design decisions in Swift: it determines value vs reference semantics, inheritance capability, memory layout, mutability model, and thread-safety profile. Apple's Swift guidelines recommend defaulting to <code>struct</code> and reaching for <code>class</code> only when a specific class-only feature is required.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of a <code>struct</code> as a form you fill in and hand out as photocopies. Everyone gets their own copy; changes to one copy never affect any other. A <code>class</code> is like a shared whiteboard in a conference room — everyone works on the same surface, so every change is immediately visible to all participants.</p>
+
+<ul>
+<li><code>struct</code> → photocopy (each recipient is independent)</li>
+<li><code>class</code> → shared whiteboard (all participants see every change)</li>
+</ul>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="value-semantics-struct">Value Semantics (struct)</h3>
+
+<p>Structs use value semantics: assignment, function arguments, and collection insertions all produce independent copies. Mutation is only possible on <code>var</code> bindings, and only via <code>mutating</code> methods, making accidental mutation visible at the call site.</p>
+
+<p>Benefits:</p>
+<ul>
+<li>No accidental aliasing bugs</li>
+<li>Thread-safe reads without locks (each thread has its own copy)</li>
+<li>Compiler can optimise away copies via COW or register allocation</li>
+<li>Conformance to <code>Sendable</code> is automatic when all stored properties are <code>Sendable</code></li>
+</ul>
+
+<h3 id="reference-semantics-class">Reference Semantics (class)</h3>
+
+<p>Classes use reference semantics: all copies of a variable point to the same heap-allocated instance. Mutation is visible from every reference, which enables shared mutable state but also introduces aliasing risk.</p>
+
+<p>Key class-only capabilities:</p>
+<ul>
+<li><strong>Inheritance</strong> — subclassing and method overriding</li>
+<li><em></em><code>deinit</code><em></em> — run cleanup logic when the last reference drops</li>
+<li><strong>Identity</strong> — <code>===</code> operator to check pointer equality</li>
+<li><strong>Objective-C interoperability</strong> — <code>@objc</code>, <code>NSObject</code> subclassing, KVO</li>
+</ul>
+
+<h3 id="protocol-conformance-differences">Protocol Conformance Differences</h3>
+
+<p>Both structs and classes can conform to protocols, but only classes can conform to <code>AnyObject</code>-constrained protocols. Mutating protocol requirements can only be satisfied by structs via <code>mutating</code> method declarations; classes satisfy them with regular methods.</p>
+
+<h3 id="inheritance-trade-offs">Inheritance Trade-offs</h3>
+
+<p>Struct inheritance is not supported. Structs achieve polymorphism through protocol composition, which is more explicit and avoids the fragile base-class problem. Class hierarchies are powerful but carry the risk of:</p>
+<ul>
+<li>Broken <code>super.method()</code> chains</li>
+<li>Unexpected method overrides</li>
+<li>Liskov Substitution Principle violations</li>
+</ul>
+
+<h3 id="mutability-model">Mutability Model</h3>
+
+<table>
+<tr><td>Context</td><td><code>struct</code></td><td><code>class</code></td></tr>
+<tr><td><code>let</code> binding</td><td>Fully immutable (no property mutation)</td><td>Reference immutable, properties still mutable</td></tr>
+<tr><td><code>var</code> binding</td><td>Properties mutable via <code>mutating</code> methods</td><td>Properties always mutable (if <code>var</code>)</td></tr>
+<tr><td>In a <code>class</code> property</td><td>Mutable if the property is <code>var</code></td><td>Same as above</td></tr>
+</table>
+
+<h3 id="memory-layout">Memory Layout</h3>
+
+<p>Structs are inline in their owning container (stack frame, class field, array buffer). Classes are always heap-allocated; the variable holds a pointer. Accessing a class property therefore requires a heap load, which can miss CPU cache under pressure.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Struct: plain model data ──────────────────────────────────
+struct User {
+    let id: UUID
+    var displayName: String
+    var email: String
+}
+
+var alice = User(id: UUID(), displayName: "Alice", email: "a@example.com")
+var copy = alice          // independent copy
+copy.displayName = "Bob"
+print(alice.displayName)  // "Alice" — unaffected
+
+// ── Class: identity-bearing object with lifecycle ─────────────
+class NetworkSession {
+    private(set) var requestCount = 0
+
+    func send(_ request: URLRequest) {
+        requestCount += 1
+        // ... actual networking
+    }
+
+    deinit {
+        print("Session deallocated after \(requestCount) requests")
+    }
+}
+
+let session = NetworkSession()
+let aliased = session     // same instance
+aliased.send(URLRequest(url: URL(string: "https://example.com")!))
+print(session.requestCount) // 1 — visible through both references
+
+// ── Protocol-based polymorphism (struct alternative to inheritance)
+protocol Shape {
+    var area: Double { get }
+}
+
+struct Circle: Shape {
+    let radius: Double
+    var area: Double { .pi * radius * radius }
+}
+
+struct Rectangle: Shape {
+    let width, height: Double
+    var area: Double { width * height }
+}
+
+func printArea(_ shape: Shape) {
+    print("Area: \(shape.area)")
+}
+
+// ── Class hierarchy (use when inheritance is genuinely needed)
+class Animal {
+    var name: String
+    init(name: String) { self.name = name }
+    func speak() -&gt; String { "" }
+}
+
+class Dog: Animal {
+    override func speak() -&gt; String { "Woof" }
+}
+
+// ── Struct with mutating method ───────────────────────────────
+struct Counter {
+    private(set) var value = 0
+    mutating func increment() { value += 1 }   // must be mutating
+    mutating func reset()     { value = 0 }
+}
+
+var counter = Counter()
+counter.increment()
+print(counter.value)  // 1
+
+// Note: `let counter = Counter()` would make increment() a compile error</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What are the main differences between a struct and a class in Swift?</strong></p>
+
+<p>A: Structs are value types — each variable gets its own independent copy. Classes are reference types — variables share a single heap-allocated instance. Classes additionally support inheritance, <code>deinit</code>, <code>===</code> identity comparison, and Objective-C interop. Structs are default-immutable when bound to <code>let</code>; a class <code>let</code> binding still allows mutation of its properties.</p>
+
+<p><strong>Q: Why does Apple recommend preferring structs?</strong></p>
+
+<p>A: Structs eliminate aliasing bugs, are naturally thread-safe for reads, and avoid accidental shared state. They also tend to have better performance due to stack allocation and cache locality. The Swift standard library uses structs for nearly all collection and model types.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: A <code>let</code> binding on a class instance doesn't prevent mutation of its properties — why?<em></em></p>
+
+<p>A: <code>let</code> makes the reference itself constant (you cannot reassign it to a different instance), but it does not affect the mutability of the instance's <code>var</code> properties. The class lives on the heap; <code>let</code> only locks the pointer. For a struct, <code>let</code> prevents any mutation because the struct's storage is inline with the variable — making the variable constant makes all nested properties constant too.</p>
+
+<p><strong>Q: Can a struct conform to a protocol that has a class-only constraint? What happens?</strong></p>
+
+<p>A: No. A protocol declared as <code>protocol Foo: AnyObject</code> (or with <code>class</code> keyword in older Swift) can only be conformed to by class types. Attempting to conform a struct to such a protocol is a compile-time error. The same applies to protocols in Combine (<code>ObservableObject</code>) which constrain conformers to classes.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe a scenario where switching from a class to a struct causes a subtle correctness issue.</strong></p>
+
+<p>A: Suppose a delegate pattern where multiple objects hold a reference to a shared delegate. If the delegate is converted from a class to a struct, every holder gets its own copy. Calling a mutating method on one copy doesn't update the others — effectively breaking the shared-notification contract. Similarly, observer patterns, undo managers, and any design relying on shared mutable state break when the shared object becomes a value type. The fix is to keep identity-bearing, lifecycle-owning objects as classes and only use structs for pure data.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Accidentally mutating a struct stored as <code>let</code>, causing a compile error.<em></em></p>
+
+<p>Solution: Change the binding to <code>var</code>, or if mutation should not be allowed, audit the design — <code>let</code> on a struct is enforcing the correct constraint.</p>
+
+<p><strong>Issue: Class with many subclasses becomes hard to maintain (fragile base class).</strong></p>
+
+<p>Solution: Refactor into protocol + composition. Extract shared behaviour into protocol extensions and use <code>struct</code> or <code>final class</code> conformers. Mark base classes <code>final</code> where subclassing is not intended.</p>
+
+<p><strong>Issue: Thread-safety bug when sharing a class instance between queues.</strong></p>
+
+<p>Solution: Protect mutable state with a serial <code>DispatchQueue</code>, <code>NSLock</code>, or — in Swift Concurrency — an <code>actor</code>. Alternatively, reconsider whether the type should be a struct, letting each thread work on its own copy.</p>
+
+<p><em></em>Issue: Class <code>deinit</code> not being called — suspected retain cycle.<em></em></p>
+
+<p>Solution: Add <code>[weak self]</code> or <code>[unowned self]</code> capture lists in closures that reference <code>self</code>. Use Instruments → Leaks or add a print statement in <code>deinit</code> to confirm deallocation.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="value-vs-reference.md">Value vs Reference Types</a> — foundational semantics underlying struct vs class</li>
+<li><a href="copy-on-write.md">Copy-on-Write</a> — how structs avoid expensive copies</li>
+<li><a href="arc-basics.md">ARC Basics</a> — how class lifetimes are managed</li>
+<li><a href="protocol-oriented-programming.md">Protocol-Oriented Programming</a> — struct-based alternative to inheritance</li>
+<li><a href="../02-memory-management/index.md">Memory Management</a> — retain cycles and class lifetime</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

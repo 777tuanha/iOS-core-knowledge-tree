@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARC Basics — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../01-swift-language/index.html">Swift Language</a></span>
+    <span>Arc Basics</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="arc-basics">ARC Basics</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Automatic Reference Counting (ARC) is Swift's memory management model for class instances (reference types). The compiler automatically inserts <code>retain</code> and <code>release</code> calls at compile time — there is no runtime garbage collector. When an object's reference count drops to zero, ARC calls <code>deinit</code> and frees the memory. Understanding ARC is fundamental to writing leak-free iOS applications and reasoning about object lifetimes.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of a shared rental car. Every person who picks up the keys increments a counter at the rental desk. When someone returns the keys, the counter drops. When the counter reaches zero — no one has the keys anymore — the car goes back to the lot and is recycled.</p>
+
+<p>ARC works the same way with objects:</p>
+<ul>
+<li>Every new reference to an object → counter goes up (retain)</li>
+<li>Reference goes away (variable deallocated, reassigned, goes out of scope) → counter goes down (release)</li>
+<li>Counter hits zero → <code>deinit</code> called, memory freed</li>
+</ul>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="retain--release-mechanics">Retain / Release Mechanics</h3>
+
+<p>ARC operates at <strong>compile time</strong>. The compiler analyses your source code and inserts <code>objc_retain</code> and <code>objc_release</code> calls at the appropriate points. There is no stop-the-world garbage collection pause — memory is freed immediately and deterministically when the last reference drops.</p>
+
+<p>Key operations:</p>
+<ul>
+<li><code>retain</code> — increment the reference count</li>
+<li><code>release</code> — decrement the reference count; if it reaches 0, deallocate</li>
+<li><code>autorelease</code> — defer the release until the current <code>AutoreleasePool</code> drains (mainly relevant in Objective-C interop)</li>
+</ul>
+
+<h3 id="strong-references-default">Strong References (Default)</h3>
+
+<p>Every regular (<code>var</code> or <code>let</code>) reference to a class instance is a <strong>strong reference</strong>. As long as at least one strong reference exists, the object stays alive.</p>
+
+<pre><code>Object lifecycle:
+  init called → retain count = 1
+  new reference assigned → retain count = 2
+  one reference goes out of scope → retain count = 1
+  last reference goes out of scope → retain count = 0 → deinit → freed</code></pre>
+
+<h3 id="deinit"><code>deinit</code></h3>
+
+<p>Classes can define a <code>deinit</code> method that runs just before the instance is freed. Use it to:</p>
+<ul>
+<li>Release C-level resources (<code>free</code>, <code>close</code>)</li>
+<li>Remove notification centre observers</li>
+<li>Cancel timers or network requests</li>
+<li>Print debug messages to confirm deallocation</li>
+</ul>
+
+<p><code>deinit</code> is not available on structs or enums (they are not reference-counted).</p>
+
+<h3 id="retain-count-inspection">Retain Count Inspection</h3>
+
+<p>You should not rely on a specific retain count number in production code (it is an implementation detail), but during debugging:</p>
+<ul>
+<li>Instruments → Allocations track object lifetimes</li>
+<li>Instruments → Leaks detect objects that are never freed</li>
+<li><code>CFGetRetainCount</code> can print approximate counts (avoid in production)</li>
+</ul>
+
+<h3 id="arc-vs-garbage-collection">ARC vs Garbage Collection</h3>
+
+<table>
+<tr><td>Feature</td><td>ARC</td><td>GC (e.g., JVM)</td></tr>
+<tr><td>When memory is freed</td><td>Immediately on last release</td><td>Non-deterministic</td></tr>
+<tr><td>Pause / latency</td><td>None</td><td>Stop-the-world pauses possible</td></tr>
+<tr><td>Overhead</td><td>Per-retain/release instruction</td><td>Periodic scan overhead</td></tr>
+<tr><td>Cycles</td><td>Must be broken manually</td><td>GC can collect cycles</td></tr>
+<tr><td>Determinism</td><td><code>deinit</code> called at known point</td><td>Finalizer timing uncertain</td></tr>
+</table>
+
+<h3 id="arc-in-multithreading">ARC in Multithreading</h3>
+
+<p>Retain/release operations are atomic on all Apple platforms — incrementing and decrementing the retain count is thread-safe. However, <strong>reading and writing the object's own properties is not automatically thread-safe</strong>. ARC only protects the count itself.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Basic lifecycle ───────────────────────────────────────────
+class Connection {
+    let id: Int
+    init(id: Int) {
+        self.id = id
+        print("Connection \(id) created")   // retain count = 1
+    }
+    deinit {
+        print("Connection \(id) released")  // count hit 0
+    }
+}
+
+do {
+    let c1 = Connection(id: 1)  // count = 1
+    let c2 = c1                 // count = 2 (strong reference)
+    _ = c2                      // suppress unused-variable warning
+}
+// scope ends → c2 goes away (count = 1) → c1 goes away (count = 0) → deinit
+
+// ── Strong reference keeps object alive ──────────────────────
+class Cache {
+    var storage: [String: Data] = [:]
+}
+
+var primary: Cache? = Cache()   // count = 1
+var secondary = primary         // count = 2
+primary = nil                   // count = 1 — still alive
+secondary = nil                 // count = 0 → deinit
+
+// ── deinit for resource cleanup ──────────────────────────────
+class FileHandle {
+    private let descriptor: Int32
+
+    init(path: String) {
+        descriptor = open(path, O_RDONLY)
+    }
+
+    deinit {
+        close(descriptor)   // deterministic resource release
+    }
+}
+
+// ── Retain cycle (problem — will not deallocate) ──────────────
+class Parent {
+    var child: Child?
+    deinit { print("Parent freed") }
+}
+
+class Child {
+    var parent: Parent?         // strong → creates a cycle
+    deinit { print("Child freed") }
+}
+
+var p: Parent? = Parent()
+var c: Child?  = Child()
+p!.child = c                   // p → c, count(c) = 2
+c!.parent = p                  // c → p, count(p) = 2
+p = nil                        // count(p) = 1 — NOT freed
+c = nil                        // count(c) = 1 — NOT freed
+// Neither deinit is called — leak!
+
+// Fix: make one side weak (see weak-vs-unowned.md)
+// var parent: weak Parent?
+
+// ── Autorelease pool (Obj-C interop / tight loops) ────────────
+for _ in 0..&lt;10_000 {
+    autoreleasepool {
+        // Any Obj-C objects autoreleased inside here are freed
+        // at the end of each iteration rather than at the end
+        // of the outer function's autorelease pool.
+        let image = UIImage(named: "large_asset")
+        _ = image?.pngData()
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is ARC and how does it differ from garbage collection?</strong></p>
+
+<p>A: ARC (Automatic Reference Counting) is a compile-time memory management strategy. The compiler inserts retain and release calls around object usage. Memory is freed immediately and deterministically when the reference count reaches zero. Garbage collectors use a runtime scan to find unreachable objects and free them non-deterministically, which can cause pause latency. ARC cannot collect reference cycles; garbage collectors can.</p>
+
+<p><em></em>Q: When is <code>deinit</code> called?<em></em></p>
+
+<p>A: <code>deinit</code> is called automatically by ARC exactly when the reference count of a class instance drops to zero — i.e., all strong references to the instance have gone away. It is called synchronously on the thread that released the last reference. There is no guarantee about which thread that is, so <code>deinit</code> code must not assume the main thread.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: Why can't ARC automatically break retain cycles?</strong></p>
+
+<p>A: ARC is a reference-counting scheme, not a tracing garbage collector. It only tracks counts, not the object graph. A cycle (A → B → A) keeps both counts at ≥ 1 indefinitely — neither drops to zero — so neither object is freed. Detecting cycles requires graph traversal, which ARC deliberately avoids to maintain O(1) retain/release cost. The programmer must break cycles explicitly using <code>weak</code> or <code>unowned</code> references.</p>
+
+<p><strong>Q: Is retain/release thread-safe in Swift?</strong></p>
+
+<p>A: The retain and release operations themselves are atomic — they use lock-free atomic instructions on the reference count field. So ARC-level operations are thread-safe. However, the data stored inside the object is not automatically thread-safe. If two threads simultaneously read and write a property, that is a data race. ARC prevents use-after-free bugs (by keeping the object alive) but does not prevent data races within the object.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Explain how the Swift compiler decides where to insert retain and release calls.</strong></p>
+
+<p>A: The compiler performs a dataflow analysis pass called ARC optimisation. It tracks each reference through the control flow graph and inserts:</p>
+<ul>
+<li>A <code>retain</code> at the point where a strong reference is created (variable initialisation, function argument passing)</li>
+<li>A <code>release</code> at the last use of each reference within a scope</li>
+</ul>
+
+<p>The optimiser then applies several passes:</p>
+<ol>
+<li><strong>Redundant retain/release elimination</strong> — if an object is retained and released with no intervening escaping call, the pair can be removed.</li>
+<li><strong>Code motion</strong> — release calls can be moved earlier (as soon as the last use) to free memory sooner.</li>
+<li><strong>Ownership conventions</strong> — Swift uses <code>+1</code> ownership for returned values from <code>init</code> and factory methods, and <code>+0</code> (borrowing) for function arguments, reducing retain/release traffic on function boundaries.</li>
+</ol>
+
+<p>The result is that Swift typically requires fewer retain/release calls than Objective-C's manual reference counting.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Object not being deallocated — <code>deinit</code> never printed.<em></em></p>
+
+<p>Solution: Add a <code>deinit</code> print statement and check with Instruments → Leaks. The most common cause is a retain cycle via a strong closure capture or a strong delegate reference. Use <code>[weak self]</code> in closures and <code>weak var delegate</code> for delegate properties.</p>
+
+<p><em></em>Issue: <code>deinit</code> called on the wrong thread, causing main-thread-only UIKit operations to crash.<em></em></p>
+
+<p>Solution: Dispatch main-thread work in <code>deinit</code> to <code>DispatchQueue.main.async</code>. Alternatively, redesign so that cleanup that needs the main thread happens in an explicit lifecycle method (<code>viewDidDisappear</code>, <code>cancel()</code>) rather than <code>deinit</code>.</p>
+
+<p><strong>Issue: High memory usage in a tight loop processing many objects.</strong></p>
+
+<p>Solution: Wrap loop body in <code>autoreleasepool { }</code> to drain Objective-C autoreleased objects (e.g., <code>UIImage</code>, <code>NSData</code>) after each iteration rather than letting them accumulate until the outer pool drains.</p>
+
+<p><strong>Issue: Retain count unexpectedly high when debugging — object never freed.</strong></p>
+
+<p>Solution: Use Instruments → Allocation track + "Record Reference Counts" to see every retain/release and which call stack performed them. Look for unexpected retains from closures, collections, or notification observers.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="weak-vs-unowned.md">Weak vs Unowned</a> — breaking retain cycles with non-strong references</li>
+<li><a href="../02-memory-management/retain-cycles.md">Retain Cycles</a> — patterns that create cycles and how to fix them</li>
+<li><a href="../02-memory-management/arc.md">ARC Deep Dive</a> — compiler insertions, assembly inspection, Instruments</li>
+<li><a href="struct-vs-class.md">Struct vs Class</a> — why value types don't need ARC</li>
+<li><a href="../02-memory-management/index.md">Memory Management</a> — full memory section overview</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

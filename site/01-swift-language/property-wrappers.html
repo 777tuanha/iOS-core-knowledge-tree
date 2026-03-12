@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Property Wrappers — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../01-swift-language/index.html">Swift Language</a></span>
+    <span>Property Wrappers</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="property-wrappers">Property Wrappers</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Property wrappers (<code>@propertyWrapper</code>) add a layer of syntactic sugar over stored properties, encapsulating common patterns like validation, persistence, thread-safe access, and observation in a reusable struct or class. Introduced in Swift 5.1, they are extensively used in SwiftUI (<code>@State</code>, <code>@Binding</code>, <code>@EnvironmentObject</code>) and Combine (<code>@Published</code>). Understanding how property wrappers work internally removes the magic and makes debugging them straightforward.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of a property wrapper like a smart outlet adapter. You plug in any device (the wrapped value) and the adapter adds behaviour: voltage conversion, surge protection, power metering. The device doesn't know the adapter exists — it just gets power. The room doesn't know what device is plugged in — it just provides an outlet.</p>
+
+<p>Property wrappers work the same way:</p>
+<ul>
+<li>The <strong>wrapped value</strong> is the device — the actual data</li>
+<li>The <strong>wrapper</strong> is the adapter — adds validation, persistence, logging, etc.</li>
+<li>Callers access the property normally; the wrapper's logic runs invisibly</li>
+</ul>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="mechanics">Mechanics</h3>
+
+<p>Declaring <code>@SomeWrapper var x: T</code> is syntactic sugar. The compiler desugars it to:</p>
+
+<pre><code class="language-swift">var _x: SomeWrapper&lt;T&gt;        // backing storage — the wrapper instance
+var x: T {                     // synthetic computed property
+    get { _x.wrappedValue }
+    set { _x.wrappedValue = newValue }
+}</code></pre>
+
+<p>The property wrapper type must declare a <code>wrappedValue</code> property. The backing storage (<code>_x</code>) is accessible with an underscore prefix.</p>
+
+<h3 id="projected-value-">Projected Value (<code>$</code>)</h3>
+
+<p>A wrapper can optionally expose a <strong>projected value</strong> via a <code>projectedValue</code> property. This is accessed with the <code>$</code> prefix:</p>
+
+<pre><code class="language-swift">@State var count = 0
+$count          // Binding&lt;Int&gt; — the projected value</code></pre>
+
+<p>The projected value type is arbitrary — it can be a <code>Binding</code>, a <code>Publisher</code>, a validation result, or anything useful.</p>
+
+<h3 id="initialisation">Initialisation</h3>
+
+<p>Wrappers can be initialised in three ways:</p>
+<ol>
+<li><code>@Wrapper var x = value</code> — calls <code>init(wrappedValue:)</code></li>
+<li><code>@Wrapper(arg: ...) var x = value</code> — calls <code>init(wrappedValue:arg:)</code></li>
+<li><code>@Wrapper(arg: ...) var x</code> — calls <code>init(arg:)</code> — no initial value from the declaration</li>
+</ol>
+
+<h3 id="built-in-wrappers-in-the-ios-ecosystem">Built-in Wrappers in the iOS Ecosystem</h3>
+
+<table>
+<tr><td>Wrapper</td><td>Module</td><td>Purpose</td></tr>
+<tr><td><code>@State</code></td><td>SwiftUI</td><td>Local view state; triggers re-render on change</td></tr>
+<tr><td><code>@Binding</code></td><td>SwiftUI</td><td>Two-way reference to another view's state</td></tr>
+<tr><td><code>@ObservedObject</code></td><td>SwiftUI</td><td>Observe external <code>ObservableObject</code></td></tr>
+<tr><td><code>@StateObject</code></td><td>SwiftUI</td><td>Owns and observes an <code>ObservableObject</code></td></tr>
+<tr><td><code>@EnvironmentObject</code></td><td>SwiftUI</td><td>Inject from environment; not passed explicitly</td></tr>
+<tr><td><code>@Environment</code></td><td>SwiftUI</td><td>Read environment values (color scheme, locale)</td></tr>
+<tr><td><code>@Published</code></td><td>Combine</td><td>Emits changes via <code>objectWillChange</code></td></tr>
+<tr><td><code>@AppStorage</code></td><td>SwiftUI</td><td>Reads/writes <code>UserDefaults</code></td></tr>
+<tr><td><code>@SceneStorage</code></td><td>SwiftUI</td><td>Per-scene persistent state</td></tr>
+</table>
+
+<h3 id="composition">Composition</h3>
+
+<p>Property wrappers can be composed in Swift 5.5+:</p>
+
+<pre><code class="language-swift">@Trimmed @Lowercased var username: String</code></pre>
+
+<p>The outermost wrapper receives the inner wrapper's <code>wrappedValue</code> as its own <code>wrappedValue</code>. Composition is applied right-to-left (innermost evaluated first).</p>
+
+<h3 id="limitations">Limitations</h3>
+
+<ul>
+<li>Property wrappers cannot be applied to <code>let</code> stored properties in some contexts</li>
+<li>Cannot be applied to global variables or local variables in Swift versions before 5.4</li>
+<li>The backing store <code>_x</code> is accessible outside the type (a footgun for testing)</li>
+<li>Wrappers add type complexity that can slow compile times</li>
+</ul>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Minimal property wrapper ───────────────────────────────────
+@propertyWrapper
+struct Clamped&lt;Value: Comparable&gt; {
+    private var value: Value
+    let range: ClosedRange&lt;Value&gt;
+
+    var wrappedValue: Value {
+        get { value }
+        set { value = Swift.min(Swift.max(newValue, range.lowerBound), range.upperBound) }
+    }
+
+    init(wrappedValue: Value, _ range: ClosedRange&lt;Value&gt;) {
+        self.range = range
+        self.value = Swift.min(Swift.max(wrappedValue, range.lowerBound), range.upperBound)
+    }
+}
+
+struct Volume {
+    @Clamped(0...100) var level: Int = 50
+}
+
+var v = Volume()
+v.level = 120
+print(v.level)  // 100 — clamped
+
+// ── Projected value ────────────────────────────────────────────
+@propertyWrapper
+struct Validated&lt;Value&gt; {
+    private var value: Value
+    private let validator: (Value) -&gt; Bool
+
+    var wrappedValue: Value {
+        get { value }
+        set { value = newValue }
+    }
+
+    var projectedValue: Bool { validator(value) }  // accessible via $
+
+    init(wrappedValue: Value, validator: @escaping (Value) -&gt; Bool) {
+        self.value = wrappedValue
+        self.validator = validator
+    }
+}
+
+struct Form {
+    @Validated(validator: { !$0.isEmpty }) var email: String = ""
+}
+
+var form = Form()
+form.email = "user@example.com"
+print(form.$email)   // true — projected value is the validation result
+form.email = ""
+print(form.$email)   // false
+
+// ── @Published internals (conceptual equivalent) ──────────────
+@propertyWrapper
+class Published&lt;Value&gt; {
+    private var value: Value
+    // In the real Combine implementation this publishes to objectWillChange
+    let publisher = PassthroughSubject&lt;Value, Never&gt;()
+
+    var wrappedValue: Value {
+        get { value }
+        set {
+            value = newValue
+            publisher.send(newValue)
+        }
+    }
+
+    var projectedValue: AnyPublisher&lt;Value, Never&gt; {
+        publisher.eraseToAnyPublisher()
+    }
+
+    init(wrappedValue: Value) { self.value = wrappedValue }
+}
+
+// ── Thread-safe wrapper ────────────────────────────────────────
+@propertyWrapper
+final class Protected&lt;Value&gt; {
+    private var value: Value
+    private let lock = NSLock()
+
+    var wrappedValue: Value {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
+    }
+
+    init(wrappedValue: Value) { self.value = wrappedValue }
+}
+
+class DataCache {
+    @Protected var items: [String: Data] = [:]  // thread-safe read/write
+}
+
+// ── UserDefaults persistence ───────────────────────────────────
+@propertyWrapper
+struct UserDefault&lt;T&gt; {
+    let key: String
+    let defaultValue: T
+
+    var wrappedValue: T {
+        get { UserDefaults.standard.object(forKey: key) as? T ?? defaultValue }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+}
+
+struct Settings {
+    @UserDefault(key: "onboardingShown", defaultValue: false)
+    var hasSeenOnboarding: Bool
+}
+
+// ── SwiftUI @State and $binding usage ─────────────────────────
+import SwiftUI
+
+struct CounterView: View {
+    @State private var count = 0    // local state, owned by SwiftUI
+
+    var body: some View {
+        Stepper("Count: \(count)", value: $count)  // $count is Binding&lt;Int&gt;
+    }
+}
+
+import Combine</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is a property wrapper and what problem does it solve?</strong></p>
+
+<p>A: A property wrapper encapsulates repeated get/set logic — validation, persistence, thread safety, observation — in a reusable struct or class decorated with <code>@propertyWrapper</code>. Without them, you'd duplicate the same <code>didSet</code>/computed property boilerplate everywhere. SwiftUI's <code>@State</code> and Combine's <code>@Published</code> are the most visible examples.</p>
+
+<p><em></em>Q: What is the difference between <code>wrappedValue</code> and <code>projectedValue</code>?<em></em></p>
+
+<p>A: <code>wrappedValue</code> is the primary storage exposed by the wrapper — accessed using the plain property name. <code>projectedValue</code> is an optional secondary value exposed via the <code>$</code> prefix — it can be anything useful related to the wrapped value. For <code>@State</code>, the projected value is a <code>Binding&lt;T&gt;</code> for two-way data flow. For <code>@Published</code>, it is a publisher for observing changes.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does the compiler desugar a property wrapper declaration?</strong></p>
+
+<p>A: <code>@Wrapper var x: T = initialValue</code> becomes three things:</p>
+<ol>
+<li>A backing store variable <code>var _x: Wrapper&lt;T&gt; = Wrapper(wrappedValue: initialValue)</code> (or <code>Wrapper()</code> if no <code>init(wrappedValue:)</code> applies)</li>
+<li>A computed property <code>var x: T { get { _x.wrappedValue } set { _x.wrappedValue = newValue } }</code></li>
+<li>A projected value computed property <code>var $x: Wrapper&lt;T&gt;.ProjectedValue { _x.projectedValue }</code> (if <code>projectedValue</code> is defined)</li>
+</ol>
+
+<p>The backing store can be accessed as <code>_x</code> — important for testing and when passing the wrapper itself to an initialiser.</p>
+
+<p><em></em>Q: Why is <code>@StateObject</code> preferred over <code>@ObservedObject</code> for view-model ownership?<em></em></p>
+
+<p>A: <code>@ObservedObject</code> does not own the object — it merely observes one provided externally. If the parent view re-renders, SwiftUI may recreate the child view's struct, and <code>@ObservedObject</code> would point to a newly created (and thus reset) view model. <code>@StateObject</code> ties the object's lifetime to the view's identity in the SwiftUI node tree — it is created once and persists across re-renders as long as the view is alive, making it the correct choice when the view is the owner.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Design a thread-safe <code>@Atomic</code> property wrapper that avoids priority inversion on Apple platforms.<em></em></p>
+
+<p>A: Use <code>os_unfair_lock</code> (unfair lock, available since iOS 10) rather than <code>NSLock</code> or <code>DispatchQueue</code>. <code>NSLock</code> can cause priority inversion on Darwin; <code>os_unfair_lock</code> is priority-inheriting. Wrap it in a class because <code>os_unfair_lock</code> is a value type that must not be moved in memory:</p>
+
+<pre><code class="language-swift">@propertyWrapper
+final class Atomic&lt;Value&gt; {
+    private var _value: Value
+    private var _lock = os_unfair_lock_s()
+
+    var wrappedValue: Value {
+        get { os_unfair_lock_lock(&amp;_lock); defer { os_unfair_lock_unlock(&amp;_lock) }; return _value }
+        set { os_unfair_lock_lock(&amp;_lock); defer { os_unfair_lock_unlock(&amp;_lock) }; _value = newValue }
+    }
+
+    init(wrappedValue: Value) { _value = wrappedValue }
+}</code></pre>
+
+<p>For Swift Concurrency contexts, an <code>actor</code> is preferable as it integrates with the cooperative thread pool and avoids blocking threads.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>@Published</code> property change not triggering SwiftUI view update.<em></em></p>
+
+<p>Solution: Ensure the view model conforms to <code>ObservableObject</code> and the view uses <code>@ObservedObject</code> or <code>@StateObject</code>. <code>@Published</code> only works as part of the <code>ObservableObject</code> machinery when the object's <code>objectWillChange</code> publisher is what SwiftUI subscribes to.</p>
+
+<p><em></em>Issue: Property wrapper applied to a <code>let</code> property causes a compiler error.<em></em></p>
+
+<p>Solution: Wrappers require <code>var</code> because the backing store must be mutable (ARC needs to set it, and <code>wrappedValue</code> setter must be callable). Change to <code>var</code> or use <code>let</code> only for wrapper types that don't support mutation.</p>
+
+<p><em></em>Issue: Backing store <code>_x</code> is accidentally accessed from outside the type.<em></em></p>
+
+<p>Solution: This is a known limitation — the backing store is not private by default. Mark the property <code>private</code> which makes the backing store also private. If you need to expose the wrapper itself, do so through <code>projectedValue</code>.</p>
+
+<p><strong>Issue: Custom property wrapper doesn't work in SwiftUI previews — crashes or produces wrong values.</strong></p>
+
+<p>Solution: Ensure the wrapper's initialiser handles edge cases (nil UserDefaults, missing keys). Provide a sensible default value. For <code>@AppStorage</code>-like wrappers, use a test-friendly <code>UserDefaults</code> suite rather than <code>.standard</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="type-erasure.md">Type Erasure</a> — <code>@Published</code> projects <code>AnyPublisher</code>, a type-erased publisher</li>
+<li><a href="protocol-oriented-programming.md">Protocol-Oriented Programming</a> — wrappers are often generic over a protocol</li>
+<li><a href="generics.md">Generics</a> — most useful wrappers are generic over their wrapped value</li>
+<li><a href="../03-concurrency/index.md">Concurrency</a> — <code>@MainActor</code> is a special property-wrapper-like annotation</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

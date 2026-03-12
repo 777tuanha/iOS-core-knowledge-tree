@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Protocol-Oriented Programming — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../01-swift-language/index.html">Swift Language</a></span>
+    <span>Protocol Oriented Programming</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="protocol-oriented-programming">Protocol-Oriented Programming</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Protocol-Oriented Programming (POP) is Swift's preferred design paradigm, introduced by Apple at WWDC 2015. Rather than inheriting behaviour through class hierarchies, POP composes behaviour through protocol conformances and protocol extensions. Protocols define contracts; protocol extensions provide default implementations; types — including structs, enums, and classes — conform to assemble the behaviour they need. This approach avoids the fragile base-class problem, supports value types, and encourages small, focused abstractions.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of protocols like job certifications. A "Licensed Driver" certification means you can drive. A "First-Aid Certified" means you can treat injuries. A person can hold both certifications at once — they are composed, not inherited from a single "SuperPerson" base class.</p>
+
+<p>Protocol composition in Swift:</p>
+<ul>
+<li>Protocol = certification (contract)</li>
+<li>Protocol extension = included training manual (default implementation)</li>
+<li>Conforming type = person who holds the certifications</li>
+</ul>
+
+<p>A struct can be both <code>Drawable</code> and <code>Animatable</code> without inheriting from any class.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="protocols-vs-inheritance">Protocols vs Inheritance</h3>
+
+<table>
+<tr><td></td><td>Class Inheritance</td><td>Protocol Composition</td></tr>
+<tr><td>Type restriction</td><td>Classes only</td><td>Any type (struct, enum, class, actor)</td></tr>
+<tr><td>Multiple parents</td><td>No (single inheritance)</td><td>Yes (unlimited protocols)</td></tr>
+<tr><td>Default behaviour</td><td>Override methods</td><td>Protocol extensions</td></tr>
+<tr><td>Coupling</td><td>Tight (subclass knows superclass)</td><td>Loose (type knows protocol)</td></tr>
+<tr><td>Fragile base class</td><td>Yes</td><td>No</td></tr>
+</table>
+
+<h3 id="protocol-extensions">Protocol Extensions</h3>
+
+<p>Protocol extensions add method and property implementations to any conforming type without subclassing. They can provide default implementations and add computed properties. If a conforming type implements the same method, its version takes precedence.</p>
+
+<pre><code class="language-swift">protocol Greetable {
+    var name: String { get }
+    func greet() -&gt; String  // optional to override
+}
+
+extension Greetable {
+    func greet() -&gt; String { "Hello, \(name)!" }  // default implementation
+}</code></pre>
+
+<h3 id="protocol-composition">Protocol Composition</h3>
+
+<p>A single parameter or variable can require conformance to multiple protocols using <code>&amp;</code>:</p>
+
+<pre><code class="language-swift">func present(_ item: Drawable &amp; Animatable) { ... }</code></pre>
+
+<p>This is more flexible than inheritance because unrelated types can both satisfy the composition.</p>
+
+<h3 id="static-vs-dynamic-dispatch">Static vs Dynamic Dispatch</h3>
+
+<p>When a concrete type is known at compile time (using a generic parameter <code>&lt;T: Protocol&gt;</code>), Swift uses <strong>static dispatch</strong> — the correct method is called directly without a lookup, enabling inlining and optimisation. When the type is unknown at compile time (<code>any Protocol</code> existential), Swift uses <strong>dynamic dispatch</strong> via a protocol witness table (similar to a vtable), adding a small lookup overhead.</p>
+
+<p>Prefer generic parameters over existentials in performance-sensitive code.</p>
+
+<h3 id="self-requirements-and-anyobject">Self Requirements and <code>AnyObject</code></h3>
+
+<p>Adding <code>Self</code> to a protocol requirement means implementations must return or accept their own type — useful for fluent builder APIs. Adding <code>: AnyObject</code> to a protocol restricts conformers to class types, enabling <code>weak</code> references to protocol-typed variables.</p>
+
+<h3 id="protocol-hierarchies">Protocol Hierarchies</h3>
+
+<p>Protocols can refine other protocols. A conforming type must satisfy all requirements in the hierarchy:</p>
+
+<pre><code class="language-swift">protocol Animal {
+    var name: String { get }
+}
+
+protocol Pet: Animal {
+    var owner: String { get }
+}
+// Conforming to Pet requires both `name` and `owner`</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Basic protocol + extension ─────────────────────────────────
+protocol Identifiable {
+    var id: UUID { get }
+}
+
+extension Identifiable {
+    func isEqual(to other: some Identifiable) -&gt; Bool {
+        id == other.id
+    }
+}
+
+struct Product: Identifiable {
+    let id = UUID()
+    var name: String
+}
+
+// ── Protocol composition ───────────────────────────────────────
+protocol Serializable {
+    func serialize() -&gt; Data
+}
+
+protocol Cacheable {
+    var cacheKey: String { get }
+}
+
+// Function accepts any type that is both Serializable and Cacheable
+func cache&lt;T: Serializable &amp; Cacheable&gt;(_ item: T, into store: CacheStore) {
+    let data = item.serialize()
+    store.set(data, forKey: item.cacheKey)
+}
+
+// Dummy types for compilation
+class CacheStore { func set(_ d: Data, forKey k: String) {} }
+
+// ── Default implementations for protocol requirements ──────────
+protocol Logging {
+    var logPrefix: String { get }
+    func log(_ message: String)
+}
+
+extension Logging {
+    var logPrefix: String { String(describing: type(of: self)) }
+
+    func log(_ message: String) {
+        print("[\(logPrefix)] \(message)")
+    }
+}
+
+// Conformer gets log() for free; optionally overrides logPrefix
+struct NetworkManager: Logging {
+    // Uses default logPrefix = "NetworkManager"
+    // Uses default log() implementation
+}
+
+struct AuthService: Logging {
+    var logPrefix: String { "AUTH" }  // override just the prefix
+}
+
+// ── Retroactive conformance ────────────────────────────────────
+// Add protocol conformance to a type you don't own
+extension Int: Logging {
+    // Adds log() to Int — useful in extensions/tests
+}
+// 42.log("Hello")  → "[Int] Hello"
+
+// ── Protocol with associated type (generic protocol) ──────────
+protocol DataSource {
+    associatedtype Item
+    func item(at index: Int) -&gt; Item
+    var count: Int { get }
+}
+
+struct ArrayDataSource&lt;T&gt;: DataSource {
+    private let items: [T]
+    init(_ items: [T]) { self.items = items }
+    func item(at index: Int) -&gt; T { items[index] }
+    var count: Int { items.count }
+}
+
+// ── Static dispatch via generic (preferred over existential) ───
+func processAll&lt;DS: DataSource&gt;(_ dataSource: DS) {
+    for i in 0..&lt;dataSource.count {
+        print(dataSource.item(at: i))
+    }
+}
+
+// ── AnyObject-constrained protocol for weak delegate ──────────
+protocol ViewControllerDelegate: AnyObject {
+    func didFinish()
+}
+
+class ChildViewController: UIViewController {
+    weak var delegate: ViewControllerDelegate?  // weak possible because AnyObject
+
+    func finish() {
+        delegate?.didFinish()
+        dismiss(animated: true)
+    }
+}
+
+import UIKit  // for UIViewController above</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is protocol-oriented programming and how does it differ from OOP?</strong></p>
+
+<p>A: POP composes behaviour through protocol conformances and protocol extensions rather than class inheritance. Any type — struct, enum, or class — can participate. OOP centres on class hierarchies where behaviour is inherited from superclasses. POP avoids the fragile base-class problem, works with value types, supports multiple protocol conformance (vs single inheritance), and encourages smaller, focused contracts.</p>
+
+<p><strong>Q: What is a protocol extension and what can it do?</strong></p>
+
+<p>A: A protocol extension adds method and property implementations to all types that conform to the protocol. It can provide default implementations of protocol requirements (which conformers can override) and can add additional utility methods not declared in the protocol. Constraints can restrict which conformers receive an extension (<code>extension Collection where Element: Numeric</code>).</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: What is the difference between a protocol used as a generic constraint versus an existential?</strong></p>
+
+<p>A: As a generic constraint (<code>func foo&lt;T: Flyable&gt;(_ t: T)</code>), the concrete type is known at compile time. Swift uses static dispatch, can inline the method, and may specialise the generic for performance. As an existential (<code>func foo(_ t: any Flyable)</code>), the concrete type is erased into an existential container at runtime with a protocol witness table for dynamic dispatch. Existentials also impose heap allocation for value types larger than ~3 words. Generic constraints are preferred for performance-sensitive paths; existentials are needed when the concrete type varies at runtime.</p>
+
+<p><strong>Q: Can you add a stored property in a protocol extension?</strong></p>
+
+<p>A: No. Protocol extensions can only add computed properties and method implementations — they cannot add stored properties or modify the memory layout of conforming types. Stored properties must be declared in the protocol requirement itself and then stored by each conforming type. Workarounds include using associated objects (for classes) or adding an extra stored property to each conforming type.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Explain the diamond problem in protocol composition and how Swift handles it.</strong></p>
+
+<p>A: The diamond problem occurs when two protocols both provide a default implementation of the same method, and a type conforms to both. Unlike class multiple-inheritance (where this causes ambiguity in C++), Swift resolves it statically: if the conforming type declares its own implementation, that wins. If it doesn't, and two protocol extensions provide conflicting defaults, the compiler emits an error — requiring the conforming type to disambiguate by providing its own implementation. Swift does not silently pick one; it forces explicit resolution. If one protocol refines the other, the more specific refinement's default wins.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: "Protocol can only be used as a generic constraint because it has Self or associated type requirements" error.</strong></p>
+
+<p>Solution: The protocol cannot be used directly as an <code>any Protocol</code> existential in older Swift. Upgrade to Swift 5.7+ and use <code>any Protocol</code> syntax explicitly, or refactor to a generic parameter <code>&lt;T: Protocol&gt;</code>. If the associated type truly varies at runtime, consider type erasure (see <code>type-erasure.md</code>).</p>
+
+<p><strong>Issue: Default implementation in a protocol extension is not called — conformer's version runs instead.</strong></p>
+
+<p>Solution: This is correct behaviour — conformer implementations shadow extension defaults. If the extension method should always run alongside the conformer's implementation, extract the shared logic into a separate protocol requirement and call it from the extension's default.</p>
+
+<p><strong>Issue: Adding conformance to a third-party type causes conflicts when two modules do the same.</strong></p>
+
+<p>Solution: Avoid retroactive conformances to types you don't own where possible. If required, place them in a single, centralised file and ensure only one module declares the conformance. Swift 5.7+ warns about retroactive conformances to prompt better organisation.</p>
+
+<p><strong>Issue: Protocol with many default implementations becomes a "god protocol" — hard to reason about.</strong></p>
+
+<p>Solution: Split into smaller, focused protocols. Use protocol composition at usage sites rather than one catch-all protocol. Each protocol should have a single reason to change.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="generics.md">Generics</a> — generic constraints and associated types complement POP</li>
+<li><a href="type-erasure.md">Type Erasure</a> — erasing associated types for heterogeneous collections</li>
+<li><a href="struct-vs-class.md">Struct vs Class</a> — why POP often replaces class inheritance for structs</li>
+<li><a href="value-vs-reference.md">Value vs Reference Types</a> — POP enables value types to carry behaviour</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

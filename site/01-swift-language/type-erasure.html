@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Type Erasure — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../01-swift-language/index.html">Swift Language</a></span>
+    <span>Type Erasure</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="type-erasure">Type Erasure</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Type erasure is a technique for hiding a concrete type behind a protocol or wrapper interface, allowing heterogeneous collections and API surfaces that don't expose implementation details. Swift's type system is powerful but strict: protocols with associated types or <code>Self</code> requirements cannot be used directly as types in many contexts. Type erasure solves this by wrapping the concrete type in a generic struct or class that exposes only the protocol surface. Swift 5.7 introduced <code>any</code> keyword and improved existential handling, reducing the need for manual erasure in many cases.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a music streaming service. It doesn't care whether you're playing from Spotify, Apple Music, or a local file — it just needs to know "can you play a track?" It creates a universal <code>AnyPlayer</code> wrapper: hand it any music source and it exposes a single <code>play()</code> button.</p>
+
+<p>Type erasure works the same way:</p>
+<ul>
+<li>The <code>AnyPlayer</code> is the type-erased wrapper</li>
+<li>The concrete sources (Spotify, Apple Music) are hidden inside</li>
+<li>The caller only sees <code>AnyPlayer</code> — no generics, no leaking implementation details</li>
+</ul>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="why-type-erasure-is-needed">Why Type Erasure Is Needed</h3>
+
+<p>Consider <code>Publisher</code> in Combine. Every operator (<code>map</code>, <code>filter</code>, <code>flatMap</code>) produces a distinct concrete type. A view model that exposes its entire transformation chain would expose internals:</p>
+
+<pre><code class="language-swift">var publisher: Publishers.Map&lt;Publishers.Filter&lt;URLSession.DataTaskPublisher&gt;, String&gt;</code></pre>
+
+<p>Type erasure collapses this to <code>AnyPublisher&lt;String, Error&gt;</code>, hiding the chain while preserving the interface.</p>
+
+<p>Protocols with <code>associatedtype</code> or <code>Self</code> requirements are called <strong>PATs (Protocols with Associated Types)</strong>. They cannot be used as <code>any Protocol</code> existentials without boxing overhead, and historically required manual type erasure for generic storage.</p>
+
+<h3 id="existential-containers-any">Existential Containers (<code>any</code>)</h3>
+
+<p>Swift 5.7 unified the <code>any</code> keyword for existential types. An existential container stores:</p>
+<ol>
+<li>A value buffer (inline for small values, pointer for large)</li>
+<li>A pointer to the type's metadata</li>
+<li>A protocol witness table (vtable of protocol method implementations)</li>
+</ol>
+
+<p>Accessing a method through <code>any Protocol</code> incurs:</p>
+<ul>
+<li>A witness table lookup (one indirection)</li>
+<li>A potential heap allocation for the value buffer</li>
+</ul>
+
+<h3 id="some-opaque-types"><code>some</code> Opaque Types</h3>
+
+<p><code>some Protocol</code> (opaque return type) hides the concrete type from the caller but keeps it known to the compiler. This enables static dispatch and works with PATs. Used for property wrappers, SwiftUI <code>body</code>, function return types where the type is always the same.</p>
+
+<h3 id="manual-type-erasure-pattern">Manual Type Erasure Pattern</h3>
+
+<p>Before Swift 5.7, PATs required manual erasure:</p>
+<ol>
+<li>Create a private protocol <code>_AnyProtocol</code> with generic methods replaced by closures</li>
+<li>Create a generic <code>_AnyBox&lt;T: Protocol&gt;</code> that implements <code>_AnyProtocol</code> using the concrete type</li>
+<li>Expose a public <code>AnyProtocol</code> struct that holds an <code>_AnyProtocol</code> box</li>
+</ol>
+
+<p>This is the pattern <code>AnyPublisher</code>, <code>AnyIterator</code>, <code>AnySequence</code> follow.</p>
+
+<h3 id="swift-57-improvements">Swift 5.7+ Improvements</h3>
+
+<ul>
+<li><code>any Protocol</code> syntax makes existentials explicit and uniform</li>
+<li>Primary associated types (<code>Collection&lt;Int&gt;</code>) allow constrained existentials: <code>any Collection&lt;Int&gt;</code></li>
+<li>Reduces need for manual erasure in many cases — you can now write <code>any Publisher&lt;String, Error&gt;</code> instead of <code>AnyPublisher&lt;String, Error&gt;</code> in many positions</li>
+</ul>
+
+<h3 id="performance-comparison">Performance Comparison</h3>
+
+<table>
+<tr><td>Approach</td><td>Dispatch</td><td>Allocation</td><td>Type info at compile time</td></tr>
+<tr><td>Concrete type</td><td>Static</td><td>None extra</td><td>Full</td></tr>
+<tr><td><code>some Protocol</code></td><td>Static</td><td>None extra</td><td>Hidden from caller</td></tr>
+<tr><td><code>any Protocol</code></td><td>Dynamic (witness table)</td><td>May box</td><td>Erased</td></tr>
+<tr><td>Manual <code>AnyX</code></td><td>Dynamic (closure)</td><td>Heap (box)</td><td>Erased</td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Combine
+import Foundation
+
+// ── AnyPublisher (standard library type erasure) ───────────────
+class UserViewModel {
+    // Exposes erased type — callers don't see the transformation chain
+    var usernamePublisher: AnyPublisher&lt;String, Never&gt; {
+        $username
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .removeDuplicates()
+            .eraseToAnyPublisher()   // type erasure happens here
+    }
+
+    @Published var username: String = ""
+}
+
+// ── Manual type erasure pattern ────────────────────────────────
+protocol Drawable {
+    associatedtype Canvas
+    func draw(on canvas: Canvas)
+}
+
+// Step 1: Private box protocol
+private protocol _DrawableBox {
+    func _draw(on canvas: Any)
+}
+
+// Step 2: Generic concrete box
+private struct _DrawableBoxImpl&lt;D: Drawable&gt;: _DrawableBox {
+    let base: D
+    func _draw(on canvas: Any) {
+        guard let canvas = canvas as? D.Canvas else { return }
+        base.draw(on: canvas)
+    }
+}
+
+// Step 3: Public erased wrapper
+struct AnyDrawable {
+    private let box: _DrawableBox
+
+    init&lt;D: Drawable&gt;(_ drawable: D) {
+        box = _DrawableBoxImpl(base: drawable)
+    }
+
+    func draw(on canvas: Any) { box._draw(on: canvas) }
+}
+
+// Usage: heterogeneous array without generics in the collection type
+var shapes: [AnyDrawable] = []
+
+// ── `some` vs `any` in practice ──────────────────────────────
+protocol Animal {
+    var name: String { get }
+    func sound() -&gt; String
+}
+
+struct Dog: Animal { var name = "Rex";   func sound() -&gt; String { "Woof" } }
+struct Cat: Animal { var name = "Whiskers"; func sound() -&gt; String { "Meow" } }
+
+// `some` — one specific hidden type; efficient, static dispatch
+func makeDefaultAnimal() -&gt; some Animal { Dog() }
+
+// `any` — runtime polymorphism; existential box
+func allAnimals() -&gt; [any Animal] { [Dog(), Cat()] }
+
+// Iterate over existential array
+for animal in allAnimals() {
+    print("\(animal.name): \(animal.sound())")
+}
+
+// ── Constrained existential (Swift 5.7+) ──────────────────────
+// Before: had to use AnyCollection&lt;Int&gt;
+// After:
+func sum(_ numbers: any Collection&lt;Int&gt;) -&gt; Int {
+    numbers.reduce(0, +)
+}
+
+print(sum([1, 2, 3]))   // 6
+print(sum(Set([4, 5]))) // 9
+
+// ── Type erasure for delegates with associated types ──────────
+protocol DataProvider {
+    associatedtype Item: Identifiable
+    func provide() -&gt; [Item]
+}
+
+// Erase for storage when concrete type isn't known at init time
+struct AnyDataProvider&lt;Item: Identifiable&gt; {
+    private let _provide: () -&gt; [Item]
+
+    init&lt;P: DataProvider&gt;(_ provider: P) where P.Item == Item {
+        _provide = { provider.provide() }
+    }
+
+    func provide() -&gt; [Item] { _provide() }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is type erasure and why is it needed in Swift?</strong></p>
+
+<p>A: Type erasure is the practice of hiding a concrete type behind a wrapper that exposes only a protocol interface. It is needed because protocols with associated types cannot be used directly as variable types or collection element types in many contexts — their full generic signature would leak through the API. Type erasure collapses the full type to a simpler interface, enabling heterogeneous collections and stable API boundaries. <code>AnyPublisher</code> in Combine is the canonical example.</p>
+
+<p><em></em>Q: What is the difference between <code>some Protocol</code> and <code>any Protocol</code>?<em></em></p>
+
+<p>A: <code>some Protocol</code> is an opaque type where the compiler knows the exact concrete type but hides it from the caller — static dispatch, no boxing. <code>any Protocol</code> is an existential where the concrete type is truly unknown at compile time — dynamic dispatch via witness table, possible heap allocation. Use <code>some</code> for return types where the type doesn't vary; use <code>any</code> for collections or parameters where different concrete types may appear.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: Walk through the manual type erasure pattern.</strong></p>
+
+<p>A: The standard approach has three components. First, a private protocol or closure-based interface that erases the generic parameter by representing operations as closures or <code>Any</code> parameters. Second, a generic private box type that captures a concrete conformer and implements the private interface by forwarding to it. Third, a public struct that stores the box as a protocol type, forwarding public method calls through it. This gives callers a non-generic API while internally maintaining type safety through the closures. Combine's <code>AnyPublisher</code>, Swift's <code>AnyIterator</code>, and <code>AnyHashable</code> all follow this pattern.</p>
+
+<p><em></em>Q: When should you prefer a generic parameter over an <code>any Protocol</code> existential?<em></em></p>
+
+<p>A: Prefer generic parameters (<code>&lt;T: Protocol&gt;</code>) for performance-sensitive code and when the concrete type is fully determined at the call site. Generic parameters allow specialisation, static dispatch, and inlining. Use <code>any Protocol</code> (existentials) when you genuinely need runtime polymorphism — e.g., a heterogeneous array of protocol values, or an API boundary where the caller varies the concrete type. The new <code>any</code> syntax in Swift 5.7 makes this choice explicit, documenting that dynamic dispatch is intentional.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Explain how <code>AnyPublisher</code> is implemented internally in Combine and what overhead it adds.<em></em></p>
+
+<p>A: <code>AnyPublisher&lt;Output, Failure&gt;</code> wraps any <code>Publisher</code> whose <code>Output</code> and <code>Failure</code> types match. Internally it stores the concrete publisher in a heap-allocated box (using a type-erased <code>AnySubscription</code> / box protocol pattern). When a subscriber attaches, <code>receive(subscriber:)</code> is forwarded through the box to the concrete publisher. This adds one heap allocation (for the box) and one level of indirection (virtual dispatch through the box). The overhead is negligible for typical Combine pipelines — the asynchronous scheduling costs dominate — but in a synchronous hot path, prefer a concrete publisher type.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: "Protocol can only be used as a generic constraint" error when trying to use a PAT as a variable type.</strong></p>
+
+<p>Solution: In Swift 5.7+, use <code>any Protocol</code> explicitly. For older Swift, use the manual type erasure pattern. If possible, refactor the caller to use a generic parameter instead.</p>
+
+<p><em></em>Issue: Using <code>AnyPublisher</code> everywhere causes loss of useful error type information.<em></em></p>
+
+<p>Solution: Use typed error parameters where possible (<code>AnyPublisher&lt;Value, MyError&gt;</code>). Avoid widening to <code>Error</code> (existential) unless you truly have heterogeneous error types. Swift 6's typed throws may reduce this boilerplate.</p>
+
+<p><strong>Issue: Existential boxing causing heap allocation in a tight loop.</strong></p>
+
+<p>Solution: Replace <code>any Protocol</code> with a generic parameter. If the collection must hold mixed types, consider a tagged union (enum) instead — it has stack semantics and no extra allocation.</p>
+
+<p><em></em>Issue: <code>some</code> return type forces all code paths to return the same concrete type.<em></em></p>
+
+<p>Solution: If different code paths return different concrete types, <code>some</code> is not viable. Switch to <code>any Protocol</code>, a concrete enum wrapping variants, or a manual type-erased wrapper.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="generics.md">Generics</a> — generic constraints as the alternative to type erasure</li>
+<li><a href="protocol-oriented-programming.md">Protocol-Oriented Programming</a> — protocols with associated types that motivate erasure</li>
+<li><a href="property-wrappers.md">Property Wrappers</a> — <code>@Published</code> uses erasure internally via <code>AnyPublisher</code></li>
+<li><a href="../03-concurrency/index.md">Concurrency</a> — <code>AsyncStream</code> and <code>AnyAsyncSequence</code> use similar patterns</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

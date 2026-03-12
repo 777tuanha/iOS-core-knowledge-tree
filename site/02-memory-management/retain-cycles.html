@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retain Cycles — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../02-memory-management/index.html">Memory Management</a></span>
+    <span>Retain Cycles</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html" class="active">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="retain-cycles">Retain Cycles</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>A retain cycle (also called a reference cycle) occurs when two or more objects hold strong references to each other, preventing any of them from ever reaching a zero reference count. ARC cannot free these objects — they become memory leaks. Retain cycles are one of the most common memory bugs in iOS development and the primary reason for using <code>weak</code> and <code>unowned</code> references. Identifying cycle patterns, detecting them with Instruments, and applying the correct fix is a core iOS engineering skill.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine two neighbours, Alice and Bob, who each have a key to the other's house. Neither will move out until the other moves out first. But the other won't move out until they move out first — a deadlock. Neither leaves, the houses are never freed.</p>
+
+<p>A retain cycle in code works exactly the same way:</p>
+<ul>
+<li>Object A has a strong reference to Object B (A holds B's key)</li>
+<li>Object B has a strong reference to Object A (B holds A's key)</li>
+<li>Setting both external references to <code>nil</code> still leaves each at retain count 1 — neither is freed</li>
+</ul>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="common-cycle-patterns">Common Cycle Patterns</h3>
+
+<h4 id="pattern-1-delegate-cycle">Pattern 1: Delegate Cycle</h4>
+<p>A child object holds a strong reference back to its delegate (the parent).</p>
+
+<pre><code>Parent → Child (strong, owns child)
+Child  → Parent (strong via delegate property — cycle!)</code></pre>
+
+<p>Fix: <code>weak var delegate: ProtocolName?</code></p>
+
+<h4 id="pattern-2-closure-capture">Pattern 2: Closure Capture</h4>
+<p>A closure stored on an object captures <code>self</code> strongly.</p>
+
+<pre><code>Object → closure property (strong, owns closure)
+Closure → self (strong capture — cycle!)</code></pre>
+
+<p>Fix: <code>[weak self]</code> or <code>[unowned self]</code> capture list.</p>
+
+<h4 id="pattern-3-parent-child-back-reference">Pattern 3: Parent-Child Back-Reference</h4>
+<p>A child holds a strong reference to its parent to call back or access shared state.</p>
+
+<pre><code>Parent → [Child] (strong array — owns children)
+Child  → Parent  (strong back-reference — cycle!)</code></pre>
+
+<p>Fix: <code>unowned var parent: Parent</code> (if child's lifetime ≤ parent's).</p>
+
+<h4 id="pattern-4-timer">Pattern 4: Timer</h4>
+<p><code>Timer</code> retains its target strongly. If <code>self</code> holds the timer strongly:</p>
+
+<pre><code>self → timer (strong, stored property)
+Timer → self (strong target — cycle!)</code></pre>
+
+<p>Fix: Invalidate the timer in <code>viewDidDisappear</code> or <code>deinit</code>, or use a proxy/block-based timer.</p>
+
+<h4 id="pattern-5-notificationcenter">Pattern 5: NotificationCenter</h4>
+<p><code>NotificationCenter.addObserver(forName:object:queue:using:)</code> returns an <code>NSObjectProtocol</code> token that must be stored and removed. If the closure captures <code>self</code> strongly and <code>self</code> holds the token strongly:</p>
+
+<pre><code>self → token (strong)
+Token → closure (strong)
+Closure → self (strong capture — cycle!)</code></pre>
+
+<p>Fix: <code>[weak self]</code> in the closure and always remove the observer (<code>NotificationCenter.default.removeObserver(token)</code> or <code>invalidate</code>).</p>
+
+<h3 id="why-arc-cannot-break-cycles">Why ARC Cannot Break Cycles</h3>
+
+<p>ARC uses reference counting, not tracing. It can only free an object when its count reaches zero. In a cycle, the objects mutually maintain each other's count above zero — ARC has no mechanism to detect "these objects are only reachable from each other." Tracing garbage collectors (JVM, Go) can detect this because they traverse the live object graph from roots; ARC deliberately avoids that overhead.</p>
+
+<h3 id="detection-with-instruments">Detection with Instruments</h3>
+
+<p><strong>Instruments → Leaks:</strong></p>
+<ul>
+<li>Leaks scans the heap periodically for objects with no path from a GC root (main thread stack, global variables)</li>
+<li>Shows leaked object type, size, and allocation backtrace</li>
+<li>The "Cycles &amp; Roots" view renders the reference graph visually</li>
+</ul>
+
+<p><strong>Instruments → Allocations:</strong></p>
+<ul>
+<li>Persistent objects that should be freed appear in the "All Heap Allocations" list</li>
+<li>Filter by class name; check whether count keeps growing as you navigate</li>
+</ul>
+
+<p><strong>Debug Memory Graph (Xcode):</strong></p>
+<ul>
+<li>Run app → Debug Navigator → Memory Graph button (grid icon)</li>
+<li>Shows a live object graph with purple leak indicators</li>
+<li>Click a suspected object to see all incoming/outgoing references</li>
+<li>Fastest tool for diagnosing cycles during development</li>
+</ul>
+
+<h3 id="using-weak-var-in-tests">Using <code>weak var</code> in Tests</h3>
+
+<pre><code class="language-swift">func testNoCycle() {
+    weak var weakSelf: MyClass?
+    do {
+        let obj = MyClass()
+        weakSelf = obj
+    }
+    XCTAssertNil(weakSelf, "MyClass leaked — possible retain cycle")
+}</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Pattern 1: Fix delegate cycle ────────────────────────────
+protocol TableManagerDelegate: AnyObject {
+    func tableManagerDidSelectItem(_ item: String)
+}
+
+class TableManager {
+    weak var delegate: TableManagerDelegate?   // weak breaks the cycle
+
+    func select(_ item: String) {
+        delegate?.tableManagerDidSelectItem(item)
+    }
+}
+
+class ViewController: UIViewController, TableManagerDelegate {
+    var tableManager: TableManager?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        tableManager = TableManager()
+        tableManager?.delegate = self  // VC → manager (strong), manager → VC (weak)
+    }
+
+    func tableManagerDidSelectItem(_ item: String) {
+        print("Selected: \(item)")
+    }
+}
+
+import UIKit
+
+// ── Pattern 2: Fix closure cycle ─────────────────────────────
+class ProfileViewModel {
+    var name = "Alice"
+    var onUpdate: (() -&gt; Void)?
+
+    func setupCycle() {
+        // BAD: strong capture — cycle: self → onUpdate, onUpdate → self
+        // onUpdate = { self.name = "updated" }
+
+        // GOOD: weak capture
+        onUpdate = { [weak self] in
+            self?.name = "updated"
+        }
+    }
+    deinit { print("ProfileViewModel freed") }
+}
+
+// ── Pattern 3: Fix parent-child back-reference ────────────────
+class Document {
+    var sections: [Section] = []
+
+    func addSection(title: String) {
+        sections.append(Section(title: title, document: self))
+    }
+    deinit { print("Document freed") }
+}
+
+class Section {
+    let title: String
+    unowned let document: Document   // unowned: section can't outlive its document
+
+    init(title: String, document: Document) {
+        self.title = title
+        self.document = document
+    }
+    deinit { print("Section '\(title)' freed") }
+}
+
+// ── Pattern 4: Fix Timer cycle ────────────────────────────────
+class Ticker {
+    private var timer: Timer?
+    private var count = 0
+
+    func start() {
+        // Block-based Timer does not retain self
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.count += 1
+        }
+    }
+
+    func stop() { timer?.invalidate(); timer = nil }
+    deinit { stop(); print("Ticker freed") }
+}
+
+// ── Pattern 5: Fix NotificationCenter cycle ───────────────────
+class DataController {
+    private var observer: NSObjectProtocol?
+
+    func startObserving() {
+        observer = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in             // weak prevents the cycle
+            self?.clearCache()
+        }
+    }
+
+    func stopObserving() {
+        if let obs = observer {
+            NotificationCenter.default.removeObserver(obs)
+            observer = nil
+        }
+    }
+
+    private func clearCache() { print("Cache cleared") }
+    deinit { stopObserving() }
+}
+
+// ── Unit test to verify no leak ───────────────────────────────
+import XCTest
+
+class RetainCycleTests: XCTestCase {
+    func testProfileViewModelNoLeak() {
+        weak var weakVM: ProfileViewModel?
+        do {
+            let vm = ProfileViewModel()
+            vm.setupCycle()
+            weakVM = vm
+        }
+        XCTAssertNil(weakVM, "ProfileViewModel leaked — check closure capture")
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is a retain cycle and why does it cause a memory leak?</strong></p>
+
+<p>A: A retain cycle occurs when two or more objects hold strong references to each other, creating a loop. ARC frees an object when its reference count reaches zero. In a cycle, each object keeps the other's count at 1 or more — even after all external references are removed. The count never reaches zero, so neither object is freed, and the memory is permanently leaked for the lifetime of the app.</p>
+
+<p><strong>Q: How do you detect a retain cycle?</strong></p>
+
+<p>A: Several tools: Xcode's Debug Memory Graph (live, visual reference graph with leak indicators), Instruments → Leaks (heap scan with cycle visualisation), and unit tests using <code>weak var</code> to assert that objects are nil after their scope ends. Adding <code>print("freed")</code> in <code>deinit</code> is also a quick sanity check during development.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: Why does adding <code>[weak self]</code> to a closure sometimes still cause a leak?<em></em></p>
+
+<p>A: <code>[weak self]</code> makes the closure's reference to <code>self</code> weak, breaking one direction of the cycle. But if the cycle involves additional links — for example, <code>self</code> holds an object <code>A</code>, and <code>A</code> holds the closure — the cycle may persist through a different path. Always trace the full reference graph. Common mistake: capturing <code>self</code> weakly but not capturing other objects that themselves hold <code>self</code> strongly. Another pitfall: a closure stored in a collection owned by <code>self</code> — the collection holds the closure (strong), the closure captures <code>self</code> (now weak — but the collection is still retained through <code>self</code>'s ownership). In that case, <code>[weak self]</code> is correct but the closure must also handle <code>self</code> being nil.</p>
+
+<p><em></em>Q: When should you use <code>unowned</code> instead of <code>weak</code> to break a cycle?<em></em></p>
+
+<p>A: <code>unowned</code> is appropriate when you can guarantee that the referenced object's lifetime strictly contains the reference holder's lifetime — the referenced object will never be deallocated before the holder. The most common valid case: a child object with an <code>unowned</code> reference to its parent, where the parent owns the child and will always outlive it. Using <code>unowned</code> when the guarantee doesn't hold results in a crash (accessing a deallocated object), whereas <code>weak</code> would safely return nil. When in doubt, use <code>weak</code>.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe how to find a non-obvious retain cycle using Instruments → Allocations.</strong></p>
+
+<p>A: Enable "Record Reference Counts" in Allocations settings before profiling. Reproduce the scenario that should release the object (e.g., navigate away from a view controller). In the Allocations list, filter by the class you expect to be released. If it persists, click the object to open its history. Look for the last <code>retain</code> that was not matched by a <code>release</code>. Click the backtrace to identify the code that retains the object — often a notification observer block, a completion handler, or a cached closure. Correlate with the Debug Memory Graph for a visual confirmation of which object is holding the strong reference.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: View controller dismissed but not deallocated — <code>deinit</code> never called.<em></em></p>
+
+<p>Solution: Open the Debug Memory Graph. Look for a purple warning icon on the VC. Trace incoming strong references. Common culprits: <code>NotificationCenter</code> observer not removed, a timer still running, a closure in a network layer capturing <code>self</code> strongly, or a singleton holding a reference to the VC.</p>
+
+<p><em></em>Issue: Adding <code>[weak self]</code> breaks functionality — code inside the closure does nothing after the first navigation.<em></em></p>
+
+<p>Solution: The closure's work is valid only while <code>self</code> exists. If work should happen regardless, extract it from the view-controller closure: pass a model/service reference (which has a longer lifetime) instead of <code>self</code>, and let the closure operate on that.</p>
+
+<p><em></em>Issue: Timer fires after <code>deinit</code> — crash on deallocated object.<em></em></p>
+
+<p>Solution: Invalidate the timer before <code>deinit</code> is reached, typically in <code>viewDidDisappear</code> or an explicit <code>stop()</code> method. Using a block-based Timer with <code>[weak self]</code> inside the block provides an additional safety net, but invalidation is still required.</p>
+
+<p><strong>Issue: Instruments shows leak but the class name is a private internal type.</strong></p>
+
+<p>Solution: The leaked object may be an internal buffer or a type-erased wrapper rather than your own class. Look at the allocation backtrace to trace back to your code. Often the root cause is a closure or property wrapper that indirectly references your object.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="arc.md">ARC</a> — how reference counting works and why cycles are undetectable by ARC</li>
+<li><a href="closures-capture-lists.md">Closures &amp; Capture Lists</a> — <code>[weak self]</code>, <code>[unowned self]</code>, escaping closures</li>
+<li><a href="../01-swift-language/weak-vs-unowned.md">Weak vs Unowned</a> — choosing the right non-strong reference</li>
+<li><a href="../01-swift-language/arc-basics.md">ARC Basics</a> — foundational lifecycle and deinit</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

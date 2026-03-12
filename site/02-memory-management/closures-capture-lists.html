@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Closures & Capture Lists — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../02-memory-management/index.html">Memory Management</a></span>
+    <span>Closures Capture Lists</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html" class="active">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="closures--capture-lists">Closures &amp; Capture Lists</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Closures in Swift automatically capture variables from their surrounding scope. By default, closures capture reference types strongly (incrementing the retain count) and value types by copy. A <strong>capture list</strong> — written as <code>[weak self]</code>, <code>[unowned dependency]</code>, or <code>[value = expression]</code> — explicitly controls how each variable is captured, preventing retain cycles and managing ownership. Understanding escaping vs non-escaping closures, autoclosure, and the interaction with ARC is essential for safe, leak-free asynchronous code.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine you're heading out to a meeting and you need a reference to your notebook. You have three options:</p>
+<ul>
+<li><strong>Strong capture</strong> — you take the notebook itself. It can't be thrown away while you have it.</li>
+<li><em></em><code>[weak]</code> capture<em></em> — you take a photocopy of the cover address. If someone throws the notebook away, your copy becomes blank (nil). You check before using it.</li>
+<li><em></em><code>[unowned]</code> capture<em></em> — you write the shelf number on your hand. You guarantee the notebook will still be there when you return. If it's not, you crash into empty air.</li>
+</ul>
+
+<p>Value capture is like writing down the current page number — you get a snapshot of the value at the moment of capture, not a live reference.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="how-closures-capture-variables">How Closures Capture Variables</h3>
+
+<p>When a closure refers to a variable in its enclosing scope, the compiler determines whether to:</p>
+<ol>
+<li><strong>Copy</strong> the value (for value types with no mutation via the closure)</li>
+<li><strong>Create a heap-allocated box</strong> for the variable if the closure may mutate it or if the type is a reference type (the box is shared between the closure and the original scope)</li>
+</ol>
+
+<p>Reference types (class instances) are captured as strong references by default.</p>
+
+<h3 id="escaping-vs-non-escaping">Escaping vs Non-Escaping</h3>
+
+<ul>
+<li><strong>Non-escaping closure</strong> (<code>@noescape</code>, default before Swift 3, now inferred): the closure is guaranteed to execute before the function returns. The compiler does not need to retain <code>self</code> — it knows the caller's stack frame is valid for the closure's duration. Enables <code>self.</code> to be omitted inside the closure.</li>
+<li><strong>Escaping closure</strong> (<code>@escaping</code>): the closure may outlive the function call — stored in a property, dispatched to a queue, passed to an async API. The closure must retain everything it uses because those objects may no longer be on the stack when the closure fires. This is where retain cycles typically occur.</li>
+</ul>
+
+<pre><code class="language-swift">func withEscaping(completion: @escaping () -&gt; Void) {
+    DispatchQueue.global().async { completion() }  // closure outlives function
+}
+
+func withNonEscaping(action: () -&gt; Void) {
+    action()  // called immediately, stack is valid
+}</code></pre>
+
+<h3 id="capture-list-syntax">Capture List Syntax</h3>
+
+<pre><code class="language-swift">{ [weak self, unowned coordinator, count = self.count] in
+    // self is Optional&lt;Self&gt;, automatically zeroed on deallocation
+    // coordinator is non-optional, crashes if accessed after dealloc
+    // count is a copy of self.count at closure-creation time
+}</code></pre>
+
+<p>Multiple captures in one list, comma-separated.</p>
+
+<h3 id="weak-self-pattern"><code>[weak self]</code> Pattern</h3>
+
+<p>Most common fix for retain cycles. <code>self</code> becomes <code>Self?</code> inside the closure. Two idiomatic access patterns:</p>
+
+<pre><code class="language-swift">// Pattern A: guard-let (re-binds self for the rest of the closure)
+networkTask.resume { [weak self] result in
+    guard let self else { return }
+    self.updateUI(with: result)
+}
+
+// Pattern B: optional chaining (use when only a few calls needed)
+button.tapHandler = { [weak self] in
+    self?.viewModel?.submit()
+}</code></pre>
+
+<h3 id="unowned-self-pattern"><code>[unowned self]</code> Pattern</h3>
+
+<p>Use only when the closure's lifetime is strictly contained within <code>self</code>'s lifetime:</p>
+
+<pre><code class="language-swift">// Safe: the lazy closure is part of self and cannot outlive it
+lazy var fullName: String = { [unowned self] in
+    "\(self.firstName) \(self.lastName)"
+}()</code></pre>
+
+<h3 id="value-capture-in-capture-lists">Value Capture in Capture Lists</h3>
+
+<p>Force a value-type snapshot at closure creation time:</p>
+
+<pre><code class="language-swift">var counter = 0
+let snapshot = { [counter] in print(counter) }  // captures current value
+counter = 99
+snapshot()  // prints 0, not 99</code></pre>
+
+<p>Without the capture list, the closure would capture the variable's storage box and print 99.</p>
+
+<h3 id="autoclosure">Autoclosure</h3>
+
+<p><code>@autoclosure</code> wraps an expression in a closure automatically at the call site. Used for lazy evaluation and short-circuit operators:</p>
+
+<pre><code class="language-swift">func assert(_ condition: @autoclosure () -&gt; Bool, _ message: @autoclosure () -&gt; String) {
+    if !condition() { print(message()) }  // message only evaluated if condition fails
+}
+
+assert(array.count &gt; 0, "Array is empty")  // expression, not closure literal</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import UIKit
+
+// ── Retain cycle: BAD ─────────────────────────────────────────
+class FeedViewController: UIViewController {
+    var loadCompletion: (() -&gt; Void)?
+
+    func loadFeed() {
+        // BAD: strong capture → cycle: self → loadCompletion → self
+        loadCompletion = {
+            self.tableView.reloadData()  // strong self
+        }
+    }
+
+    var tableView = UITableView()
+}
+
+// ── Fix with [weak self] ───────────────────────────────────────
+class FeedViewControllerFixed: UIViewController {
+    var loadCompletion: (() -&gt; Void)?
+
+    func loadFeed() {
+        loadCompletion = { [weak self] in
+            self?.tableView.reloadData()   // safe; no cycle
+        }
+    }
+
+    var tableView = UITableView()
+}
+
+// ── Escaping vs non-escaping ──────────────────────────────────
+class SearchViewModel {
+    var query = ""
+
+    // Non-escaping: no capture list needed; compiler knows stack is valid
+    func validate(using check: (String) -&gt; Bool) -&gt; Bool {
+        check(query)  // can omit self. here
+    }
+
+    // Escaping: stored for later use; must handle self lifetime
+    var onQueryChanged: ((String) -&gt; Void)?
+
+    func updateQuery(_ q: String) {
+        query = q
+        onQueryChanged?(q)
+    }
+}
+
+// ── Value capture snapshot ────────────────────────────────────
+func makePrinters() -&gt; [() -&gt; Void] {
+    var closures: [() -&gt; Void] = []
+    for i in 0..&lt;3 {
+        closures.append { [i] in print(i) }  // captures snapshot of i
+    }
+    return closures
+}
+
+let printers = makePrinters()
+printers.forEach { $0() }  // prints 0, 1, 2 (not all 2 without capture list)
+
+// ── Capturing multiple values ─────────────────────────────────
+class OrderManager {
+    var orderId = UUID()
+    var service: NetworkService?
+
+    func submitOrder() {
+        let id = orderId  // capture value, not self.orderId
+        service?.post(id: id) { [weak self, id] result in
+            // self is weak — VC may be gone
+            // id is a value snapshot — always valid
+            guard let self else { return }
+            self.handleResult(result, for: id)
+        }
+    }
+
+    private func handleResult(_ result: Result&lt;Data, Error&gt;, for id: UUID) {}
+}
+
+class NetworkService {
+    func post(id: UUID, completion: @escaping (Result&lt;Data, Error&gt;) -&gt; Void) {}
+}
+
+// ── @autoclosure for lazy evaluation ─────────────────────────
+func log(_ level: LogLevel, _ message: @autoclosure () -&gt; String) {
+    guard level &gt;= .current else { return }  // message() only called if needed
+    print(message())
+}
+
+enum LogLevel: Comparable {
+    case debug, info, error
+    static var current: LogLevel = .info
+}
+
+log(.debug, "Expensive: \(UUID().uuidString)")  // expression only evaluated if debug
+
+// ── Unowned in lazy property ──────────────────────────────────
+class DocumentEditor {
+    var title = "Untitled"
+    // Closure is part of self; self outlives the lazy property
+    lazy var titleView: UILabel = { [unowned self] in
+        let label = UILabel()
+        label.text = self.title
+        return label
+    }()
+}
+
+// ── guard let self (modern Swift shorthand) ───────────────────
+class ImageProcessor {
+    func processAsync(data: Data, completion: @escaping (UIImage?) -&gt; Void) {
+        DispatchQueue.global().async { [weak self] in
+            guard let self else { completion(nil); return }
+            // `self` is non-optional here; safe to call without `?`
+            let image = self.decode(data)
+            DispatchQueue.main.async { completion(image) }
+        }
+    }
+
+    private func decode(_ data: Data) -&gt; UIImage? { UIImage(data: data) }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is a capture list in a Swift closure and why is it needed?</strong></p>
+
+<p>A: A capture list appears before the closure parameters (<code>{ [weak self] in ... }</code>) and controls how surrounding variables are captured. Without a capture list, reference types are captured strongly by default, potentially creating retain cycles. The list specifies <code>weak</code> (optional, zeroed on dealloc) or <code>unowned</code> (non-optional, assumes object outlives closure) for reference types, or value-type snapshots. It is needed to break cycles and to snapshot values at closure-creation time.</p>
+
+<p><strong>Q: What is the difference between an escaping and non-escaping closure?</strong></p>
+
+<p>A: A non-escaping closure (default) is called during the function's execution — it cannot outlive the function call. This lets the compiler skip retaining <code>self</code> and allows <code>self.</code> to be omitted. An escaping closure (<code>@escaping</code>) may be stored and called after the function returns (e.g., stored in a property, dispatched asynchronously). Escaping closures must retain everything they use, and they require explicit <code>self.</code> to remind you that a strong capture is happening.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: Explain what happens when you capture a <code>var</code> in a closure without a capture list.<em></em></p>
+
+<p>A: The closure captures the variable's <strong>storage box</strong> — a heap-allocated reference to the variable. Both the closure and the enclosing scope share this box. Mutating the variable inside the closure is visible outside, and vice versa. This is different from capturing the value at creation time. To get a snapshot of the current value, use a capture list: <code>[x]</code> copies the value at the moment the closure is created.</p>
+
+<p><strong>Q: Can a non-escaping closure cause a retain cycle?</strong></p>
+
+<p>A: In theory, no — a non-escaping closure is not stored beyond the function call, so it cannot form a persistent cycle. In practice, if a non-escaping closure is used to initialise a stored property (e.g., inside a <code>lazy</code> initialiser that doesn't use <code>[unowned self]</code>), it can create a temporary strong cycle. But since the closure doesn't outlive the <code>lazy</code> property's first access, the cycle resolves immediately. The real risk is always with <code>@escaping</code> closures.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: In Swift Concurrency, do <code>async</code> closures capture <code>self</code> strongly by default? How does <code>@MainActor</code> affect this?<em></em></p>
+
+<p>A: Yes, <code>async</code> closures (including <code>Task { }</code> blocks) capture <code>self</code> strongly by default — they are escaping. This means you can still create retain cycles with <code>Task { self.doWork() }</code>. The fix is the same: <code>Task { [weak self] in await self?.doWork() }</code>. <code>@MainActor</code> changes the execution context (closures run on the main thread) but does not affect capture semantics — it does not automatically weaken captures. One nuance: structured concurrency tasks (created with <code>async let</code> or task groups) have structured lifetimes bounded by the parent task, which limits cycle risk, but unstructured <code>Task { }</code> detached tasks still carry the full escaping risk.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>guard let self</code> fails to compile in older Swift — requires <code>guard let self = self</code>.<em></em></p>
+
+<p>Solution: The shorthand <code>guard let self</code> (without <code>= self</code>) was introduced in Swift 5.3. For older targets, use <code>guard let self = self else { return }</code>.</p>
+
+<p><em></em>Issue: Closure with <code>[weak self]</code> does nothing even though the object exists.<em></em></p>
+
+<p>Solution: Ensure <code>guard let self else { return }</code> is not returning prematurely. Check that <code>self</code> is still in memory at the time the closure fires — add a <code>print("self is \(String(describing: self))")</code> before the guard to debug.</p>
+
+<p><strong>Issue: Autoclosure causes confusing compiler error "expression is not callable".</strong></p>
+
+<p>Solution: <code>@autoclosure</code> wraps the expression as <code>() -&gt; T</code>. Passing an explicit closure literal <code>{ expression }</code> to an <code>@autoclosure</code> parameter is a type error — pass the expression directly without braces.</p>
+
+<p><strong>Issue: Value captured in closure does not reflect later mutations.</strong></p>
+
+<p>Solution: This is the intended behaviour of capture lists (<code>[count]</code>). If you need the live value, remove it from the capture list and access it via <code>self.count</code> (ensuring <code>self</code> is still alive with <code>[weak self]</code>).</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="retain-cycles.md">Retain Cycles</a> — the cycles that capture lists are designed to break</li>
+<li><a href="arc.md">ARC</a> — how strong captures increment retain counts</li>
+<li><a href="../01-swift-language/weak-vs-unowned.md">Weak vs Unowned</a> — semantics of the two non-strong capture modes</li>
+<li><a href="../03-concurrency/index.md">Concurrency</a> — Task closures and structured concurrency lifetimes</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

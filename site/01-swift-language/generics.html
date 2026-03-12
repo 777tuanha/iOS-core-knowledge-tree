@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generics — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../01-swift-language/index.html">Swift Language</a></span>
+    <span>Generics</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="generics">Generics</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Generics allow you to write flexible, reusable functions and types that work with any type that satisfies specified constraints. They eliminate code duplication while preserving full type safety. Swift's standard library is built almost entirely on generics — <code>Array&lt;Element&gt;</code>, <code>Dictionary&lt;Key, Value&gt;</code>, <code>Optional&lt;Wrapped&gt;</code>. Understanding generics, constraints, and <code>where</code> clauses is essential for writing expressive, idiomatic Swift.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a locksmith who can cut any key, as long as the key blank meets certain specs (must be metal, must fit the machine). The locksmith doesn't need to know in advance whether it's a car key or a house key — the constraint (metal, correct profile) is enough to do the job correctly.</p>
+
+<p>Generics work the same way:</p>
+<ul>
+<li>The <strong>type parameter</strong> (<code>T</code>, <code>Element</code>) is the blank key — unknown but expected</li>
+<li>The <strong>constraint</strong> (<code>where T: Comparable</code>) is the spec — what the blank must satisfy</li>
+<li>The <strong>function/type</strong> is the locksmith — works correctly for any blank that meets the spec</li>
+</ul>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="generic-functions">Generic Functions</h3>
+
+<p>A generic function declares one or more type parameters inside angle brackets. The function body can use those parameters as if they were concrete types, subject to their constraints.</p>
+
+<pre><code class="language-swift">func swap&lt;T&gt;(_ a: inout T, _ b: inout T) { ... }</code></pre>
+
+<h3 id="generic-types">Generic Types</h3>
+
+<p>Structs, classes, and enums can be parameterised. The type parameter is available throughout the type's scope.</p>
+
+<pre><code class="language-swift">struct Stack&lt;Element&gt; { ... }</code></pre>
+
+<h3 id="type-constraints">Type Constraints</h3>
+
+<p>Constraints narrow which types are acceptable. Without constraints, only operations available on <code>Any</code> type are permitted.</p>
+
+<pre><code class="language-swift">func max&lt;T: Comparable&gt;(_ a: T, _ b: T) -&gt; T { a &gt; b ? a : b }</code></pre>
+
+<p>Constraints can use:</p>
+<ul>
+<li>Protocol conformance: <code>T: Equatable</code></li>
+<li>Class inheritance: <code>T: UIView</code></li>
+<li>Protocol composition: <code>T: Codable &amp; Hashable</code></li>
+</ul>
+
+<h3 id="where-clauses"><code>where</code> Clauses</h3>
+
+<p><code>where</code> clauses express more complex constraints that don't fit neatly into the angle-bracket declaration, including constraints on associated types.</p>
+
+<pre><code class="language-swift">func equalElements&lt;C1: Collection, C2: Collection&gt;(_ c1: C1, _ c2: C2) -&gt; Bool
+    where C1.Element == C2.Element, C1.Element: Equatable { ... }</code></pre>
+
+<h3 id="associated-types-vs-generic-parameters">Associated Types vs Generic Parameters</h3>
+
+<p>Protocols use <strong>associated types</strong> (<code>associatedtype</code>) rather than generic parameters. An associated type is a placeholder resolved when a type conforms to the protocol. Generic parameters are specified at the call site; associated types are inferred from the conformance.</p>
+
+<pre><code class="language-swift">protocol Container {
+    associatedtype Element
+    func add(_ item: Element)
+    func get(at index: Int) -&gt; Element
+}</code></pre>
+
+<h3 id="performance-specialisation">Performance: Specialisation</h3>
+
+<p>Swift's optimiser <strong>specialises</strong> generic functions for concrete types used in the same module. Specialisation replaces the generic type parameter with the concrete type, enabling inlining and eliminating the overhead of protocol witness table dispatch. Cross-module generics may not be specialised unless the function is marked <code>@inlinable</code>.</p>
+
+<h3 id="some-vs-any"><code>some</code> vs <code>any</code></h3>
+
+<ul>
+<li><code>some Protocol</code> (opaque type) — the compiler knows the concrete type; enables optimisation and static dispatch. Used in function return positions and property declarations.</li>
+<li><code>any Protocol</code> (existential) — the concrete type is erased at runtime; stored in an existential container with dynamic dispatch. Required when the concrete type varies at runtime.</li>
+</ul>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Generic function with constraint ──────────────────────────
+func clamp&lt;T: Comparable&gt;(_ value: T, min minVal: T, max maxVal: T) -&gt; T {
+    Swift.max(minVal, Swift.min(maxVal, value))
+}
+
+print(clamp(15, min: 0, max: 10))   // 10
+print(clamp(-3, min: 0, max: 10))   // 0
+
+// ── Generic type: Stack ───────────────────────────────────────
+struct Stack&lt;Element&gt; {
+    private var storage: [Element] = []
+
+    mutating func push(_ item: Element) { storage.append(item) }
+
+    @discardableResult
+    mutating func pop() -&gt; Element? { storage.popLast() }
+
+    var top: Element? { storage.last }
+    var isEmpty: Bool { storage.isEmpty }
+}
+
+var intStack = Stack&lt;Int&gt;()
+intStack.push(1); intStack.push(2); intStack.push(3)
+print(intStack.pop() ?? -1)  // 3
+
+// ── where clause on extension ─────────────────────────────────
+extension Stack where Element: Equatable {
+    func contains(_ item: Element) -&gt; Bool {
+        storage.contains(item)
+    }
+}
+
+// ── Generic result type with protocol ─────────────────────────
+protocol Repository {
+    associatedtype Model: Identifiable
+    func fetchAll() async throws -&gt; [Model]
+    func fetch(id: Model.ID) async throws -&gt; Model?
+}
+
+struct UserRepository: Repository {
+    typealias Model = User  // associated type resolved
+
+    func fetchAll() async throws -&gt; [User] { /* network call */ [] }
+    func fetch(id: UUID) async throws -&gt; User? { nil }
+}
+
+struct User: Identifiable { let id: UUID; var name: String }
+
+// ── `some` return type (opaque) ───────────────────────────────
+// Compiler knows the exact return type; callers use the protocol interface
+func makeDefaultRepository() -&gt; some Repository {
+    UserRepository()  // concrete type hidden, but statically known
+}
+
+// ── `any` existential (heterogeneous collection) ──────────────
+var repositories: [any Repository] = []  // dynamic dispatch, existential box
+
+// ── Generic constraint with where on associated type ──────────
+func printAll&lt;C: Collection&gt;(_ collection: C)
+    where C.Element: CustomStringConvertible {
+    collection.forEach { print($0.description) }
+}
+
+printAll([1, 2, 3])          // Int conforms to CustomStringConvertible
+printAll(["a", "b", "c"])
+
+// ── @inlinable for cross-module specialisation ────────────────
+// In a framework module:
+@inlinable
+public func identity&lt;T&gt;(_ value: T) -&gt; T { value }
+// Without @inlinable, the optimiser cannot specialise this in client code.</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the purpose of generics in Swift?</strong></p>
+
+<p>A: Generics allow writing flexible, reusable code that operates on any type satisfying specified constraints, without sacrificing type safety. They eliminate code duplication (no need for <code>intMax</code>, <code>doubleMax</code>, <code>stringMax</code> — just <code>max&lt;T: Comparable&gt;</code>) while preserving compile-time type checking and enabling compiler optimisations like specialisation.</p>
+
+<p><em></em>Q: What is the difference between a type constraint and a <code>where</code> clause?<em></em></p>
+
+<p>A: A type constraint (<code>&lt;T: Comparable&gt;</code>) is placed inline in the angle-bracket declaration and constrains the type parameter itself. A <code>where</code> clause (<code>where T.Element: Equatable</code>) allows more complex constraints, including constraints on associated types of the generic parameter's protocol conformances, constraints requiring two types to be equal, and multiple conditions chained with commas.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: Explain the difference between <code>some Protocol</code> and <code>any Protocol</code>.<em></em></p>
+
+<p>A: <code>some Protocol</code> is an opaque type — the compiler knows the exact concrete type even though the caller doesn't. This allows static dispatch, enables conformance to <code>Equatable</code>/<code>Hashable</code>, and the compiler can optimise aggressively. The concrete type must be the same across all code paths. <code>any Protocol</code> is an existential — the concrete type is erased into a box at runtime with a protocol witness table for dynamic dispatch. It is required when the concrete type varies (e.g., a heterogeneous array of protocol values). <code>any Protocol</code> boxes impose a small heap allocation cost for large value types.</p>
+
+<p><strong>Q: Why do generic functions in a framework sometimes not get specialised in client code?</strong></p>
+
+<p>A: The Swift optimiser specialises generics by substituting concrete types for type parameters. This requires access to the generic function's implementation. By default, framework functions are compiled to a <code>dylib</code> with only the exported interface visible to clients — the implementation is opaque, preventing specialisation. Marking a function <code>@inlinable</code> emits the function body into the module's swiftinterface file, making it available to the client optimiser for specialisation.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you implement a type-safe builder pattern using generics and phantom types?</strong></p>
+
+<p>A: Use a generic struct where the type parameter carries state information that the compiler tracks, without that state occupying any memory (phantom type). For example:</p>
+
+<pre><code class="language-swift">enum Unset {}
+enum IsSet {}
+
+struct Builder&lt;NameState, AgeState&gt; {
+    private var name: String = ""
+    private var age: Int = 0
+
+    func setName(_ n: String) -&gt; Builder&lt;IsSet, AgeState&gt; {
+        var b = Builder&lt;IsSet, AgeState&gt;(); b.name = n; b.age = age; return b
+    }
+    func setAge(_ a: Int) -&gt; Builder&lt;NameState, IsSet&gt; {
+        var b = Builder&lt;NameState, IsSet&gt;(); b.name = name; b.age = a; return b
+    }
+}
+
+extension Builder where NameState == IsSet, AgeState == IsSet {
+    func build() -&gt; User { User(id: UUID(), name: name) }
+}
+
+// Builder&lt;Unset, Unset&gt;().build() — compile error: build() not available
+// Builder&lt;Unset, Unset&gt;().setName("Alice").setAge(30).build() — compiles fine</code></pre>
+
+<p>The phantom types <code>Unset</code>/<code>IsSet</code> are never instantiated; they purely encode state in the type system, catching missing-field errors at compile time rather than runtime.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: "Protocol can only be used as a generic constraint" error when trying to use a protocol with associated types as a variable type.</strong></p>
+
+<p>Solution: Replace <code>var r: Repository</code> with <code>var r: any Repository</code> (Swift 5.7+) or use a concrete generic parameter <code>func foo&lt;R: Repository&gt;(_ r: R)</code>. The <code>any</code> keyword acknowledges existential boxing. If the concrete type is always the same, <code>some Repository</code> in a return position is more efficient.</p>
+
+<p><strong>Issue: Generic function not specialised — hot path shows unexpected protocol witness table overhead in a profiler.</strong></p>
+
+<p>Solution: Mark the function <code>@inlinable</code> if it lives in a framework, or move it to the same module as the call site. Verify specialisation in the SIL output: <code>swiftc -O -emit-sil</code> and search for the concrete-type mangled name.</p>
+
+<p><strong>Issue: Overly constrained generic prevents composability.</strong></p>
+
+<p>Solution: Split constraints into protocol extensions and conditional conformances. Only the code paths that actually need a constraint should require it. Use <code>where</code> clauses on extensions instead of on the type itself.</p>
+
+<p><strong>Issue: Type inference fails for complex generic expressions.</strong></p>
+
+<p>Solution: Add explicit type annotations to help the compiler. Break the expression into smaller steps with named intermediate variables. If the expression involves closures, annotate the closure parameter types explicitly.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="protocol-oriented-programming.md">Protocol-Oriented Programming</a> — protocols with associated types and generics</li>
+<li><a href="type-erasure.md">Type Erasure</a> — <code>any</code>, <code>AnyPublisher</code>, and erasing generic constraints</li>
+<li><a href="value-vs-reference.md">Value vs Reference Types</a> — how generics interact with value/reference semantics</li>
+<li><a href="../03-concurrency/index.md">Concurrency</a> — <code>AsyncSequence</code> and generic async protocols</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Swift Language — iOS Knowledge Tree</title>
+  <title>Memory Management — iOS Knowledge Tree</title>
   <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body id="top" class="site-wrapper">
@@ -11,7 +11,7 @@
   <header class="site-header">
   <a href="../index.html">iOS Core Knowledge Tree</a>
   <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
-    <span><a href="../01-swift-language/index.html">Swift Language</a></span></div>
+    <span><a href="../02-memory-management/index.html">Memory Management</a></span></div>
 </header>
 
 
@@ -19,8 +19,8 @@
     <nav class="site-nav">
   <h2>Topics</h2>
   <ol>
-    <li><a href="../01-swift-language/index.html" class="active">Swift Language</a></li>
-    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html" class="active">Memory Management</a></li>
     <li><a href="../03-concurrency/index.html">Concurrency</a></li>
     <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
     <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
@@ -44,20 +44,17 @@
 
 
     <main class="site-content">
-      <h1>Swift Language</h1>
-      <p>Swift is Apple's primary programming language for building iOS, macOS, watchOS, and tvOS applications. It combines safety, performance, and expressiveness with modern language features. Understanding Swift deeply — including its type system, memory model, and advanced capabilities — is essential for senior iOS engineers.</p>
+      <h1>Memory Management</h1>
+      <p>Memory management in iOS is handled through <strong>Automatic Reference Counting (ARC)</strong> — a compile-time strategy that inserts retain and release calls to keep objects alive exactly as long as they are needed. Unlike garbage-collected runtimes, ARC is deterministic and has no pause latency, but it requires developers to understand ownership, reference cycles, and allocation strategies to write leak-free, high-performance apps.
+
+This section covers the full memory lifecycle: how ARC works at the compiler and runtime level, the patterns that create retain cycles and how to break them, how closures capture values and how capture lists control that behaviour, and the fundamental difference between stack and heap allocation.</p>
 
       <h2>Topics in this section</h2>
       <ul class="topic-list">
-        <li><a href="arc-basics.html">ARC Basics</a></li>
-        <li><a href="copy-on-write.html">Copy-on-Write</a></li>
-        <li><a href="generics.html">Generics</a></li>
-        <li><a href="property-wrappers.html">Property Wrappers</a></li>
-        <li><a href="protocol-oriented-programming.html">Protocol-Oriented Programming</a></li>
-        <li><a href="struct-vs-class.html">Struct vs Class</a></li>
-        <li><a href="type-erasure.html">Type Erasure</a></li>
-        <li><a href="value-vs-reference.html">Value vs Reference Types</a></li>
-        <li><a href="weak-vs-unowned.html">Weak vs Unowned</a></li>
+        <li><a href="arc.html">ARC — Deep Dive</a></li>
+        <li><a href="closures-capture-lists.html">Closures & Capture Lists</a></li>
+        <li><a href="retain-cycles.html">Retain Cycles</a></li>
+        <li><a href="stack-vs-heap.html">Stack vs Heap</a></li>
         
       </ul>
     </main>

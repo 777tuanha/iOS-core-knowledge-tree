@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stack vs Heap — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../02-memory-management/index.html">Memory Management</a></span>
+    <span>Stack Vs Heap</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html" class="active">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="stack-vs-heap">Stack vs Heap</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Every value your program uses lives in one of two places: the <strong>stack</strong> or the <strong>heap</strong>. The stack is fast, automatically managed, and limited in size. The heap is flexible, manually managed via ARC, and can hold arbitrarily sized objects. Swift's type system strongly influences which region is used: value types (structs, enums) default to the stack; reference types (classes, actors) always live on the heap. Understanding allocation mechanics helps you write code that avoids unnecessary heap pressure, reduces ARC overhead, and achieves optimal cache performance.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of the stack as a stack of sticky notes on your desk — you add a note on top when you need it, and peel it off when you're done. It's instant. The heap is like a filing cabinet across the room — you can store anything there, in any order, but you have to walk over to it, find a free drawer, label it, and remember to file it back when done.</p>
+
+<ul>
+<li><strong>Stack</strong>: instant access, automatic cleanup, limited size, last-in-first-out</li>
+<li><strong>Heap</strong>: flexible, any size, ARC manages lifetime, slower access</li>
+</ul>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="stack-allocation">Stack Allocation</h3>
+
+<p>The stack is a contiguous region of memory per thread. Stack frames are pushed on function entry and popped on return. Allocating on the stack is O(1) — just decrement the stack pointer.</p>
+
+<p>Properties:</p>
+<ul>
+<li>Allocation: move a register (stack pointer decrement) — effectively free</li>
+<li>Deallocation: automatic on scope exit (stack pointer increment)</li>
+<li>Size limit: typically 1–8 MB per thread (main thread: 8 MB on iOS, background: 512 KB)</li>
+<li>Locality: consecutive frames are adjacent in memory — excellent cache behaviour</li>
+<li>Thread safety: each thread has its own stack — no synchronisation needed</li>
+</ul>
+
+<h3 id="heap-allocation">Heap Allocation</h3>
+
+<p>The heap is a shared pool of memory managed by the allocator (<code>malloc</code>/<code>free</code> under the hood, plus ARC on top). Allocation involves finding a free block of the right size.</p>
+
+<p>Properties:</p>
+<ul>
+<li>Allocation: <code>malloc</code> call, search free list, update metadata — ~50–100 ns typically</li>
+<li>Deallocation: ARC decrement; if zero, <code>free</code> — involves locking</li>
+<li>Size: limited only by available RAM</li>
+<li>Locality: heap objects can be scattered — may cause cache misses</li>
+<li>Thread safety: <code>malloc</code> uses a lock or per-CPU arenas; ARC retain/release uses atomics</li>
+</ul>
+
+<h3 id="what-goes-where">What Goes Where</h3>
+
+<table>
+<tr><td>Type</td><td>Where</td><td>Notes</td></tr>
+<tr><td><code>struct</code> / <code>enum</code> local variable</td><td>Stack</td><td>Unless captured by escaping closure or stored in class</td></tr>
+<tr><td><code>class</code> instance</td><td>Heap</td><td>Always; variable holds a pointer</td></tr>
+<tr><td><code>actor</code> instance</td><td>Heap</td><td>Same as class</td></tr>
+<tr><td><code>struct</code> stored in a <code>class</code> property</td><td>Heap (inline)</td><td>Embedded in the class's allocation</td></tr>
+<tr><td><code>struct</code> captured by escaping closure</td><td>Heap</td><td>Compiler boxes it in a heap-allocated cell</td></tr>
+<tr><td><code>struct</code> in existential container (large)</td><td>Heap</td><td>Inline buffer overflows for &gt;3 words; spills to heap</td></tr>
+<tr><td>Function arguments (value types)</td><td>Stack (copy)</td><td>Unless <code>inout</code>, which passes a pointer</td></tr>
+<tr><td>Global/static variables</td><td>Data segment</td><td>Neither stack nor heap</td></tr>
+</table>
+
+<h3 id="escape-analysis">Escape Analysis</h3>
+
+<p>The Swift compiler performs <strong>escape analysis</strong> to determine whether a value escapes its defining scope. A value "escapes" if it is:</p>
+<ul>
+<li>Stored in a heap-allocated container (class property, array element on the heap)</li>
+<li>Captured by an escaping closure</li>
+<li>Passed as an <code>inout</code> to a function that stores it</li>
+</ul>
+
+<p>If a value does not escape, the compiler can allocate it on the stack even if it has reference-type backing (e.g., small class instances in local scope with no escaping references).</p>
+
+<h3 id="existential-containers">Existential Containers</h3>
+
+<p>When a value type is stored behind a protocol existential (<code>any Drawable</code>), Swift uses a 3-word inline buffer. Values that fit (≤ 3 machine words, ~24 bytes on 64-bit) are stored inline — no heap allocation. Values larger than 3 words are heap-allocated and the buffer stores a pointer. This is called "existential boxing."</p>
+
+<pre><code>Existential container layout (5 words total):
+[ value word 0 | value word 1 | value word 2 | metadata pointer | witness table pointer ]</code></pre>
+
+<p>Passing large structs through protocol existentials repeatedly can cause unexpected heap allocations and performance degradation.</p>
+
+<h3 id="performance-impact">Performance Impact</h3>
+
+<p>Cache misses from heap indirection are often more costly than the ARC operations themselves. A struct stored inline in an array is contiguous in memory — iterating is cache-friendly. An array of class pointers requires following each pointer to a potentially distant heap location — cache-unfriendly.</p>
+
+<p>Use Instruments → Allocations to measure heap allocation rate. Instruments → Time Profiler with "hide system libraries" off can reveal cache miss hotspots.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Stack allocation: struct local variable ───────────────────
+func computeDistance() -&gt; Double {
+    struct Point { var x, y: Double }       // on the stack
+    let p1 = Point(x: 0, y: 0)
+    let p2 = Point(x: 3, y: 4)
+    return sqrt((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y))
+}
+
+// ── Heap allocation: class instance ──────────────────────────
+class Node {
+    var value: Int
+    var next: Node?
+    init(_ value: Int) { self.value = value }
+}
+
+let head = Node(10)  // always on the heap
+
+// ── Struct forced to heap: captured by escaping closure ───────
+func makeCounter() -&gt; () -&gt; Int {
+    var count = 0  // escapes to heap when captured below
+    return {
+        count += 1  // count is in a heap-allocated box shared here
+        return count
+    }
+}
+
+let counter = makeCounter()
+print(counter())  // 1
+print(counter())  // 2
+
+// ── Existential boxing: small vs large struct ─────────────────
+struct SmallPoint { var x, y: Double }        // 2 words → inline in existential
+struct BigTransform { var matrix: (Double, Double, Double, Double,
+                                   Double, Double, Double, Double,
+                                   Double, Double, Double, Double,
+                                   Double, Double, Double, Double) }  // 16 words → heap
+
+func printArea(_ shape: any CustomStringConvertible) { print(shape) }
+
+let p = SmallPoint(x: 1, y: 2)       // no heap alloc when stored in existential
+// let t = BigTransform(...)          // heap alloc when stored in existential
+
+// ── Avoid existential boxing with generics ────────────────────
+// Prefer generic parameter (static dispatch, no boxing):
+func processShape&lt;S: CustomStringConvertible&gt;(_ shape: S) {
+    print(shape)  // S is known at compile time; no existential box
+}
+
+processShape(p)   // SmallPoint, no boxing, potentially inlined
+
+// ── Stack size awareness for recursive algorithms ─────────────
+// Deep recursion consumes stack frames — risk of stack overflow.
+// Iterative solutions with explicit stacks use heap (safe for deep trees):
+func iterativeDepth(of node: Node?) -&gt; Int {
+    var stack: [(Node, Int)] = []           // heap-allocated array
+    if let root = node { stack.append((root, 1)) }
+    var maxDepth = 0
+    while !stack.isEmpty {
+        let (current, depth) = stack.removeLast()
+        maxDepth = Swift.max(maxDepth, depth)
+        if let next = current.next { stack.append((next, depth + 1)) }
+    }
+    return maxDepth
+}
+
+// ── Measuring allocations ─────────────────────────────────────
+// In code (rough measurement, not for production):
+import Foundation
+
+func countAllocations(block: () -&gt; Void) {
+    // Use Instruments → Allocations for accurate measurement.
+    // This pattern is for illustrative purposes only.
+    let before = mach_absolute_time()
+    block()
+    let after = mach_absolute_time()
+    print("Elapsed: \(after - before) mach ticks")
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between stack and heap allocation?</strong></p>
+
+<p>A: The stack is a per-thread, LIFO region where local variables and function frames are allocated by simply adjusting a pointer — extremely fast and automatically reclaimed on scope exit. The heap is a shared pool managed by <code>malloc</code>/ARC, used for objects that need dynamic lifetimes or sizes. Heap allocation requires finding free memory, updating metadata, and eventually running ARC's retain/release — slower and potentially contended.</p>
+
+<p><strong>Q: Do Swift structs always live on the stack?</strong></p>
+
+<p>A: No, structs default to the stack for local variables, but end up on the heap when: stored as a property of a class (embedded in the class's heap allocation), captured by an escaping closure (boxed into a heap cell), or stored in a heap-allocated collection. The compiler uses escape analysis to determine the actual allocation site.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: What is an existential container and when does it cause a heap allocation?</strong></p>
+
+<p>A: When a value type is used where an <code>any Protocol</code> existential is expected, Swift stores it in a fixed-size container (5 machine words). The first 3 words are an inline value buffer. If the value fits (≤ 3 words / ~24 bytes on 64-bit), no extra allocation occurs. If the value is larger, Swift allocates a separate heap buffer and stores a pointer in the inline buffer. This "existential boxing" happens silently and can cause unexpected allocation spikes when large structs are passed through generic protocol boundaries.</p>
+
+<p><strong>Q: How does escape analysis in Swift decide whether to allocate a local variable on the stack or heap?</strong></p>
+
+<p>A: The Swift compiler analyses the variable's uses through the control flow graph. If the variable never "escapes" — never stored in a class property, never captured by an escaping closure, never passed to a function that stores it beyond the call — it can be allocated on the stack. Once the compiler detects an escape path, it inserts a heap allocation and modifies all subsequent accesses to go through the heap pointer. In optimised builds (<code>-O</code>), the compiler may partially eliminate boxes when escape paths are provably unreachable or when the value is small enough to pass in registers.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Describe a situation where switching from <code>class</code> to <code>struct</code> increases heap allocations, not decreases them.<em></em></p>
+
+<p>A: When a struct contains reference-type fields (class instances), copying the struct copies the struct's inline fields but the reference-type fields remain on the heap — their retain counts simply increase. If the struct is large and copied frequently (e.g., placed in a heterogeneous array as <code>any Protocol</code> existential that overflows the inline buffer), switching from a class to a struct introduces existential boxing on each use. Another scenario: a struct with COW semantics (custom copy-on-write) that is copied in many places will trigger a heap allocation of the backing buffer on each write — potentially more allocations than a single heap-allocated class instance that mutates in place. The correct tool is Instruments → Allocations, not intuition.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Stack overflow crash in a recursive function processing deep data structures.</strong></p>
+
+<p>Solution: Replace recursion with an iterative algorithm using an explicit stack (a heap-allocated <code>Array</code> or <code>LinkedList</code>). Heap allocations can grow as large as available RAM; the thread stack is limited (~512 KB on background threads).</p>
+
+<p><strong>Issue: Performance regression when protocol-typed parameter causes heap allocation in a hot loop.</strong></p>
+
+<p>Solution: Replace <code>any Protocol</code> existential with a generic parameter <code>&lt;T: Protocol&gt;</code>. This eliminates existential boxing and enables static dispatch and specialisation. Verify with Instruments → Allocations that the allocation rate drops.</p>
+
+<p><em></em>Issue: Large struct stored in a dictionary as <code>[String: any Codable]</code> causes unexpected allocations.<em></em></p>
+
+<p>Solution: Use a concrete type parameter or typed wrapper to avoid existential boxing. If heterogeneous storage is required, consider an enum with associated values — it stores inline without boxing.</p>
+
+<p><strong>Issue: App uses more memory than expected — Allocations shows many small heap objects.</strong></p>
+
+<p>Solution: Look for frequently created class instances that could be structs. Check for closure boxes from frequently-created escaping closures. Use object pooling for high-frequency short-lived objects. Review whether protocol existentials in hot paths could be replaced with generics.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="arc.md">ARC</a> — ARC manages heap object lifetimes</li>
+<li><a href="../01-swift-language/value-vs-reference.md">Value vs Reference Types</a> — how Swift's type system maps to stack/heap</li>
+<li><a href="../01-swift-language/copy-on-write.md">Copy-on-Write</a> — COW uses a heap buffer inside a stack-allocated struct</li>
+<li><a href="../01-swift-language/generics.md">Generics</a> — generics avoid existential boxing via static dispatch</li>
+<li><a href="../12-performance/index.md">Performance</a> — Instruments profiling for allocation analysis</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>
