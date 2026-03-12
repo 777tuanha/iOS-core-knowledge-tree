@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto Layout — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../04-ui-frameworks/index.html">Ui Frameworks</a></span>
+    <span>Autolayout</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html" class="active">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="auto-layout">Auto Layout</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Auto Layout is UIKit's constraint-based layout system, introduced in iOS 6. Instead of setting frames manually, you describe relationships between views using <strong>constraints</strong> — mathematical equations that the layout engine solves to produce concrete frames. The engine is based on the <strong>Cassowary</strong> linear arithmetic constraint solver. Auto Layout handles the complexity of adapting a single layout to different screen sizes, device orientations, Dynamic Type sizes, and multitasking split sizes.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of Auto Layout like furniture assembly instructions written in plain language: "The sofa must be 2 m from the left wall, centred in the room, and its top must be 30 cm below the TV shelf." You don't measure and place the sofa yourself — you hand the instructions to the room and it figures out the exact position based on the room's dimensions. If you move into a bigger apartment, the same instructions still produce sensible furniture placement.</p>
+
+<p>Constraints are those instructions. The layout engine is the room figuring out exact positions.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="constraint-anatomy">Constraint Anatomy</h3>
+
+<p>A constraint is a linear equation:</p>
+
+<pre><code>item1.attribute = multiplier × item2.attribute + constant  (with relation ≤, =, ≥)</code></pre>
+
+<p>Example: <code>button.leading = 1.0 × superview.leading + 16</code></p>
+
+<table>
+<tr><td>Part</td><td>Meaning</td></tr>
+<tr><td><code>item1</code></td><td>The view being constrained</td></tr>
+<tr><td><code>attribute</code></td><td><code>.leading</code>, <code>.trailing</code>, <code>.top</code>, <code>.bottom</code>, <code>.width</code>, <code>.height</code>, <code>.centerX</code>, <code>.centerY</code>, <code>.firstBaseline</code>, <code>.lastBaseline</code></td></tr>
+<tr><td><code>relation</code></td><td><code>.equal</code>, <code>.lessThanOrEqual</code>, <code>.greaterThanOrEqual</code></td></tr>
+<tr><td><code>multiplier</code></td><td>Scaling factor (1.0 for most)</td></tr>
+<tr><td><code>item2</code></td><td>The anchor view (can be <code>nil</code> for absolute constraints)</td></tr>
+<tr><td><code>constant</code></td><td>Pixel offset</td></tr>
+</table>
+
+<h3 id="cassowary-algorithm">Cassowary Algorithm</h3>
+
+<p>UIKit's layout engine implements the Cassowary constraint solver (O(n) for typical UI constraint graphs). Cassowary:</p>
+<ul>
+<li>Represents constraints as a simplex tableau.</li>
+<li>Incrementally updates the solution when a constraint is added, removed, or changed — very efficient for live editing.</li>
+<li>Assigns strengths to constraints (required / high / medium / low) and maximises satisfaction.</li>
+</ul>
+
+<p>Constraint priorities are expressed as <code>UILayoutPriority</code> (raw <code>Float</code>, 0–1000). Priority 1000 is <strong>required</strong> (must be satisfied; breaks the layout if unsatisfiable). Anything below 1000 is <strong>optional</strong> — the engine tries to satisfy them but won't crash if it can't.</p>
+
+<h3 id="intrinsic-content-size">Intrinsic Content Size</h3>
+
+<p>Views that know their natural size (labels, images, buttons) report an <code>intrinsicContentSize</code>. The layout engine creates implicit constraints at priority 750 to respect this size. You can override it for custom views:</p>
+
+<pre><code class="language-swift">override var intrinsicContentSize: CGSize {
+    CGSize(width: 100, height: 44)
+}
+// Call this when content changes:
+invalidateIntrinsicContentSize()</code></pre>
+
+<h3 id="content-hugging-and-compression-resistance">Content Hugging and Compression Resistance</h3>
+
+<table>
+<tr><td>Property</td><td>Meaning</td><td>Default priority</td></tr>
+<tr><td>Content Hugging</td><td>Resist growing <strong>beyond</strong> intrinsic size</td><td>250 (horizontal/vertical)</td></tr>
+<tr><td>Compression Resistance</td><td>Resist shrinking <strong>below</strong> intrinsic size</td><td>750 (horizontal/vertical)</td></tr>
+</table>
+
+<p>Higher value = stronger resistance. Used to resolve ambiguity when two views compete for space:</p>
+<ul>
+<li>If a label and a text field share a row, increase the label's Hugging priority so the text field expands to fill remaining space.</li>
+<li>If a label might be clipped, increase its Compression Resistance so it doesn't get squished.</li>
+</ul>
+
+<h3 id="layout-passes">Layout Passes</h3>
+
+<p>Three passes happen each run-loop cycle (triggered by run-loop observers):</p>
+
+<ol>
+<li><strong>Update constraints pass</strong> (<code>updateConstraints</code>) — views report new constraint constants.</li>
+<li><strong>Layout pass</strong> (<code>layoutSubviews</code>) — Cassowary solves the constraint system and assigns frames.</li>
+<li><strong>Display pass</strong> (<code>draw(_:)</code>) — views render their content.</li>
+</ol>
+
+<p>Each pass works bottom-up through the view hierarchy for updates (children update before parents) and top-down for layout.</p>
+
+<h3 id="safe-area--layout-guides">Safe Area &amp; Layout Guides</h3>
+
+<p><code>safeAreaInsets</code> represents the space consumed by the status bar, home indicator, notch, and Dynamic Island. Use <code>safeAreaLayoutGuide</code> to constrain relative to the safe area instead of the window edges.</p>
+
+<p><code>layoutMarginsGuide</code> provides the system-defined content margins (8 pt standard). <code>readableContentGuide</code> constrains to a maximum line length for readable text.</p>
+
+<pre><code class="language-swift">NSLayoutConstraint.activate([
+    label.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16)
+])</code></pre>
+
+<h3 id="constraint-debugging">Constraint Debugging</h3>
+
+<table>
+<tr><td>Tool</td><td>Use</td></tr>
+<tr><td><code>po view.constraintsAffectingLayout(for: .horizontal)</code></td><td>Print constraints on axis</td></tr>
+<tr><td>Unsatisfiable constraint log</td><td>"Unable to simultaneously satisfy constraints"</td></tr>
+<tr><td><code>UIView.hasAmbiguousLayout()</code></td><td>Returns true if more solutions exist</td></tr>
+<tr><td><code>exerciseAmbiguityInLayout()</code></td><td>Randomly chooses among valid solutions for debugging</td></tr>
+<tr><td>Xcode Canvas constraint warnings</td><td>Yellow/red indicators on layout issues</td></tr>
+</table>
+
+<h3 id="performance">Performance</h3>
+
+<ul>
+<li>Constraint solving is O(n) for typical UIs but can become O(n²) or worse with equality chains across many views.</li>
+<li>Avoid modifying constraints unnecessarily on every layout pass.</li>
+<li>Updating a constraint's <code>constant</code> (not adding/removing it) is cheap — the solver updates incrementally.</li>
+<li>Use <code>UIStackView</code> for common linear layouts — it manages constraints automatically and is efficient.</li>
+</ul>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+
+// ── Programmatic Auto Layout with NSLayoutAnchor ───────────────
+class ProfileCardView: UIView {
+
+    private let avatarImageView = UIImageView()
+    private let nameLabel = UILabel()
+    private let subtitleLabel = UILabel()
+    private let followButton = UIButton(type: .system)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupViews()
+        setupConstraints()
+    }
+
+    required init?(coder: NSCoder) { super.init(coder: coder) }
+
+    private func setupViews() {
+        avatarImageView.contentMode = .scaleAspectFill
+        avatarImageView.clipsToBounds = true
+        avatarImageView.layer.cornerRadius = 30
+
+        nameLabel.font = .preferredFont(forTextStyle: .headline)
+        nameLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        subtitleLabel.font = .preferredFont(forTextStyle: .subheadline)
+        subtitleLabel.textColor = .secondaryLabel
+        subtitleLabel.numberOfLines = 2
+
+        followButton.setTitle("Follow", for: .normal)
+        // Hugging: button resists growing horizontally — label expands instead
+        followButton.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+
+        [avatarImageView, nameLabel, subtitleLabel, followButton].forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false  // required for programmatic AL
+            addSubview($0)
+        }
+    }
+
+    private func setupConstraints() {
+        NSLayoutConstraint.activate([
+            // Avatar: fixed size, pinned to leading + top of safe area margins
+            avatarImageView.widthAnchor.constraint(equalToConstant: 60),
+            avatarImageView.heightAnchor.constraint(equalToConstant: 60),
+            avatarImageView.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
+            avatarImageView.topAnchor.constraint(equalTo: layoutMarginsGuide.topAnchor),
+
+            // Name: right of avatar
+            nameLabel.leadingAnchor.constraint(equalTo: avatarImageView.trailingAnchor, constant: 12),
+            nameLabel.topAnchor.constraint(equalTo: avatarImageView.topAnchor),
+
+            // Follow button: right edge, same row as name
+            followButton.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
+            followButton.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
+            followButton.leadingAnchor.constraint(
+                greaterThanOrEqualTo: nameLabel.trailingAnchor, constant: 8  // ≥ leaves room for both
+            ),
+
+            // Subtitle: below name
+            subtitleLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
+            subtitleLabel.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
+            subtitleLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
+            subtitleLabel.bottomAnchor.constraint(equalTo: layoutMarginsGuide.bottomAnchor)
+        ])
+    }
+}
+
+// ── Animating a constraint change ─────────────────────────────
+class AnimatedPanelViewController: UIViewController {
+    private let panel = UIView()
+    private var panelBottomConstraint: NSLayoutConstraint!
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        panel.backgroundColor = .systemBackground
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(panel)
+
+        panelBottomConstraint = panel.bottomAnchor.constraint(
+            equalTo: view.bottomAnchor, constant: 300   // initially off-screen
+        )
+
+        NSLayoutConstraint.activate([
+            panel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            panel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            panel.heightAnchor.constraint(equalToConstant: 300),
+            panelBottomConstraint
+        ])
+    }
+
+    func showPanel() {
+        panelBottomConstraint.constant = 0             // change the constant — cheap
+        UIView.animate(withDuration: 0.35, delay: 0, options: .curveEaseOut) {
+            self.view.layoutIfNeeded()                  // animate the layout pass
+        }
+    }
+
+    func hidePanel() {
+        panelBottomConstraint.constant = 300
+        UIView.animate(withDuration: 0.35) {
+            self.view.layoutIfNeeded()
+        }
+    }
+}
+
+// ── UIStackView for simple linear layouts ─────────────────────
+func makeInfoStack() -&gt; UIStackView {
+    let titleLabel = UILabel()
+    let bodyLabel = UILabel()
+    let actionButton = UIButton(type: .system)
+
+    titleLabel.font = .preferredFont(forTextStyle: .title2)
+    bodyLabel.numberOfLines = 0
+
+    let stack = UIStackView(arrangedSubviews: [titleLabel, bodyLabel, actionButton])
+    stack.axis = .vertical
+    stack.spacing = 8
+    stack.alignment = .leading              // subviews align to leading edge
+    stack.distribution = .fill             // subviews fill stack proportionally
+    return stack
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between content hugging and compression resistance?</strong></p>
+
+<p>A: Content Hugging priority determines how strongly a view resists being <strong>stretched beyond</strong> its intrinsic content size. A high value means the view prefers to be exactly as large as its content. Compression Resistance determines how strongly a view resists being <strong>compressed below</strong> its intrinsic content size. A high value means the view prefers not to be clipped. Together they resolve ambiguity when multiple views compete for space in a layout — e.g., in a horizontal stack of a label and a text field, raising the label's Hugging priority makes the text field expand rather than the label.</p>
+
+<p><em></em>Q: Why must <code>translatesAutoresizingMaskIntoConstraints</code> be set to <code>false</code> for programmatic Auto Layout?<em></em></p>
+
+<p>A: When <code>translatesAutoresizingMaskIntoConstraints</code> is <code>true</code> (the default), UIKit creates implicit constraints from the view's <code>autoresizingMask</code> to preserve its current frame. These implicit constraints conflict with any manual constraints you add, causing "Unable to simultaneously satisfy constraints" errors. Setting it to <code>false</code> tells UIKit you are taking full responsibility for the view's layout via Auto Layout constraints.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: What is the Cassowary algorithm and why is it used for Auto Layout?</strong></p>
+
+<p>A: Cassowary is an incremental constraint satisfaction algorithm for linear arithmetic systems. It maintains a simplex tableau and can add, remove, or modify constraints in O(1) amortised time for typical UI constraint graphs — much more efficient than re-solving from scratch each time. It assigns strengths (priorities) to constraints and finds the solution that satisfies all required constraints and maximally satisfies optional ones. UIKit uses it because UI layouts change frequently (orientation, size classes, Dynamic Type), and Cassowary's incremental updates handle these changes efficiently without full re-computation.</p>
+
+<p><strong>Q: Explain the three layout passes and how they relate to the run loop.</strong></p>
+
+<p>A: (1) <strong>updateConstraints</strong> — called bottom-up through the view hierarchy; views report constraint changes here. (2) <strong>layoutSubviews</strong> — called top-down; Cassowary solves the constraint system for each view and assigns frames. (3) <strong>draw(_:)</strong> — called top-down; views render their content into graphics contexts. All three are batched by run-loop observers firing at the <code>beforeWaiting</code> activity — meaning multiple <code>setNeedsLayout()</code> calls in one cycle result in only one <code>layoutSubviews</code> call. <code>layoutIfNeeded()</code> forces the layout pass immediately, bypassing this batching, which is why it's used inside animation blocks.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you debug "Unable to simultaneously satisfy constraints" and what strategies prevent it?</strong></p>
+
+<p>A: The UISC log in Xcode's console lists the conflicting constraints with view descriptions. Strategy: (1) Give each view a meaningful <code>accessibilityIdentifier</code> to make the log readable. (2) Check constraint priorities — lower a non-critical constraint below 1000 to make it breakable. (3) Use <code>UIView.hasAmbiguousLayout()</code> and <code>exerciseAmbiguityInLayout()</code> in the debugger to detect ambiguous (under-constrained) layouts. Prevention: use <code>UIStackView</code> for common patterns (it manages internal constraints), prefer updating <code>constant</code> over adding/removing constraints, and design with explicit priority intent — if two constraints might conflict, decide upfront which should break by setting priorities appropriately.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: "Unable to simultaneously satisfy constraints" at runtime.</strong></p>
+
+<p>Solution: Read the log carefully — it lists the conflicting constraints. Identify which constraint should be optional and lower its priority below 1000. Add <code>accessibilityIdentifier</code> to views for readable logs.</p>
+
+<p><strong>Issue: Layout looks correct in portrait but breaks in landscape.</strong></p>
+
+<p>Solution: Check for fixed-width constraints that exceed the landscape width. Use <code>lessThanOrEqual</code> or percentage-based widths (<code>equalTo superview.widthAnchor multiplier: 0.8</code>). Also verify that <code>safeAreaLayoutGuide</code> is used for top/bottom margins to account for home indicator height changes.</p>
+
+<p><strong>Issue: Label being clipped when text is long.</strong></p>
+
+<p>Solution: Increase the label's Compression Resistance priority above the competing constraint's priority (usually 750). Alternatively, add a <code>greaterThanOrEqual</code> height constraint and remove any fixed height constraint.</p>
+
+<p><strong>Issue: Auto Layout constraints not applying to a view added programmatically.</strong></p>
+
+<p>Solution: Forgot to set <code>translatesAutoresizingMaskIntoConstraints = false</code>. Every view managed by Auto Layout must have this set to <code>false</code> before constraints are activated.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="uiview-lifecycle.md">UIView Lifecycle</a> — layout passes (layoutSubviews) triggered by Auto Layout</li>
+<li><a href="event-handling-runloop.md">Event Handling &amp; RunLoop</a> — run-loop cycle that batches layout passes</li>
+<li><a href="uitableview-uicollectionview.md">UITableView &amp; UICollectionView</a> — self-sizing cells use intrinsic content size</li>
+<li><a href="swiftui-view-lifecycle.md">SwiftUI View Lifecycle</a> — SwiftUI's implicit layout replaces Auto Layout</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

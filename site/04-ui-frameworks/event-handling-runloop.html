@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Handling & RunLoop — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../04-ui-frameworks/index.html">Ui Frameworks</a></span>
+    <span>Event Handling Runloop</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html" class="active">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="event-handling--runloop">Event Handling &amp; RunLoop</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>iOS translates hardware touch signals into high-level <code>UIEvent</code> objects through a layered pipeline: the kernel detects the touch, <code>IOKit</code> packages it, <code>SpringBoard</code> routes it to the app, and UIKit delivers it to the correct view via <strong>hit-testing</strong> and the <strong>responder chain</strong>. The entire delivery mechanism runs on top of the <strong>RunLoop</strong>, which keeps the main thread alive, drains event queues, and fires timers and display callbacks. Understanding this pipeline is essential for debugging gesture conflicts, building custom controls, and diagnosing dropped frames.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a post office. When you tap the screen, a letter (UIEvent) is created and addressed. The hit-testing process is like a postal worker finding the exact desk (UIView) where the letter should be delivered. The responder chain is the escalation path — if that desk doesn't handle the letter, it gets passed to the manager (superview), then to the floor manager (UIViewController), and so on up to the building director (UIApplication). The RunLoop is the post office's daily routine: keep checking for mail, deliver it, process it, repeat.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="touch-event-pipeline">Touch Event Pipeline</h3>
+
+<ol>
+<li><strong>Hardware / Kernel</strong>: The digitiser detects a finger press. The kernel packages it into an IOKit event.</li>
+<li><strong>SpringBoard</strong>: The system process receives the event and determines which app's window should receive it, then forwards via Mach port.</li>
+<li><strong>UIApplication</strong>: The event enters <code>UIApplication.sendEvent(_:)</code>, the top-level event dispatcher.</li>
+<li><strong>Hit-testing</strong>: UIKit determines which view should receive the touch.</li>
+<li><strong>Responder Chain</strong>: The event is offered to the hit-tested view; if unhandled, it travels up the chain.</li>
+</ol>
+
+<h3 id="hit-testing">Hit-Testing</h3>
+
+<p>Hit-testing is a depth-first traversal of the view hierarchy to find the deepest view whose <code>bounds</code> contain the touch point and whose <code>isUserInteractionEnabled</code>, <code>isHidden</code>, and <code>alpha</code> conditions are satisfied.</p>
+
+<pre><code>UIWindow
+  └── UIView A
+        ├── UIView B  ← deepest view containing touch? → first responder candidate
+        └── UIView C</code></pre>
+
+<p><code>hitTest(_:with:)</code> is called top-down. The default implementation:</p>
+<ol>
+<li>Returns <code>nil</code> if <code>isUserInteractionEnabled == false</code>, <code>isHidden == true</code>, or <code>alpha &lt; 0.01</code>.</li>
+<li>Calls <code>point(inside:with:)</code> — returns <code>nil</code> if touch is outside bounds.</li>
+<li>Iterates subviews in reverse (front-to-back), recursively calling <code>hitTest</code> on each.</li>
+<li>Returns the first non-nil result (deepest match).</li>
+</ol>
+
+<p>Override <code>hitTest</code> to expand the hit area, redirect touches, or implement transparent pass-through views.</p>
+
+<h3 id="responder-chain">Responder Chain</h3>
+
+<p>Every <code>UIResponder</code> subclass (<code>UIView</code>, <code>UIViewController</code>, <code>UIApplication</code>, <code>UIWindowScene</code>) participates in the responder chain. When a touch is not handled by the first responder, it propagates:</p>
+
+<pre><code>UIView (first responder)
+  → UIView (superview)
+  → UIViewController
+  → UIView (superview's superview)
+  → UIWindow
+  → UIWindowScene
+  → UIApplication
+  → AppDelegate
+  → (discarded if unhandled)</code></pre>
+
+<p>Handlers: <code>touchesBegan</code>, <code>touchesMoved</code>, <code>touchesEnded</code>, <code>touchesCancelled</code>. Call <code>super</code> to forward the event.</p>
+
+<h3 id="uigesturerecognizer">UIGestureRecognizer</h3>
+
+<p>Gesture recognisers sit above the raw touch system. A recogniser:</p>
+<ul>
+<li>Receives touches before the target view.</li>
+<li>If it recognises its pattern, it cancels raw touch delivery to the view (<code>cancelsTouchesInView = true</code> by default).</li>
+<li>Multiple recognisers on the same view are coordinated by <code>UIGestureRecognizerDelegate</code>.</li>
+</ul>
+
+<p>Recogniser states: <code>.possible</code> → <code>.began</code> → <code>.changed</code> → <code>.ended</code> / <code>.failed</code> / <code>.cancelled</code>.</p>
+
+<h3 id="uievent">UIEvent</h3>
+
+<p>A <code>UIEvent</code> has a <code>type</code> (<code>.touches</code>, <code>.motion</code>, <code>.remoteControl</code>, <code>.presses</code>) and carries a set of <code>UITouch</code> objects. Each <code>UITouch</code> tracks the entire lifecycle of one finger from <code>began</code> to <code>ended</code>. Multitouch is supported by examining all touches in the event's <code>touches(for:)</code>.</p>
+
+<h3 id="runloop">RunLoop</h3>
+
+<p>The <code>RunLoop</code> is an event-processing loop tied to a thread. The main thread's run loop is managed by UIKit. Each iteration:</p>
+
+<ol>
+<li><strong>Input sources</strong> (port-based): Mach port messages — touch events, timers fired.</li>
+<li><strong>Run loop sources</strong> (custom): <code>CFRunLoopSource</code> — typically used by frameworks.</li>
+<li><strong>Observers</strong>: Notified at well-defined points (entry, before waiting, after waiting, exit).</li>
+<li><strong>Timers</strong>: <code>Timer</code> / <code>CADisplayLink</code> — fire when their deadline passes.</li>
+</ol>
+
+<h4 id="runloop-modes">RunLoop Modes</h4>
+
+<table>
+<tr><td>Mode</td><td>Description</td></tr>
+<tr><td><code>.default</code></td><td>Normal app operation</td></tr>
+<tr><td><code>.tracking</code></td><td>Active during scroll — prevents timers from firing and disrupting scrolling</td></tr>
+<tr><td><code>.common</code></td><td>Pseudo-mode — observer/timer is added to all "common" modes (default + tracking)</td></tr>
+<tr><td><code>UIInitializationRunLoopMode</code></td><td>App launch only</td></tr>
+</table>
+
+<p>A <code>Timer</code> scheduled in <code>.default</code> mode stops firing while the user is scrolling. Schedule it in <code>.common</code> to keep it firing during scrolling — or use <code>GCD</code>/<code>async</code> instead.</p>
+
+<h4 id="core-animation--display-link">Core Animation &amp; Display Link</h4>
+
+<p><code>CADisplayLink</code> is a special timer synchronised to the display's vsync (60 or 120 Hz). It fires as a run-loop source in <code>.common</code> mode. UIKit uses it internally to drive animations. Apps use it for game loops or custom animations that need frame-level timing.</p>
+
+<p>The Core Animation commit transaction (see UIView Lifecycle) is triggered by a run-loop observer that fires just before the run loop goes to sleep — this is why layout, display, and CA commits are all batched to the end of each run-loop cycle.</p>
+
+<h3 id="runloop-sources-and-observers">RunLoop Sources and Observers</h3>
+
+<table>
+<tr><td>Concept</td><td>Purpose</td></tr>
+<tr><td><code>CFRunLoopSource</code></td><td>Low-level event source (Mach ports, sockets)</td></tr>
+<tr><td><code>CFRunLoopTimer</code></td><td>Timer-based source — <code>Timer</code> and <code>CADisplayLink</code></td></tr>
+<tr><td><code>CFRunLoopObserver</code></td><td>Notified at run-loop activity transitions</td></tr>
+<tr><td><code>CFRunLoopMode</code></td><td>Named set of sources/timers/observers</td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+
+// ── Expanding touch area beyond view bounds ─────────────────────
+class LargeHitAreaButton: UIButton {
+    var hitAreaInset: UIEdgeInsets = UIEdgeInsets(top: -20, left: -20, bottom: -20, right: -20)
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -&gt; Bool {
+        let expandedBounds = bounds.inset(by: hitAreaInset)  // negative inset = expand
+        return expandedBounds.contains(point)
+    }
+}
+
+// ── Pass-through container view (touches fall through to views below) ──
+class PassThroughView: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -&gt; UIView? {
+        let result = super.hitTest(point, with: event)
+        return result == self ? nil : result    // don't capture touches on self, only subviews
+    }
+}
+
+// ── Custom responder chain action ──────────────────────────────
+// Anywhere in the responder chain, you can receive a custom action
+extension UIResponder {
+    @objc func handleCustomAction(_ sender: Any?) {
+        // default: forward up the chain
+    }
+}
+
+class CustomView: UIView {
+    override func handleCustomAction(_ sender: Any?) {
+        print("CustomView handled the action")  // intercept here; don't call super to stop
+    }
+}
+
+// Send an action up the chain from anywhere
+// UIApplication.shared.sendAction(#selector(handleCustomAction(_:)), to: nil, from: self, for: nil)
+
+// ── Gesture recogniser with delegate coordination ──────────────
+class SwipeableCardView: UIView, UIGestureRecognizerDelegate {
+    private let panGesture = UIPanGestureRecognizer()
+    private let tapGesture = UITapGestureRecognizer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+
+        panGesture.addTarget(self, action: #selector(handlePan(_:)))
+        panGesture.delegate = self
+        addGestureRecognizer(panGesture)
+
+        tapGesture.addTarget(self, action: #selector(handleTap(_:)))
+        addGestureRecognizer(tapGesture)
+
+        // Allow both to recognise simultaneously (pan + tap)
+        panGesture.require(toFail: tapGesture)  // tap takes precedence for small movements
+    }
+
+    required init?(coder: NSCoder) { super.init(coder: coder) }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let translation = gesture.translation(in: self)
+        switch gesture.state {
+        case .changed:
+            transform = CGAffineTransform(translationX: translation.x, y: translation.y)
+        case .ended, .cancelled:
+            UIView.animate(withDuration: 0.3) { self.transform = .identity }
+        default: break
+        }
+    }
+
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        UIView.animate(withDuration: 0.1, animations: {
+            self.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+        }) { _ in
+            UIView.animate(withDuration: 0.1) { self.transform = .identity }
+        }
+    }
+
+    // Allow simultaneous recognition
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -&gt; Bool { false }
+}
+
+// ── RunLoop mode — timer that fires during scrolling ──────────
+class PollingManager {
+    private var timer: Timer?
+
+    func startPolling() {
+        timer = Timer(timeInterval: 1.0, repeats: true) { _ in
+            print("Polling...")
+        }
+        // Schedule in .common so it fires even while UIScrollView is tracking
+        RunLoop.main.add(timer!, forMode: .common)
+    }
+
+    func stopPolling() {
+        timer?.invalidate()
+        timer = nil
+    }
+}
+
+// ── CADisplayLink for custom animation loop ────────────────────
+class ParticleAnimator {
+    private var displayLink: CADisplayLink?
+    private var lastTimestamp: CFTimeInterval = 0
+
+    func start(in view: UIView) {
+        displayLink = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        displayLink?.add(to: .main, forMode: .common)   // fires every vsync
+    }
+
+    func stop() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    @objc private func tick(_ link: CADisplayLink) {
+        let dt = lastTimestamp == 0 ? 0 : link.timestamp - lastTimestamp
+        lastTimestamp = link.timestamp
+        updateParticles(dt: dt)                         // frame-accurate delta time
+    }
+
+    private func updateParticles(dt: CFTimeInterval) { /* physics update */ }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is hit-testing and how does UIKit perform it?</strong></p>
+
+<p>A: Hit-testing is the process of finding the deepest view in the hierarchy that contains a touch point and is eligible to receive events. UIKit calls <code>hitTest(_:with:)</code> on the window, which recursively calls it on subviews in reverse order (front to back). At each level, <code>point(inside:with:)</code> checks whether the touch is within bounds. A view is skipped if <code>isUserInteractionEnabled == false</code>, <code>isHidden == true</code>, or <code>alpha &lt; 0.01</code>. The deepest view that passes all checks becomes the first responder for that touch.</p>
+
+<p><strong>Q: What is the responder chain?</strong></p>
+
+<p>A: The responder chain is a linked list of <code>UIResponder</code> objects through which an unhandled event propagates. Starting from the first responder (usually the hit-tested view), the event is offered to each responder in turn: view → superview → view controller → window → UIApplication → AppDelegate. Each responder can handle the event (stop propagation) or call <code>super</code> to pass it along. If no responder handles it, the event is discarded.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: Why does a <code>Timer</code> stop firing during a UIScrollView scroll, and how do you fix it?<em></em></p>
+
+<p>A: By default, <code>Timer</code> is scheduled in the <code>.default</code> run loop mode. While <code>UIScrollView</code> is tracking a finger, the run loop switches to <code>.tracking</code> mode, which excludes <code>.default</code> mode sources — so the timer never fires. Fix: schedule the timer in <code>.common</code> mode, which is an alias for all "common" modes including both <code>.default</code> and <code>.tracking</code>. Either use <code>RunLoop.main.add(timer, forMode: .common)</code> or switch to <code>DispatchQueue.main.asyncAfter</code> / a <code>Task</code> with <code>Task.sleep</code>, which are not mode-dependent.</p>
+
+<p><strong>Q: How do gesture recognisers interact with raw touch handling?</strong></p>
+
+<p>A: Gesture recognisers receive touches before the target view. Once a recogniser transitions to <code>.began</code>, it claims the touch and — if <code>cancelsTouchesInView</code> is <code>true</code> (the default) — sends <code>touchesCancelled</code> to the view's raw touch handlers. Multiple recognisers on the same view can be coordinated with <code>UIGestureRecognizerDelegate</code>: <code>shouldRecognizeSimultaneouslyWith</code> allows both to fire, and <code>require(toFail:)</code> creates a dependency so one recogniser only fires if another fails. Recognisers on superview vs subview also interact: <code>delaysTouchesBegan</code> prevents raw touches from firing until the recogniser fails.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe the relationship between the RunLoop, Core Animation commit transactions, and layout passes.</strong></p>
+
+<p>A: All three are tied to the main run loop cycle: (1) <strong>Layout</strong>: When <code>setNeedsLayout()</code> is called, a dirty flag is set. A run-loop observer registered for the <code>beforeWaiting</code> activity (fires just before the run loop sleeps) triggers <code>layoutSubviews</code> for all dirty views. (2) <strong>Display</strong>: <code>setNeedsDisplay()</code> similarly sets a dirty flag. Another <code>beforeWaiting</code> observer triggers <code>draw(_:)</code> for dirty views. (3) <strong>Core Animation commit</strong>: A <code>CATransaction</code> observer, also registered for <code>beforeWaiting</code>, commits the accumulated layer property changes to the render server. This batching is why multiple <code>setNeedsLayout()</code> calls within one run-loop cycle result in only one <code>layoutSubviews</code> call — it's a deliberate coalescing mechanism. If you call <code>layoutIfNeeded()</code> mid-cycle, you bypass the batching and force an immediate pass.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Tap gesture not working on a view with <code>alpha = 0</code>.<em></em></p>
+
+<p>Solution: Even though the view is visually transparent, <code>alpha = 0</code> causes <code>hitTest</code> to return <code>nil</code> — no events are delivered. Set <code>alpha = 0.001</code> or <code>isHidden = true</code> if you want the view visible to the hierarchy but not rendered, or use <code>isUserInteractionEnabled = false</code> explicitly.</p>
+
+<p><strong>Issue: Gesture on a child view blocked by a gesture on a parent.</strong></p>
+
+<p>Solution: Use <code>UIGestureRecognizerDelegate</code>'s <code>shouldRecognizeSimultaneouslyWith</code> or add a <code>require(toFail:)</code> dependency. Also check that the parent's gesture doesn't consume events before the child's recogniser starts.</p>
+
+<p><em></em>Issue: Custom <code>hitTest</code> override causes unexpected click areas.<em></em></p>
+
+<p>Solution: Always call <code>super.hitTest(_:with:)</code> or replicate its logic fully. A common mistake is forgetting to check <code>isUserInteractionEnabled</code>, <code>isHidden</code>, and <code>alpha</code> before calling <code>point(inside:with:)</code>, which can make disabled or hidden views receive touches.</p>
+
+<p><em></em>Issue: <code>CADisplayLink</code> causing high CPU usage when app is in background.<em></em></p>
+
+<p>Solution: Call <code>displayLink.isPaused = true</code> in <code>viewDidDisappear</code> or when the app enters the background (<code>UIApplication.didEnterBackgroundNotification</code>). <code>CADisplayLink</code> continues firing even when the view is off-screen unless explicitly paused or invalidated.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="uiview-lifecycle.md">UIView Lifecycle</a> — layout/display passes triggered by the run loop</li>
+<li><a href="uiviewcontroller-lifecycle.md">UIViewController Lifecycle</a> — VC receives <code>touches*</code> callbacks as responder</li>
+<li><a href="autolayout.md">Auto Layout</a> — constraint solving runs during the layout pass</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

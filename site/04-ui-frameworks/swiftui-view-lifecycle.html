@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SwiftUI View Lifecycle — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../04-ui-frameworks/index.html">Ui Frameworks</a></span>
+    <span>Swiftui View Lifecycle</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html" class="active">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="swiftui-view-lifecycle">SwiftUI View Lifecycle</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>SwiftUI views are <strong>value types</strong> (structs), not objects with an identity. SwiftUI manages their lifecycle through a <strong>diffing algorithm</strong> that compares successive view descriptions and applies only the changes that differ. Understanding how SwiftUI identifies views (structural vs explicit identity), when <code>body</code> is re-evaluated, and when lifecycle modifiers (<code>onAppear</code>, <code>onDisappear</code>, <code>task</code>, <code>onChange</code>) fire is essential for building correct, performant SwiftUI apps.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of SwiftUI rendering like a theatre director staging a play. Each time the script (state) changes, the director gets a new description of the ideal stage. They don't rebuild the entire stage — they compare the new description to the current stage, identify what changed (new actor, different costume, moved prop), and apply only those minimal changes. <code>onAppear</code> is the moment an actor walks onto the stage. <code>onDisappear</code> is when they walk off. <code>task</code> is a stage hand who starts work when the actor enters and automatically stops when they leave.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="view-identity">View Identity</h3>
+
+<p>SwiftUI needs to know whether a view in the new description is the <strong>same view</strong> as one in the previous description (update it) or a <strong>new view</strong> (create it, reset state). Two kinds of identity:</p>
+
+<p><strong>Structural identity</strong>: Determined by the view's <strong>type and position</strong> in the view hierarchy. A <code>Text</code> at position [0] inside a <code>VStack</code> with no branching has stable structural identity across renders.</p>
+
+<p><strong>Explicit identity</strong>: Assigned with the <code>.id(_:)</code> modifier. SwiftUI treats the view as a new instance whenever the <code>id</code> value changes — resetting all <code>@State</code> and firing <code>onAppear</code> again.</p>
+
+<pre><code class="language-swift">ProfileView(userID: userID)
+    .id(userID)   // changing userID resets all @State in ProfileView</code></pre>
+
+<h3 id="structural-identity-and-ifelse-branches">Structural Identity and if/else Branches</h3>
+
+<p>When both branches of an <code>if/else</code> produce the same type, SwiftUI reuses the existing view (same structural position + type):</p>
+
+<pre><code class="language-swift">if showLong {
+    Text("Long description of the feature")
+} else {
+    Text("Short")    // both are Text at the same position — SwiftUI updates, not recreates
+}</code></pre>
+
+<p>When branches produce different types, SwiftUI destroys one and creates the other:</p>
+
+<pre><code class="language-swift">if isAuthenticated {
+    DashboardView()  // different type from LoginView — state is reset on switch
+} else {
+    LoginView()
+}</code></pre>
+
+<h3 id="body-re-evaluation">Body Re-evaluation</h3>
+
+<p><code>body</code> is re-evaluated when:</p>
+<ol>
+<li>A <code>@State</code> property on the view changes.</li>
+<li>An <code>@ObservedObject</code> / <code>@StateObject</code>'s <code>@Published</code> property changes.</li>
+<li>An <code>@EnvironmentObject</code> changes.</li>
+<li>A parent re-evaluates and passes new inputs to this view's initialiser.</li>
+</ol>
+
+<p>Creating a <code>View</code> struct is cheap — it's just a value-type description. The expensive work happens when SwiftUI commits changes. SwiftUI skips diffing subtrees that did not change; views conforming to <code>Equatable</code> can use <code>.equatable()</code> to opt out of updates when equal.</p>
+
+<h3 id="diffing-algorithm">Diffing Algorithm</h3>
+
+<p>SwiftUI diffs view descriptions based on <strong>type + structural position</strong>. For <code>ForEach</code> / <code>List</code>, it uses the provided identifier (<code>Identifiable</code> or explicit <code>.id</code>) to match items across renders. Matched items are updated, unmatched items removed, new items created — analogous to a virtual DOM diff.</p>
+
+<h3 id="onappear--ondisappear">onAppear / onDisappear</h3>
+
+<p><code>onAppear</code> fires when the view becomes part of the rendered hierarchy. <code>onDisappear</code> fires when it leaves. Unlike UIKit's <code>viewWillAppear</code>/<code>viewDidDisappear</code>, these are per-view modifiers and fire for individual views, not containers:</p>
+
+<pre><code class="language-swift">Text("Hello")
+    .onAppear { startAnimation() }
+    .onDisappear { stopAnimation() }</code></pre>
+
+<p><strong>Important</strong>: <code>onAppear</code> fires synchronously during the render pass. Do not perform slow work there — kick off async work with <code>task(_:)</code> instead.</p>
+
+<h3 id="task_">task(_:)</h3>
+
+<p><code>task(_:)</code> is the preferred way to run async work tied to a view's lifetime:</p>
+
+<ul>
+<li>Task <strong>starts</strong> when the view appears (like <code>onAppear</code>).</li>
+<li>Task is <strong>automatically cancelled</strong> when the view disappears.</li>
+<li>Cancellation propagates via Swift structured concurrency.</li>
+<li><code>task(id:)</code> takes an <code>Equatable</code> value — the task is cancelled and restarted whenever the ID changes.</li>
+</ul>
+
+<pre><code class="language-swift">.task(id: userID) {    // cancelled and restarted when userID changes
+    await loadProfile(for: userID)
+}</code></pre>
+
+<p>This replaces the common UIKit pattern of starting a task in <code>viewWillAppear</code> and cancelling in <code>viewWillDisappear</code>.</p>
+
+<h3 id="onchange">onChange</h3>
+
+<p><code>onChange(of:perform:)</code> fires a side-effect closure after a value changes and the view re-renders:</p>
+
+<pre><code class="language-swift">.onChange(of: searchText) { newValue in
+    performSearch(newValue)
+}</code></pre>
+
+<p>iOS 17+ provides both old and new values: <code>.onChange(of: value) { oldValue, newValue in }</code>.</p>
+
+<p><code>onChange</code> is for <strong>side effects</strong> only — do not modify state directly inside it (causes a second re-render cycle). Use it for analytics, external API calls, or driving non-SwiftUI systems.</p>
+
+<h3 id="view-lifetime-vs-object-lifetime">View Lifetime vs Object Lifetime</h3>
+
+<table>
+<tr><td></td><td>Lifetime</td></tr>
+<tr><td>View struct instance</td><td>Ephemeral — new instance every <code>body</code> evaluation</td></tr>
+<tr><td><code>@State</code> storage</td><td>Lives as long as view identity is stable in the tree</td></tr>
+<tr><td><code>@StateObject</code></td><td>Lives as long as view identity is stable in the tree</td></tr>
+<tr><td><code>@ObservedObject</code> reference</td><td>Determined by the owner (typically longer)</td></tr>
+</table>
+
+<h3 id="lazy-containers-and-state">Lazy Containers and State</h3>
+
+<p>Views inside <code>LazyVStack</code>, <code>LazyHStack</code>, <code>List</code>, and lazy grids are <strong>created</strong> when they scroll into view and <strong>destroyed</strong> when they scroll off-screen. Consequently:</p>
+<ul>
+<li><code>onAppear</code> / <code>onDisappear</code> fire on every scroll in/out.</li>
+<li><code>@State</code> inside a lazy cell is <strong>reset</strong> each time the cell is recreated.</li>
+</ul>
+
+<p>Store per-item state in the parent's model (e.g., <code>@StateObject</code> or a dictionary in the parent's state) — not in <code>@State</code> inside lazy cell views.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import SwiftUI
+
+// ── task(_:) for async data loading with auto-cancellation ─────
+struct UserProfileView: View {
+    let userID: String
+    @State private var profile: UserProfile?
+    @State private var isLoading = false
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView()
+            } else if let profile {
+                ProfileContent(profile: profile)
+            }
+        }
+        .task(id: userID) {                 // cancels previous task when userID changes
+            isLoading = true
+            defer { isLoading = false }
+            profile = try? await fetchUser(id: userID)
+        }
+    }
+}
+
+// ── Explicit identity to reset state on demand ────────────────
+struct QuizView: View {
+    @State private var questionIndex = 0
+    let questions: [String]
+
+    var body: some View {
+        VStack {
+            QuestionView(question: questions[questionIndex])
+                .id(questionIndex)          // .id() resets @State inside when questionIndex changes
+
+            Button("Next") {
+                if questionIndex &lt; questions.count - 1 {
+                    questionIndex += 1
+                }
+            }
+        }
+    }
+}
+
+struct QuestionView: View {
+    let question: String
+    @State private var selectedAnswer: Int?   // reset each time .id() changes parent's id
+
+    var body: some View {
+        VStack {
+            Text(question)
+            ForEach(0..&lt;4, id: \.self) { index in
+                Button("Option \(index + 1)") { selectedAnswer = index }
+                    .foregroundStyle(selectedAnswer == index ? .blue : .primary)
+            }
+        }
+    }
+}
+
+// ── onChange for search / debouncing ──────────────────────────
+struct SearchView: View {
+    @State private var query = ""
+    @State private var results: [String] = []
+
+    var body: some View {
+        VStack {
+            TextField("Search", text: $query)
+                .onChange(of: query) { newQuery in  // fires on every keystroke
+                    Task { results = await search(newQuery) }
+                }
+            List(results, id: \.self) { Text($0) }
+        }
+    }
+}
+
+// ── Equatable view to avoid expensive body re-evaluations ──────
+struct StatRow: View, Equatable {
+    let label: String
+    let value: String
+
+    // Conform to Equatable; wrap in .equatable() at call site
+    static func == (lhs: Self, rhs: Self) -&gt; Bool {
+        lhs.label == rhs.label &amp;&amp; lhs.value == rhs.value
+    }
+
+    var body: some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value).foregroundStyle(.secondary)
+        }
+    }
+}
+
+// Usage: StatRow(label: "Speed", value: "72 mph").equatable()
+
+// ── onAppear / onDisappear for lightweight side effects ────────
+struct AnimatedBadge: View {
+    @State private var isVisible = false
+
+    var body: some View {
+        Image(systemName: "star.fill")
+            .scaleEffect(isVisible ? 1.0 : 0.5)
+            .opacity(isVisible ? 1.0 : 0)
+            .onAppear {
+                withAnimation(.spring(response: 0.4)) {
+                    isVisible = true        // animate in
+                }
+            }
+            .onDisappear {
+                isVisible = false           // reset for next appearance
+            }
+    }
+}
+
+// ── Lazy container — keep state in parent, not in cell ─────────
+struct FeedView: View {
+    // Per-post like state in the parent model — not inside the lazy cell
+    @State private var likedPostIDs: Set&lt;UUID&gt; = []
+    let posts: [Post]
+
+    var body: some View {
+        ScrollView {
+            LazyVStack {
+                ForEach(posts) { post in
+                    PostRow(
+                        post: post,
+                        isLiked: likedPostIDs.contains(post.id),
+                        onLike: { likedPostIDs.insert(post.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+struct PostRow: View {
+    let post: Post
+    let isLiked: Bool
+    let onLike: () -&gt; Void
+    // NO @State here — cell is recreated on scroll, state would reset
+
+    var body: some View {
+        HStack {
+            Text(post.title)
+            Spacer()
+            Button(action: onLike) {
+                Image(systemName: isLiked ? "heart.fill" : "heart")
+                    .foregroundStyle(isLiked ? .red : .gray)
+            }
+        }
+    }
+}
+
+// Stubs
+struct UserProfile { var name: String = "" }
+struct Post: Identifiable { var id = UUID(); var title: String = "" }
+struct ProfileContent: View {
+    let profile: UserProfile
+    var body: some View { Text(profile.name) }
+}
+func fetchUser(id: String) async throws -&gt; UserProfile { UserProfile() }
+func search(_ query: String) async -&gt; [String] { [] }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>onAppear</code> and <code>task(_:)</code> in SwiftUI?<em></em></p>
+
+<p>A: <code>onAppear</code> fires a synchronous closure when the view appears. It should be used only for lightweight, non-async work — starting animations, updating counters, logging. <code>task(_:)</code> fires an async closure when the view appears and automatically <strong>cancels</strong> the task when the view disappears. It integrates with Swift structured concurrency, so cancellation propagates via <code>CancellationError</code>. For any data loading or async work tied to a view's visibility, <code>task(_:)</code> is the correct choice because it ensures resources are released when the view is no longer visible — something you would have to do manually with <code>onAppear</code> + <code>onDisappear</code>.</p>
+
+<p><strong>Q: What is view identity and why does it matter?</strong></p>
+
+<p>A: View identity determines whether SwiftUI considers a view in the new render to be the same view as in the previous render (and updates it) or a new view (and resets it). Structural identity is based on type + position in the view tree. Explicit identity is assigned via <code>.id(_:)</code>. Identity matters because <code>@State</code> storage and <code>@StateObject</code> instances are tied to a view's identity — when identity changes, all local state is reset. This is both a feature (use <code>.id()</code> to force a reset) and a potential bug (accidentally changing identity with <code>if/else</code> type branches loses state).</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: Why does changing from <code>if condition { ViewA() }</code> to <code>if condition { ViewA() } else { ViewB() }</code> affect state retention?<em></em></p>
+
+<p>A: In the first form with no <code>else</code>, <code>ViewA</code> is conditionally present/absent. When <code>condition</code> toggles, <code>ViewA</code> is inserted or removed — <code>@State</code> is reset each time it appears. In the <code>if/else</code> form with two different types, SwiftUI uses structural type identity: <code>ViewA</code> and <code>ViewB</code> occupy the same position but have different types, so SwiftUI destroys one and creates the other when <code>condition</code> changes — also resetting state. If both branches produce the same type (e.g., both are <code>Text</code>), SwiftUI reuses the existing view and updates its content, preserving any <code>@State</code> that happens to exist. Use <code>.id()</code> to force reset even with same-type branches, or avoid <code>@State</code> in branching views and lift state to the parent.</p>
+
+<p><em></em>Q: How does <code>task(id:)</code> differ from <code>task(_:)</code> and when would you use it?<em></em></p>
+
+<p>A: <code>task(_:)</code> starts once when the view appears and cancels when it disappears. <code>task(id:)</code> additionally <strong>cancels and restarts</strong> the task whenever the <code>id</code> value changes — while the view is still on screen. This is ideal for views that display different data based on an external value: for example, a profile view driven by a <code>userID</code> parameter. Without <code>task(id:)</code>, you would need to combine <code>task(_:)</code> with <code>onChange(of: userID)</code> and manually cancel/restart the previous task. <code>task(id:)</code> handles this automatically and correctly.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe the SwiftUI rendering pipeline from state change to pixel on screen.</strong></p>
+
+<p>A: (1) A state change (<code>@State</code>, <code>@Published</code>) triggers the SwiftUI attribute graph to mark dependent views as invalid. (2) SwiftUI schedules a render pass (tied to the display's vsync via <code>CADisplayLink</code>). (3) During the render pass, SwiftUI calls <code>body</code> on invalidated views, producing a new view description tree. (4) SwiftUI diffs the new tree against the previous tree using structural/explicit identity. (5) For changed nodes, SwiftUI updates the corresponding <code>UIView</code>/<code>CALayer</code> in the underlying UIKit layer (SwiftUI renders to <code>_UIHostingView</code> which wraps a <code>UIView</code>). (6) Updated <code>CALayer</code> properties are committed in a Core Animation transaction. (7) The render server composites the layer tree to a frame buffer. (8) The frame buffer is displayed at the next vsync. The key insight: SwiftUI view structs are cheap value descriptions; the expensive rendering work is deferred to the CA commit and the render server, same as UIKit.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>@State</code> is reset unexpectedly when navigating back and forth.<em></em></p>
+
+<p>Solution: The view's identity changed. Common cause: the view is being recreated with a different structural type (e.g., wrapped in an <code>if/else</code> that changes types) or an <code>.id()</code> modifier is changing value. Use the SwiftUI Instruments template or <code>_printChanges()</code> (debugging helper) to identify which state is triggering the re-creation.</p>
+
+<p><em></em>Issue: <code>onAppear</code> fires multiple times for the same view.<em></em></p>
+
+<p>Solution: Expected behaviour for lazy containers (<code>LazyVStack</code>, <code>List</code>) — <code>onAppear</code> fires each time the view scrolls into the viewport. If you want one-time initialisation, use <code>task(_:)</code> combined with a guard on whether data is already loaded, or lift the initialisation to a <code>@StateObject</code> whose <code>init</code> runs only once.</p>
+
+<p><em></em>Issue: <code>task(_:)</code> does not cancel when the view is dismissed.<em></em></p>
+
+<p>Solution: Check that the async function inside <code>task</code> responds to cancellation — either by calling a throwing async API (which throws <code>CancellationError</code>) or by checking <code>Task.isCancelled</code> periodically. If the function runs a tight loop without suspension points or cancellation checks, it will run to completion regardless of the task being cancelled.</p>
+
+<p><em></em>Issue: <code>onChange</code> fires with the initial value on first render.<em></em></p>
+
+<p>Solution: <code>onChange</code> fires only when the value <strong>changes</strong> after the view appears — not on initial render. If you need to react to the initial value, also use <code>onAppear</code> or <code>task(_:)</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="swiftui-state-management.md">SwiftUI State Management</a> — state wrappers that trigger body re-evaluation</li>
+<li><a href="uiviewcontroller-lifecycle.md">UIViewController Lifecycle</a> — UIKit equivalent lifecycle methods</li>
+<li><a href="../03-concurrency/async-await.md">async/await</a> — Swift async model used by task(_:)</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UIViewController Lifecycle — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../04-ui-frameworks/index.html">Ui Frameworks</a></span>
+    <span>Uiviewcontroller Lifecycle</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html" class="active">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="uiviewcontroller-lifecycle">UIViewController Lifecycle</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>UIViewController</code> is the fundamental building block of UIKit apps. It manages a view hierarchy, responds to system events, and mediates between views and the app's data model. Every interaction a user has with an iOS app passes through a view controller. Understanding its lifecycle — the sequence of method calls from creation to deallocation — is critical for correctly loading data, configuring views, managing resources, and avoiding memory leaks.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>A view controller is like a stage manager in a theatre. When a scene is being prepared (viewDidLoad), they set up all the props. Just before the curtain rises (viewWillAppear), they make final adjustments. When the show starts (viewDidAppear), the audience can see everything. When the curtain falls (viewWillDisappear), they prepare to strike the set. When the scene is fully gone (viewDidDisappear), they clean up. Finally when the production is over (deinit), the stage manager leaves entirely.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="complete-lifecycle-sequence">Complete Lifecycle Sequence</h3>
+
+<pre><code>init (or initWithCoder:)
+  │
+  ▼
+loadView               ← only if view property is accessed and not set
+  │
+  ▼
+viewDidLoad            ← one-time setup; view is loaded but not sized
+  │
+  ▼
+viewWillAppear         ← view about to become visible; called each time
+  │
+  ▼
+viewWillLayoutSubviews ← just before layoutSubviews on root view
+  │
+  ▼
+viewDidLayoutSubviews  ← just after layoutSubviews; safe to read final frames
+  │
+  ▼
+viewDidAppear          ← view is fully visible and on screen
+  │
+  ▼         (user navigates away or VC is dismissed)
+  │
+viewWillDisappear      ← view about to leave screen
+  │
+  ▼
+viewDidDisappear       ← view is off screen; safe to pause/stop
+  │
+  ▼
+deinit                 ← VC is being deallocated; remove observers</code></pre>
+
+<h3 id="loadview">loadView</h3>
+
+<p>Called lazily the first time <code>view</code> is accessed and <code>view</code> is <code>nil</code>. The default implementation loads a nib or creates a plain <code>UIView</code>. Override <code>loadView</code> (without calling <code>super</code>) only when building the view hierarchy entirely in code — this is where you assign <code>self.view = myCustomRootView</code>. Do <strong>not</strong> override <code>loadView</code> if using storyboards or nibs.</p>
+
+<h3 id="viewdidload">viewDidLoad</h3>
+
+<p>Called once after the view hierarchy is loaded into memory. This is the correct place for:</p>
+<ul>
+<li>One-time UI configuration (adding subviews, setting up constraints, registering cells).</li>
+<li>Binding to data sources or view models.</li>
+<li>Adding notification observers (balance with removal in <code>deinit</code> or <code>viewDidDisappear</code>).</li>
+</ul>
+
+<p><strong>Important:</strong> <code>viewDidLoad</code> fires before the view has its final bounds — <code>view.frame</code> is not yet reliable here. Frame-dependent setup belongs in <code>viewDidLayoutSubviews</code>.</p>
+
+<h3 id="viewwillappear--viewdidappear">viewWillAppear / viewDidAppear</h3>
+
+<p><code>viewWillAppear(_:)</code> fires each time the view is about to become visible (every push, pop, modal present, tab switch). Use it for:</p>
+<ul>
+<li>Refreshing data that may have changed while the VC was off-screen.</li>
+<li>Starting animations or timers.</li>
+<li>Updating the navigation bar.</li>
+</ul>
+
+<p><code>viewDidAppear(_:)</code> fires after the transition animation completes. Use it to:</p>
+<ul>
+<li>Start expensive operations that should only run when the UI is fully visible.</li>
+<li>Begin video playback or audio sessions.</li>
+</ul>
+
+<h3 id="viewwilldisappear--viewdiddisappear">viewWillDisappear / viewDidDisappear</h3>
+
+<p><code>viewWillDisappear(_:)</code> fires before the transition begins. Use it to:</p>
+<ul>
+<li>Cancel in-flight network requests.</li>
+<li>Save unsaved state.</li>
+</ul>
+
+<p><code>viewDidDisappear(_:)</code> fires after the view is fully off-screen. Use it to:</p>
+<ul>
+<li>Pause media.</li>
+<li>Stop background-unfriendly processes.</li>
+</ul>
+
+<p><strong>Note:</strong> A VC can appear/disappear many times without being deallocated (e.g., pushing and popping on a nav stack). <code>viewWillAppear</code>/<code>viewDidAppear</code> are not one-time events.</p>
+
+<h3 id="deinit">deinit</h3>
+
+<p>Called when the view controller's reference count reaches zero. Use it to:</p>
+<ul>
+<li>Remove <code>NotificationCenter</code> observers (required for iOS &lt; 9; good practice always).</li>
+<li>Invalidate timers.</li>
+<li>Clean up non-ARC resources.</li>
+</ul>
+
+<p>Do <strong>not</strong> access <code>self.view</code> in <code>deinit</code> — the view may have been released already.</p>
+
+<h3 id="viewwilllayoutsubviews--viewdidlayoutsubviews">viewWillLayoutSubviews / viewDidLayoutSubviews</h3>
+
+<p>Called around <code>layoutSubviews</code> on the root view. <code>viewDidLayoutSubviews</code> is the first reliable place to read <code>view.frame</code> and <code>view.bounds</code> for geometry-dependent setup (e.g., creating a gradient layer that fills the view).</p>
+
+<h3 id="container-view-controllers">Container View Controllers</h3>
+
+<p>UIKit provides container VCs (<code>UINavigationController</code>, <code>UITabBarController</code>, <code>UISplitViewController</code>, <code>UIPageViewController</code>) that manage child VCs. You can also create custom containers using the <code>addChild(_:)</code> / <code>didMove(toParent:)</code> / <code>willMove(toParent:)</code> / <code>removeFromParent()</code> APIs.</p>
+
+<p>When a child VC is added, the container calls the child's lifecycle methods at the appropriate times. If you embed a child VC's view without using these APIs, the child will not receive lifecycle callbacks — a common source of bugs.</p>
+
+<h3 id="presentation">Presentation</h3>
+
+<table>
+<tr><td>Method</td><td>Behaviour</td></tr>
+<tr><td><code>present(_:animated:)</code></td><td>Modally presents over the current context</td></tr>
+<tr><td><code>dismiss(animated:)</code></td><td>Dismisses the topmost modal</td></tr>
+<tr><td><code>show(_:sender:)</code></td><td>Adapts to navigation stack (push) or modal depending on context</td></tr>
+<tr><td><code>showDetailViewController(_:sender:)</code></td><td>For split-view controllers</td></tr>
+</table>
+
+<p><code>presentingViewController</code> / <code>presentedViewController</code> track the modal stack. A presented VC's lifecycle events (<code>viewWillAppear</code> etc.) fire in the same run-loop cycle as the presentation animation.</p>
+
+<h3 id="memory-warnings">Memory Warnings</h3>
+
+<p><code>didReceiveMemoryWarning()</code> (deprecated in iOS 23 but still called) / <code>viewDidUnload()</code> (removed in iOS 6). Modern apps handle memory warnings by releasing cached data and images in response to <code>UIApplication.didReceiveMemoryWarningNotification</code>.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+
+class ProfileViewController: UIViewController {
+
+    // MARK: – Properties
+    private let profileView = ProfileView()
+    private var viewModel: ProfileViewModel
+
+    private var notificationToken: NSObjectProtocol?
+
+    // MARK: – Init
+    init(viewModel: ProfileViewModel) {
+        self.viewModel = viewModel
+        super.init(nibName: nil, bundle: nil)   // always call super after
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) not supported — use init(viewModel:)")
+    }
+
+    // MARK: – loadView (code-only UI)
+    override func loadView() {
+        view = profileView                      // assign the root view directly
+    }
+
+    // MARK: – viewDidLoad — one-time setup
+    override func viewDidLoad() {
+        super.viewDidLoad()                     // always call super
+
+        title = "Profile"
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            systemItem: .edit,
+            primaryAction: UIAction { [weak self] _ in self?.editTapped() }
+        )
+
+        // Register for notifications
+        notificationToken = NotificationCenter.default.addObserver(
+            forName: .profileDidUpdate,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in                    // [weak self] prevents retain cycle
+            self?.refreshProfile()
+        }
+    }
+
+    // MARK: – viewWillAppear — refresh on each appearance
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshProfile()                        // data may have changed while away
+        navigationController?.setNavigationBarHidden(false, animated: animated)
+    }
+
+    // MARK: – viewDidLayoutSubviews — geometry is now final
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Safe to read view.bounds here
+        profileView.updateGradientLayer(bounds: view.bounds)
+    }
+
+    // MARK: – viewDidAppear — start heavy operations
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        viewModel.startLiveUpdates()            // only when fully on screen
+    }
+
+    // MARK: – viewWillDisappear — pause work
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        viewModel.stopLiveUpdates()
+    }
+
+    // MARK: – deinit — final cleanup
+    deinit {
+        if let token = notificationToken {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
+    // MARK: – Private
+    private func refreshProfile() {
+        Task { @MainActor in                    // ensure UI updates on main thread
+            let profile = await viewModel.fetchProfile()
+            profileView.configure(with: profile)
+        }
+    }
+
+    private func editTapped() { /* ... */ }
+}
+
+// ── Adding a child view controller ─────────────────────────────
+class DashboardViewController: UIViewController {
+    func embedChart() {
+        let chartVC = ChartViewController()
+
+        addChild(chartVC)                       // 1. register the relationship
+        view.addSubview(chartVC.view)           // 2. add the view
+        chartVC.view.frame = CGRect(x: 0, y: 100, width: view.bounds.width, height: 200)
+        chartVC.didMove(toParent: self)         // 3. notify the child — triggers lifecycle
+    }
+}
+
+// Stubs
+class ProfileView: UIView {
+    func configure(with profile: Any) {}
+    func updateGradientLayer(bounds: CGRect) {}
+}
+struct Profile {}
+class ProfileViewModel {
+    func fetchProfile() async -&gt; Profile { Profile() }
+    func startLiveUpdates() {}
+    func stopLiveUpdates() {}
+}
+class ChartViewController: UIViewController {}
+extension Notification.Name {
+    static let profileDidUpdate = Notification.Name("profileDidUpdate")
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the correct place to do one-time UI setup, and why not in <code>viewWillAppear</code>?<em></em></p>
+
+<p>A: <code>viewDidLoad</code> is the correct place because it is called exactly once, after the view hierarchy is loaded into memory. Doing UI setup in <code>viewWillAppear</code> would repeat the work every time the view appears — adding subviews multiple times, registering multiple observers, etc. — causing memory leaks and visual glitches. <code>viewWillAppear</code> is for work that must be refreshed each time, such as reloading data that could have changed while the VC was off-screen.</p>
+
+<p><em></em>Q: When is <code>deinit</code> called on a view controller, and what should you do there?<em></em></p>
+
+<p>A: <code>deinit</code> is called when the VC's retain count drops to zero — typically when the last strong reference is released (e.g., it is popped from a navigation stack and no other object holds a reference). Use <code>deinit</code> to remove <code>NotificationCenter</code> observers (required for observer APIs that don't use block-based registration with a return token), invalidate timers, and clean up non-ARC resources. Do not access <code>self.view</code> in <code>deinit</code> as the view hierarchy may already be released.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: Why might a view controller's <code>deinit</code> not be called after being popped from a navigation stack?<em></em></p>
+
+<p>A: A retain cycle. Common causes: (1) A closure stored on a long-lived object captures <code>self</code> strongly — e.g., a timer's block, a notification observer, or a <code>URLSessionDataTask</code> completion handler that isn't cancelled. (2) A delegate property on a child view or child VC is declared <code>strong</code> instead of <code>weak</code>, creating a cycle between the VC and its view. (3) The VC is embedded as a child with <code>addChild</code> but not properly removed with <code>removeFromParent</code>. Diagnose with Instruments' Leaks or Memory Graph Debugger. Fix by using <code>[weak self]</code> in closures and <code>weak var delegate</code> for delegate properties.</p>
+
+<p><em></em>Q: What is the difference between <code>present(_:animated:)</code> and <code>show(_:sender:)</code>?<em></em></p>
+
+<p>A: <code>show(_:sender:)</code> is an adaptive method — the receiving view controller decides how to display the new VC based on its context. Inside a <code>UINavigationController</code>, it pushes. Inside a <code>UISplitViewController</code>, it may show in the detail pane. In a plain VC, it falls back to modal presentation. <code>present(_:animated:)</code> always presents modally regardless of context. Using <code>show</code> is preferred when you want the presentation to adapt to device size class and container, which is important for iPadOS and adaptive layouts.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe a container view controller implementation and the lifecycle method calls it triggers.</strong></p>
+
+<p>A: A custom container uses <code>addChild(_:)</code>, adds the child's view, calls <code>childVC.didMove(toParent: self)</code>, and removes with <code>childVC.willMove(toParent: nil)</code>, <code>childVC.view.removeFromSuperview()</code>, <code>childVC.removeFromParent()</code>. When a container adds a child, UIKit calls the child's <code>viewWillAppear</code> and <code>viewDidAppear</code> if the container is already on-screen, or defers them until the container appears. If you add a child's view <strong>without</strong> calling <code>addChild</code>, the child receives no lifecycle callbacks — a bug where <code>viewWillAppear</code> is never called. For animated transitions between children, use <code>transition(from:to:duration:options:animations:completion:)</code> which coordinates lifecycle calls automatically.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>view.frame</code> is wrong in <code>viewDidLoad</code>.<em></em></p>
+
+<p>Solution: <code>viewDidLoad</code> fires before the view is laid out in its final container. Use <code>viewDidLayoutSubviews</code> for any code that depends on <code>view.frame</code> or <code>view.bounds</code>.</p>
+
+<p><strong>Issue: View controller is not deallocated after pop — memory leak.</strong></p>
+
+<p>Solution: Check for retain cycles. Use the Memory Graph Debugger (<code>Debug → Memory Graph</code> in Xcode). Look for circular references: VC → closure → VC. Fix with <code>[weak self]</code>. Also check that delegates are declared <code>weak var</code>.</p>
+
+<p><em></em>Issue: <code>viewWillAppear</code> is called but <code>viewDidAppear</code> is not.<em></em></p>
+
+<p>Solution: This happens when a modal presentation is interrupted mid-animation (e.g., another present starts). Ensure you handle the <code>animated</code> flag correctly and avoid presenting multiple VCs in the same run-loop turn.</p>
+
+<p><em></em>Issue: Child VC's <code>viewWillAppear</code> is never called.<em></em></p>
+
+<p>Solution: You added the child's view without calling <code>addChild(_:)</code> and <code>didMove(toParent:)</code>. Always use the full three-step API: <code>addChild</code> → <code>addSubview</code> → <code>didMove</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="uiview-lifecycle.md">UIView Lifecycle</a> — the view that the VC manages</li>
+<li><a href="event-handling-runloop.md">Event Handling &amp; RunLoop</a> — lifecycle callbacks are delivered via the run loop</li>
+<li><a href="mvvm-coordinator.md">MVVM &amp; Coordinator</a> — architecture patterns built around VCs</li>
+<li><a href="../02-memory-management/retain-cycles.md">Retain Cycles</a> — delegate/closure retain cycles that prevent deinit</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

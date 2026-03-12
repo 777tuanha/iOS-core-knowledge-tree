@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MVVM & Coordinator — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../04-ui-frameworks/index.html">Ui Frameworks</a></span>
+    <span>Mvvm Coordinator</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html" class="active">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="mvvm--coordinator">MVVM &amp; Coordinator</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><strong>MVVM</strong> (Model-View-ViewModel) separates UI rendering logic (View) from presentation logic and state (ViewModel), keeping both testable and independently changeable. The ViewModel exposes data and commands; the View binds to them. The <strong>Coordinator</strong> pattern (also called Flow Coordinator) extracts navigation decisions from view controllers, solving the "Massive View Controller" problem and making navigation flows testable and reusable. Together, MVVM + Coordinator is the most common architecture for production UIKit apps; SwiftUI encourages MVVM with <code>ObservableObject</code> natively.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>MVVM is like a restaurant: the <strong>Model</strong> is the kitchen (raw ingredients and recipes — pure data and business logic). The <strong>ViewModel</strong> is the chef — they take raw ingredients, prepare them, and package the dish. The <strong>View</strong> is the waiter — they display the finished dish to the customer and relay orders back to the chef. The chef never interacts directly with the customer; the waiter never knows how to cook.</p>
+
+<p>The <strong>Coordinator</strong> is the maître d' — they decide where customers sit, which room they move to for dessert, and how to handle special requests for seating. Neither the chef nor the waiter needs to know the floor plan.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="mvvm-structure">MVVM Structure</h3>
+
+<table>
+<tr><td>Layer</td><td>Responsibility</td><td>iOS type</td></tr>
+<tr><td>Model</td><td>Business entities, data access, domain logic</td><td><code>struct</code> / <code>class</code>, data services</td></tr>
+<tr><td>ViewModel</td><td>Prepares model data for display, handles user actions, owns async work</td><td><code>class</code> conforming to <code>ObservableObject</code> or plain class</td></tr>
+<tr><td>View</td><td>Renders the ViewModel's output, forwards user actions</td><td><code>UIViewController</code> (UIKit) / <code>View</code> struct (SwiftUI)</td></tr>
+</table>
+
+<h3 id="mvvm-with-uikit--binding-strategies">MVVM with UIKit — Binding Strategies</h3>
+
+<p>UIKit has no built-in binding mechanism. Common approaches:</p>
+
+<p><strong>Closures (Callback-based)</strong>:</p>
+<pre><code class="language-swift">class ProfileViewModel {
+    var onProfileLoaded: ((Profile) -&gt; Void)?
+    var onError: ((Error) -&gt; Void)?
+    func loadProfile() { /* ... await ... onProfileLoaded?(profile) */ }
+}
+// VC calls viewModel.onProfileLoaded = { [weak self] profile in ... }</code></pre>
+
+<p><strong>Combine</strong>:</p>
+<pre><code class="language-swift">class ProfileViewModel: ObservableObject {
+    @Published var profile: Profile?
+    @Published var error: Error?
+}
+// VC subscribes with Combine publishers</code></pre>
+
+<p><strong>async/await with @MainActor</strong>:</p>
+<pre><code class="language-swift">@MainActor class ProfileViewModel {
+    private(set) var profile: Profile?
+    func loadProfile() async { /* ... */ }
+}
+// VC calls Task { await viewModel.loadProfile(); updateUI() }</code></pre>
+
+<h3 id="mvvm-with-swiftui">MVVM with SwiftUI</h3>
+
+<p>SwiftUI provides the binding layer natively. The ViewModel is an <code>ObservableObject</code>; the View uses <code>@StateObject</code> or <code>@ObservedObject</code>:</p>
+
+<pre><code class="language-swift">@MainActor
+class LoginViewModel: ObservableObject {
+    @Published var email = ""
+    @Published var password = ""
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+
+    func login() async { /* ... */ }
+}
+
+struct LoginView: View {
+    @StateObject private var viewModel = LoginViewModel()
+    var body: some View {
+        TextField("Email", text: $viewModel.email)
+        // ...
+    }
+}</code></pre>
+
+<h3 id="mainactor-on-viewmodels">@MainActor on ViewModels</h3>
+
+<p>All <code>@Published</code> property changes and UI-bound state updates must happen on the main thread. Marking the ViewModel class <code>@MainActor</code> ensures this at compile time — all methods run on the main thread by default, and async method calls that hop to a background executor automatically resume on the main thread when they return.</p>
+
+<h3 id="coordinator-pattern">Coordinator Pattern</h3>
+
+<p>A <strong>Coordinator</strong> object:</p>
+<ul>
+<li>Owns a <code>UINavigationController</code> (or equivalent).</li>
+<li>Creates and presents view controllers / views.</li>
+<li>Owns child coordinators for sub-flows.</li>
+<li>Does <strong>not</strong> know about business logic — only navigation logic.</li>
+</ul>
+
+<pre><code>AppCoordinator
+  ├── AuthCoordinator    (login / register flow)
+  │    └── LoginVC, RegisterVC
+  └── MainCoordinator    (authenticated content)
+       ├── FeedCoordinator
+       │    └── FeedVC, PostDetailVC
+       └── ProfileCoordinator
+            └── ProfileVC, EditProfileVC</code></pre>
+
+<h3 id="coordinator-implementation-steps">Coordinator Implementation Steps</h3>
+
+<ol>
+<li><strong>Protocol</strong>: Define a <code>Coordinator</code> protocol with <code>start()</code> and a child coordinator array.</li>
+<li><strong>AppCoordinator</strong>: Owns the UIWindow; decides whether to start Auth or Main flow.</li>
+<li><strong>Child coordinators</strong>: Own their navigation controller; present VCs.</li>
+<li><strong>VC → Coordinator communication</strong>: Via <code>delegate</code> (classic) or closures (modern).</li>
+<li><strong>Finishing</strong>: Child coordinator calls <code>parentCoordinator.childDidFinish(self)</code>.</li>
+</ol>
+
+<h3 id="retain-cycle-risks">Retain Cycle Risks</h3>
+
+<table>
+<tr><td>Pattern</td><td>Cycle</td><td>Fix</td></tr>
+<tr><td>VC holds Coordinator as strong delegate</td><td>VC → Coordinator → VC (if coordinator holds VC)</td><td>Use <code>weak var delegate</code></td></tr>
+<tr><td>ViewModel closure captures self</td><td>ViewModel → closure → ViewModel</td><td>Use <code>[weak self]</code> in closure</td></tr>
+<tr><td>Coordinator keeps strong reference to VC</td><td>Coordinator → VC → Coordinator (via delegate)</td><td><code>weak var delegate</code> on VC</td></tr>
+</table>
+
+<h3 id="navigation-in-swiftui">Navigation in SwiftUI</h3>
+
+<p>SwiftUI 16+ (iOS 16+) introduced <code>NavigationStack</code> with a data-driven navigation path:</p>
+
+<pre><code class="language-swift">@State private var path = NavigationPath()
+
+NavigationStack(path: $path) {
+    ContentView()
+        .navigationDestination(for: Destination.self) { dest in
+            DestinationView(destination: dest)
+        }
+}
+
+// Navigate:
+path.append(Destination.profile(userID: "123"))
+// Pop:
+path.removeLast()</code></pre>
+
+<p>For complex SwiftUI navigation with deep links and coordinator-like separation, wrap the <code>NavigationPath</code> in an <code>@Observable</code> or <code>ObservableObject</code> router class.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+import Combine
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – Model
+// ─────────────────────────────────────────────────────────────
+
+struct User {
+    let id: String
+    let name: String
+    let email: String
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – ViewModel (UIKit, Combine binding)
+// ─────────────────────────────────────────────────────────────
+
+@MainActor                              // all mutations on main thread
+final class UserListViewModel: ObservableObject {
+    @Published private(set) var users: [User] = []
+    @Published private(set) var isLoading = false
+    @Published private(set) var errorMessage: String?
+
+    private let userService: UserServiceProtocol
+
+    init(userService: UserServiceProtocol) {
+        self.userService = userService  // inject dependency — enables testing
+    }
+
+    func loadUsers() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            users = try await userService.fetchUsers()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func userSelected(at index: Int) -&gt; User {
+        users[index]
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – View (UIKit)
+// ─────────────────────────────────────────────────────────────
+
+protocol UserListViewControllerDelegate: AnyObject {
+    func userListViewController(_ vc: UserListViewController, didSelect user: User)
+}
+
+class UserListViewController: UIViewController {
+    weak var delegate: UserListViewControllerDelegate?  // weak to avoid retain cycle
+
+    private let viewModel: UserListViewModel
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+    private let tableView = UITableView()
+
+    init(viewModel: UserListViewModel) {
+        self.viewModel = viewModel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupTableView()
+        bindViewModel()
+        Task { await viewModel.loadUsers() }
+    }
+
+    private func bindViewModel() {
+        // Combine subscription — update table when users change
+        viewModel.$users
+            .receive(on: DispatchQueue.main)        // already @MainActor, but explicit here
+            .sink { [weak self] _ in                // [weak self] prevents retain cycle
+                self?.tableView.reloadData()
+            }
+            .store(in: &amp;cancellables)
+
+        viewModel.$isLoading
+            .sink { [weak self] loading in
+                // show/hide spinner
+                _ = loading
+                _ = self
+            }
+            .store(in: &amp;cancellables)
+    }
+
+    private func setupTableView() {
+        tableView.frame = view.bounds
+        tableView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        tableView.dataSource = self
+        tableView.delegate = self
+        view.addSubview(tableView)
+    }
+}
+
+extension UserListViewController: UITableViewDataSource, UITableViewDelegate {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -&gt; Int {
+        viewModel.users.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -&gt; UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "Cell")
+            ?? UITableViewCell(style: .subtitle, reuseIdentifier: "Cell")
+        let user = viewModel.users[indexPath.row]
+        cell.textLabel?.text = user.name
+        cell.detailTextLabel?.text = user.email
+        return cell
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let user = viewModel.userSelected(at: indexPath.row)
+        delegate?.userListViewController(self, didSelect: user)  // coordinator handles navigation
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – Coordinator
+// ─────────────────────────────────────────────────────────────
+
+protocol Coordinator: AnyObject {
+    var childCoordinators: [Coordinator] { get set }
+    func start()
+}
+
+extension Coordinator {
+    func childDidFinish(_ child: Coordinator) {
+        childCoordinators.removeAll { $0 === child }
+    }
+}
+
+class UsersCoordinator: Coordinator, UserListViewControllerDelegate {
+    var childCoordinators: [Coordinator] = []
+    private let navigationController: UINavigationController
+
+    init(navigationController: UINavigationController) {
+        self.navigationController = navigationController
+    }
+
+    func start() {
+        let vm = UserListViewModel(userService: UserService())  // create dependencies
+        let vc = UserListViewController(viewModel: vm)
+        vc.delegate = self                                       // coordinator handles navigation
+        navigationController.pushViewController(vc, animated: false)
+    }
+
+    // MARK: – UserListViewControllerDelegate
+    func userListViewController(_ vc: UserListViewController, didSelect user: User) {
+        // VC tells us "user selected"; we decide what to do (navigate)
+        let detailCoordinator = UserDetailCoordinator(
+            user: user,
+            navigationController: navigationController
+        )
+        childCoordinators.append(detailCoordinator)
+        detailCoordinator.start()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – SwiftUI MVVM
+// ─────────────────────────────────────────────────────────────
+
+import SwiftUI
+
+@MainActor
+class LoginViewModel: ObservableObject {
+    @Published var email = ""
+    @Published var password = ""
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    @Published var isLoggedIn = false
+
+    private let authService: AuthServiceProtocol
+
+    init(authService: AuthServiceProtocol) {
+        self.authService = authService
+    }
+
+    func login() async {
+        guard !email.isEmpty, !password.isEmpty else {
+            errorMessage = "Please fill all fields"
+            return
+        }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            try await authService.login(email: email, password: password)
+            isLoggedIn = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct LoginView: View {
+    @StateObject private var viewModel: LoginViewModel
+
+    init(authService: AuthServiceProtocol) {
+        _viewModel = StateObject(wrappedValue: LoginViewModel(authService: authService))
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            TextField("Email", text: $viewModel.email)
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+
+            SecureField("Password", text: $viewModel.password)
+                .textFieldStyle(.roundedBorder)
+
+            if let error = viewModel.errorMessage {
+                Text(error).foregroundStyle(.red).font(.caption)
+            }
+
+            Button("Login") {
+                Task { await viewModel.login() }
+            }
+            .disabled(viewModel.isLoading)
+            .overlay { if viewModel.isLoading { ProgressView() } }
+        }
+        .padding()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MARK: – Protocols &amp; Stubs
+// ─────────────────────────────────────────────────────────────
+
+protocol UserServiceProtocol {
+    func fetchUsers() async throws -&gt; [User]
+}
+
+protocol AuthServiceProtocol {
+    func login(email: String, password: String) async throws
+}
+
+class UserService: UserServiceProtocol {
+    func fetchUsers() async throws -&gt; [User] { [] }
+}
+
+class UserDetailCoordinator: Coordinator {
+    var childCoordinators: [Coordinator] = []
+    let user: User
+    let navigationController: UINavigationController
+    init(user: User, navigationController: UINavigationController) {
+        self.user = user; self.navigationController = navigationController
+    }
+    func start() { /* push detail VC */ }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the role of the ViewModel in MVVM?</strong></p>
+
+<p>A: The ViewModel sits between the Model and the View. It transforms raw model data into a form the View can display directly (formatted strings, booleans for visibility, etc.), handles user-initiated actions by calling model/service layer methods, and manages view-specific state like loading indicators and error messages. The View observes the ViewModel and updates itself when it changes — the ViewModel never imports UIKit or knows about any specific view type. This separation makes ViewModels independently unit-testable: you can test the ViewModel's logic by injecting mock services without instantiating any view.</p>
+
+<p><strong>Q: What is the Coordinator pattern and what problem does it solve?</strong></p>
+
+<p>A: A Coordinator is an object that owns navigation logic — creating view controllers, pushing/presenting them, and managing the flow between screens. It solves the "Massive View Controller" problem where VCs accumulate both UI logic and navigation decisions. By extracting navigation into coordinators: (1) VCs become simpler and reusable across different flows. (2) Navigation logic is testable. (3) Deep links and flow variations (e.g., different onboarding for A/B tests) can be handled by swapping or modifying coordinators without touching individual VCs.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you avoid retain cycles between a ViewController, its ViewModel, and a Coordinator?</strong></p>
+
+<p>A: The common cycle: VC holds ViewModel strongly, ViewModel has a closure or delegate back to VC (or Coordinator). Fix: (1) The VC's delegate property pointing to the Coordinator must be <code>weak var</code>. (2) Any closure stored in the ViewModel that captures the VC must use <code>[weak self]</code>. (3) The Coordinator holds child coordinators in an array and removes them (<code>childDidFinish</code>) when a flow ends — preventing accumulation. Use Xcode's Memory Graph Debugger to visualise the object graph and spot unexpected strong paths. The rule: ownership flows downward (Coordinator → VC → ViewModel); any upward reference must be weak.</p>
+
+<p><em></em>Q: How does <code>@MainActor</code> on a ViewModel class interact with async service calls?<em></em></p>
+
+<p>A: A <code>@MainActor</code> class has all its methods implicitly running on the main thread. When a method calls <code>await someService.fetchData()</code> and the service performs work on a background thread, the function suspends and may resume on a different thread — but because the method is <code>@MainActor</code>, the Swift runtime hops back to the main thread before continuing execution. This means you can safely mutate <code>@Published</code> properties after every <code>await</code> without an explicit <code>DispatchQueue.main.async</code>. The compiler also enforces that callers from non-<code>MainActor</code> contexts must <code>await</code> the call, preventing accidental off-thread access.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Compare MVVM+Coordinator for UIKit vs the SwiftUI navigation approach for a large multi-flow app.</strong></p>
+
+<p>A: <strong>UIKit MVVM+Coordinator</strong>: Explicit coordinator objects give full programmatic control over navigation. Deep links are handled by the root coordinator traversing and rebuilding the coordinator tree. Testing navigation is straightforward — inject mock coordinators. The overhead: boilerplate for every coordinator (protocol, start, childDidFinish), manual memory management, and ensuring lifecycle calls propagate through container VCs. <strong>SwiftUI NavigationStack + Router</strong>: A <code>NavigationPath</code> or a custom router <code>ObservableObject</code> drives navigation declaratively. Deep links map to path state changes. Less boilerplate, but complex multi-level flows (e.g., popping to a specific screen mid-stack) require careful path state management. For iOS 16+ only apps, a <code>@Observable</code> <code>Router</code> class that owns <code>NavigationPath</code> closely mirrors the Coordinator pattern without the UIKit ceremony. For apps supporting iOS 15 and below, UIKit MVVM+Coordinator remains more mature.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: ViewModel is deallocated immediately after init.</strong></p>
+
+<p>Solution: The ViewController is not retaining the ViewModel. The ViewModel must be stored as a <code>let</code> or <code>var</code> property on the VC — not created inline in <code>viewDidLoad</code>. In SwiftUI, use <code>@StateObject</code> not <code>@ObservedObject</code> when the view owns the ViewModel.</p>
+
+<p><em></em>Issue: Navigation from ViewModel — ViewModel calls <code>navigationController?.pushViewController</code>.<em></em></p>
+
+<p>Solution: The ViewModel should not know about navigation. Extract navigation into a delegate method or closure, and let the Coordinator react to it. If the ViewModel needs to trigger navigation, expose an output (<code>var onUserSelected: ((User) -&gt; Void)?</code>) and let the Coordinator or VC subscribe to it.</p>
+
+<p><strong>Issue: Memory accumulation — coordinator array grows unboundedly.</strong></p>
+
+<p>Solution: Implement <code>childDidFinish</code> correctly. Each child coordinator must notify its parent when its flow completes (e.g., user logs out, modal is dismissed) so the parent removes it from <code>childCoordinators</code>. Use the Memory Graph Debugger to check that dismissed flows release all their objects.</p>
+
+<p><em></em>Issue: <code>@Published</code> changes from background thread cause runtime warnings.<em></em></p>
+
+<p>Solution: Mark the ViewModel class <code>@MainActor</code>. If you can't change the class, wrap each <code>@Published</code> mutation in <code>DispatchQueue.main.async</code> or use <code>await MainActor.run { }</code> inside async functions.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="uiviewcontroller-lifecycle.md">UIViewController Lifecycle</a> — VCs that Coordinators create and manage</li>
+<li><a href="swiftui-state-management.md">SwiftUI State Management</a> — ObservableObject as SwiftUI ViewModel</li>
+<li><a href="swiftui-view-lifecycle.md">SwiftUI View Lifecycle</a> — SwiftUI navigation patterns</li>
+<li><a href="../03-concurrency/actors.md">Actors</a> — @MainActor for safe ViewModel updates</li>
+<li><a href="../02-memory-management/retain-cycles.md">Retain Cycles</a> — delegate/closure cycles in MVVM</li>
+<li><a href="../02-memory-management/closures-capture-lists.md">Closures &amp; Capture Lists</a> — [weak self] in ViewModel bindings</li>
+<li><a href="../06-architecture/index.md">Architecture</a> — broader architecture patterns (forward link)</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

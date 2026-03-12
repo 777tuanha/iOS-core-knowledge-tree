@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SwiftUI State Management — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../04-ui-frameworks/index.html">Ui Frameworks</a></span>
+    <span>Swiftui State Management</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html" class="active">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="swiftui-state-management">SwiftUI State Management</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>SwiftUI uses a reactive, unidirectional data-flow model where the UI is a <strong>function of state</strong>. Five property wrappers govern how state is owned, shared, and observed: <code>@State</code>, <code>@Binding</code>, <code>@ObservedObject</code>, <code>@StateObject</code>, and <code>@EnvironmentObject</code>. Each has a specific ownership rule — getting this wrong causes bugs like lost state on re-render, memory leaks, or views not updating. Understanding when to use each and why is one of the most-tested SwiftUI topics in senior iOS interviews.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of a house as a SwiftUI view hierarchy. <code>@State</code> is a piece of furniture you own — you bought it, you control it, you can move it. <code>@Binding</code> is a key to someone else's furniture — you can use it and change it, but you don't own it. <code>@StateObject</code> is a pet you own — you adopted it and you're responsible for it for your whole tenancy. <code>@ObservedObject</code> is a pet you're babysitting — you can interact with it and care for it, but you didn't adopt it. <code>@EnvironmentObject</code> is the shared Wi-Fi password — you don't own it, it's just available to everyone in the house.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="state">@State</h3>
+
+<p><code>@State</code> stores simple value-type data local to a view. SwiftUI owns the storage — not the view struct itself. When the value changes, SwiftUI invalidates the view and re-evaluates <code>body</code>.</p>
+
+<ul>
+<li><strong>Ownership</strong>: The view that declares it.</li>
+<li><strong>Scope</strong>: Private to that view and its children (via <code>@Binding</code>).</li>
+<li><strong>Storage</strong>: Allocated by the SwiftUI framework outside the view struct (so re-creating the view struct doesn't reset the value).</li>
+<li><strong>Type</strong>: Value types only (Int, String, Bool, structs).</li>
+</ul>
+
+<pre><code class="language-swift">@State private var count = 0</code></pre>
+
+<h3 id="binding">@Binding</h3>
+
+<p><code>@Binding</code> is a two-way reference to state owned elsewhere. It does not allocate storage — it reads from and writes to the source's <code>@State</code> or published property.</p>
+
+<ul>
+<li><strong>Ownership</strong>: None — it projects from a parent's <code>@State</code> or <code>@StateObject</code>.</li>
+<li><strong>Use case</strong>: Child views that need to mutate parent state.</li>
+<li>Created by prefixing the parent's <code>@State</code> property with <code>$</code>: <code>$count</code>.</li>
+</ul>
+
+<h3 id="observedobject">@ObservedObject</h3>
+
+<p><code>@ObservedObject</code> subscribes a view to an external <code>ObservableObject</code>. When any <code>@Published</code> property on the object changes, the view re-renders.</p>
+
+<ul>
+<li><strong>Ownership</strong>: The object is owned <strong>outside</strong> the view — by a parent, a coordinator, or a dependency injection container.</li>
+<li><strong>Critical caveat</strong>: SwiftUI does <strong>not</strong> retain the object. If the owner is deallocated, the observed object is deallocated too — the view holds only a weak reference pattern.</li>
+<li><strong>Problem</strong>: If a view creates an <code>ObservableObject</code> and stores it in <code>@ObservedObject</code>, it will be recreated every time the view is re-initialised, losing all state.</li>
+</ul>
+
+<h3 id="stateobject">@StateObject</h3>
+
+<p><code>@StateObject</code> is the fix for <code>@ObservedObject</code>'s ownership problem. It creates <strong>and owns</strong> the <code>ObservableObject</code> for the view's lifetime. SwiftUI creates it exactly once per view identity and keeps it alive across re-renders.</p>
+
+<ul>
+<li><strong>Ownership</strong>: The view that declares it.</li>
+<li><strong>Lifetime</strong>: Tied to the view's identity in the view tree — survives re-renders, destroyed when the view leaves the tree.</li>
+<li><strong>Use case</strong>: Any <code>ObservableObject</code> that should be created and owned by a view.</li>
+</ul>
+
+<h3 id="comparison-observedobject-vs-stateobject">Comparison: @ObservedObject vs @StateObject</h3>
+
+<table>
+<tr><td></td><td><code>@ObservedObject</code></td><td><code>@StateObject</code></td></tr>
+<tr><td>Creates object?</td><td>No</td><td>Yes (once)</td></tr>
+<tr><td>Owns object?</td><td>No</td><td>Yes</td></tr>
+<tr><td>Stable across re-renders?</td><td>Depends on owner</td><td>Yes</td></tr>
+<tr><td>Use when</td><td>Injecting from parent</td><td>Creating in view</td></tr>
+</table>
+
+<h3 id="environmentobject">@EnvironmentObject</h3>
+
+<p><code>@EnvironmentObject</code> reads an <code>ObservableObject</code> from the SwiftUI environment — an implicit dependency injection system. Any ancestor view can inject an object with <code>.environmentObject(_:)</code>, and any descendant can read it with <code>@EnvironmentObject</code>.</p>
+
+<ul>
+<li><strong>Ownership</strong>: Injected by an ancestor — typically the App struct or a coordinator.</li>
+<li><strong>Scope</strong>: Available anywhere in the subtree below the injection point.</li>
+<li><strong>Crash risk</strong>: If you read <code>@EnvironmentObject</code> from a view that hasn't had the object injected, the app crashes at runtime.</li>
+</ul>
+
+<h3 id="environment">@Environment</h3>
+
+<p>Different from <code>@EnvironmentObject</code> — <code>@Environment</code> reads system-provided values (color scheme, size class, locale, font):</p>
+
+<pre><code class="language-swift">@Environment(\.colorScheme) var colorScheme
+@Environment(\.dismiss) var dismiss</code></pre>
+
+<h3 id="observable-ios-17--observation-framework">@Observable (iOS 17+ — Observation framework)</h3>
+
+<p>iOS 17 introduced the <code>@Observable</code> macro, replacing <code>ObservableObject</code> + <code>@Published</code>:</p>
+
+<pre><code class="language-swift">@Observable
+class UserViewModel {
+    var name: String = ""
+    var isLoading: Bool = false
+}</code></pre>
+
+<p>Views that access properties of an <code>@Observable</code> object automatically subscribe to only the properties they read — no <code>@Published</code> annotations needed, and no <code>@ObservedObject</code>/<code>@StateObject</code> distinction required (use <code>@State</code> or plain <code>var</code>).</p>
+
+<h3 id="data-flow-rules">Data Flow Rules</h3>
+
+<pre><code>Owner creates data        → @State / @StateObject
+Child reads + mutates     → @Binding (from $state / $stateObject.property)
+Object injected in        → @ObservedObject
+Object created in view    → @StateObject
+Wide-scope sharing        → @EnvironmentObject
+System values             → @Environment</code></pre>
+
+<h3 id="thread-safety">Thread Safety</h3>
+
+<p><code>ObservableObject</code> updates that modify <code>@Published</code> properties must happen on the <strong>main thread</strong> — SwiftUI observes these changes and updates the UI synchronously. Mark ViewModels with <code>@MainActor</code> to ensure this:</p>
+
+<pre><code class="language-swift">@MainActor
+class ProfileViewModel: ObservableObject {
+    @Published var profile: Profile?
+    func loadProfile() async { /* ... */ }
+}</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import SwiftUI
+import Combine
+
+// ── @State — local toggle ──────────────────────────────────────
+struct CounterView: View {
+    @State private var count = 0          // owned by this view; private
+
+    var body: some View {
+        VStack {
+            Text("Count: \(count)")
+            Button("Increment") { count += 1 }  // direct mutation triggers re-render
+        }
+    }
+}
+
+// ── @Binding — child mutates parent's state ───────────────────
+struct ToggleRow: View {
+    let title: String
+    @Binding var isOn: Bool               // no storage — projects from parent
+
+    var body: some View {
+        Toggle(title, isOn: $isOn)        // $isOn creates a Binding&lt;Bool&gt;
+    }
+}
+
+struct SettingsView: View {
+    @State private var notificationsOn = true   // owned here
+
+    var body: some View {
+        ToggleRow(title: "Notifications", isOn: $notificationsOn)  // pass Binding
+    }
+}
+
+// ── @StateObject — view owns the view model ───────────────────
+@MainActor                                // all UI work on main thread
+class FeedViewModel: ObservableObject {
+    @Published var posts: [String] = []
+    @Published var isLoading = false
+
+    func loadPosts() async {
+        isLoading = true
+        defer { isLoading = false }
+        // await networkService.fetchPosts()
+        posts = ["Post 1", "Post 2", "Post 3"]
+    }
+}
+
+struct FeedView: View {
+    @StateObject private var viewModel = FeedViewModel()  // created once, owned here
+
+    var body: some View {
+        Group {
+            if viewModel.isLoading {
+                ProgressView()
+            } else {
+                List(viewModel.posts, id: \.self) { Text($0) }
+            }
+        }
+        .task { await viewModel.loadPosts() }  // cancels when view disappears
+    }
+}
+
+// ── @ObservedObject — injected from outside ───────────────────
+struct PostDetailView: View {
+    @ObservedObject var viewModel: FeedViewModel  // NOT created here — injected
+
+    var body: some View {
+        List(viewModel.posts, id: \.self) { Text($0) }
+    }
+}
+
+// ── @EnvironmentObject — wide sharing ─────────────────────────
+@MainActor
+class AuthService: ObservableObject {
+    @Published var isLoggedIn = false
+    func login() { isLoggedIn = true }
+    func logout() { isLoggedIn = false }
+}
+
+struct RootView: View {
+    @StateObject private var auth = AuthService()  // owned at root
+
+    var body: some View {
+        ContentView()
+            .environmentObject(auth)               // inject into environment
+    }
+}
+
+struct ProfileButton: View {
+    @EnvironmentObject var auth: AuthService       // read from anywhere in subtree
+
+    var body: some View {
+        Button(auth.isLoggedIn ? "Logout" : "Login") {
+            if auth.isLoggedIn { auth.logout() } else { auth.login() }
+        }
+    }
+}
+
+// ── Custom Binding for derived state ─────────────────────────
+struct SliderView: View {
+    @State private var percentage: Double = 0.5
+
+    // Derived binding: exposes percentage as 0–100 integer
+    var percentageInt: Binding&lt;Int&gt; {
+        Binding(
+            get: { Int(percentage * 100) },
+            set: { percentage = Double($0) / 100 }
+        )
+    }
+
+    var body: some View {
+        VStack {
+            Slider(value: $percentage)
+            Stepper("Value: \(percentageInt.wrappedValue)", value: percentageInt, in: 0...100)
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>@State</code> and <code>@Binding</code>?<em></em></p>
+
+<p>A: <code>@State</code> allocates and <strong>owns</strong> storage for a value. When the value changes, SwiftUI re-evaluates the view's <code>body</code>. It should be private and scoped to the declaring view. <code>@Binding</code> does <strong>not</strong> allocate storage — it is a two-way reference to state owned by another view (or <code>@StateObject</code>). Changes to a <code>@Binding</code> propagate back to the original <code>@State</code>. A child view receives a <code>@Binding</code> by accepting a <code>Binding&lt;T&gt;</code> parameter and the parent passes it with the <code>$</code> prefix on a <code>@State</code> variable.</p>
+
+<p><em></em>Q: What is <code>ObservableObject</code> and when should you use it?<em></em></p>
+
+<p>A: <code>ObservableObject</code> is a protocol for reference-type models that emit change notifications. Properties marked <code>@Published</code> automatically trigger <code>objectWillChange.send()</code> before they change. SwiftUI views that observe an <code>ObservableObject</code> (via <code>@StateObject</code> or <code>@ObservedObject</code>) re-render when any <code>@Published</code> property changes. Use <code>ObservableObject</code> for view models — objects that hold business logic and data that the view reads, and that outlive a single view instance.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: Why does <code>@ObservedObject</code> lose state when a parent view re-renders, and how does <code>@StateObject</code> fix it?<em></em></p>
+
+<p>A: When a parent view's <code>body</code> re-evaluates, it re-initialises any child view structs. If a child view creates an <code>ObservableObject</code> inside its <code>init</code> and stores it as <code>@ObservedObject</code>, that object is recreated on every parent re-render — losing all accumulated state. <code>@StateObject</code> solves this because SwiftUI manages the object's lifetime independently of struct re-initialisation. The object is created once when the view first appears in the view identity tree, and kept alive as long as the view remains in the tree — even if the view struct is re-created many times during re-renders.</p>
+
+<p><em></em>Q: How does <code>@EnvironmentObject</code> differ from passing an <code>@ObservedObject</code> through the view hierarchy?<em></em></p>
+
+<p>A: Passing <code>@ObservedObject</code> explicitly requires every intermediate view in the hierarchy to accept and forward the object, even if they don't use it — this is called "prop drilling". <code>@EnvironmentObject</code> injects the object into the environment at an ancestor level and makes it available to any descendant without explicit forwarding. The tradeoff: <code>@EnvironmentObject</code> is implicit — there's no compile-time guarantee the object was injected. A view that reads <code>@EnvironmentObject</code> crashes at runtime if the environment doesn't contain the required type. For this reason, inject <code>@EnvironmentObject</code> only for genuinely app-wide singletons (authentication, theme, feature flags).</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: How does the Observation framework (<code>@Observable</code>, iOS 17) improve on <code>ObservableObject</code> + <code>@Published</code>?<em></em></p>
+
+<p>A: <code>ObservableObject</code> + <code>@Published</code> has coarse granularity — any change to any <code>@Published</code> property triggers a full view re-render, even if the view only reads one property. With the <code>@Observable</code> macro, SwiftUI tracks exactly which properties a view's <code>body</code> accesses during rendering, and only re-renders when those specific properties change. This fine-grained observation eliminates redundant re-renders. Additionally: no <code>@Published</code> annotations needed, no <code>ObservableObject</code> protocol conformance, and no <code>@StateObject</code>/<code>@ObservedObject</code> distinction — just use the object as a regular <code>var</code> (or <code>@State</code> if the view owns it). The main caveat: requires iOS 17+, so production apps supporting older OS versions still need the <code>ObservableObject</code> approach.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: View using <code>@ObservedObject</code> doesn't update when ViewModel changes.<em></em></p>
+
+<p>Solution: The ViewModel must conform to <code>ObservableObject</code> and the changing property must be marked <code>@Published</code>. Also verify the ViewModel instance is not being recreated on each render — if it is, migrate to <code>@StateObject</code>.</p>
+
+<p><em></em>Issue: <code>@EnvironmentObject</code> crash — "No ObservableObject of type X found".<em></em></p>
+
+<p>Solution: You read <code>@EnvironmentObject</code> in a view that was not presented within a subtree that had <code>.environmentObject(_:)</code> applied. Common cause: a sheet or navigation destination that is presented outside the <code>.environmentObject</code> modifier's scope. Fix: inject the environment object at the highest ancestor that covers all presentation paths (typically at the <code>App</code> level).</p>
+
+<p><strong>Issue: State is reset to initial value unexpectedly.</strong></p>
+
+<p>Solution: SwiftUI resets <code>@State</code> when the view's <strong>identity</strong> changes (not just when the struct is re-created). Check if a parent is conditionally recreating the view with <code>if/else</code> or changing <code>id()</code> — both reset <code>@State</code>. Use <code>@StateObject</code> or persist state to a store if it must survive identity changes.</p>
+
+<p><em></em>Issue: <code>@Published</code> property changes from a background thread cause purple warnings.<em></em></p>
+
+<p>Solution: <code>@Published</code> changes must happen on the main thread because they trigger UI updates. Mark the ViewModel class <code>@MainActor</code> and <code>await</code> results from background tasks before assigning to <code>@Published</code> properties.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="swiftui-view-lifecycle.md">SwiftUI View Lifecycle</a> — how state changes trigger view re-evaluation</li>
+<li><a href="mvvm-coordinator.md">MVVM &amp; Coordinator</a> — ObservableObject as the ViewModel in SwiftUI MVVM</li>
+<li><a href="../03-concurrency/actors.md">Actors</a> — @MainActor for safe ObservableObject updates on main thread</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>
