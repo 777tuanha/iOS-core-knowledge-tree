@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codable & JSON — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../07-networking/index.html">Networking</a></span>
+    <span>Codable Json</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html" class="active">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="codable--json">Codable &amp; JSON</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>Codable</code> is Swift's built-in type alias for <code>Encodable &amp; Decodable</code>. It provides a compile-time-safe, protocol-driven system for serialising and deserialising Swift types to and from external representations — most commonly JSON, but also Property List and custom formats. The compiler auto-synthesises <code>Codable</code> conformance for types whose properties are all <code>Codable</code>, making simple cases effortless. For complex APIs — snake_case keys, custom date formats, nested structures, and optional fields — you customise behaviour via <code>CodingKeys</code>, <code>JSONDecoder</code> configuration, and manual <code>init(from:)</code> / <code>encode(to:)</code> implementations.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a moving company that packs and unpacks your belongings. <code>Encodable</code> is the packing service — it knows how to take your Swift objects and pack them into boxes (JSON). <code>Decodable</code> is the unpacking service — it opens the boxes (JSON) and reassembles your objects. <code>Codable</code> provides both. The compiler is an automated packer that writes the packing/unpacking instructions for you, as long as every item in your home (every stored property) also has packing instructions.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="auto-synthesis">Auto-synthesis</h3>
+
+<p>When all stored properties conform to <code>Codable</code>, the compiler synthesises conformance automatically:</p>
+
+<pre><code class="language-swift">struct User: Codable {
+    let id: Int
+    let name: String
+    let email: String
+}
+// No manual implementation needed</code></pre>
+
+<p>Types with <code>Codable</code> auto-synthesis: <code>Int</code>, <code>Double</code>, <code>String</code>, <code>Bool</code>, <code>Date</code>, <code>URL</code>, <code>Data</code>, <code>Array&lt;T: Codable&gt;</code>, <code>Dictionary&lt;String, T: Codable&gt;</code>, <code>Optional&lt;T: Codable&gt;</code>.</p>
+
+<h3 id="jsondecoder-and-jsonencoder">JSONDecoder and JSONEncoder</h3>
+
+<p><code>JSONDecoder</code> converts <code>Data</code> (UTF-8 JSON bytes) → Swift types. <code>JSONEncoder</code> converts Swift types → <code>Data</code>.</p>
+
+<p>Key configuration:</p>
+<pre><code class="language-swift">let decoder = JSONDecoder()
+decoder.keyDecodingStrategy = .convertFromSnakeCase   // "user_name" → userName
+decoder.dateDecodingStrategy = .iso8601               // "2024-01-15T10:30:00Z"
+decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+    positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN"
+)
+
+let encoder = JSONEncoder()
+encoder.keyEncodingStrategy = .convertToSnakeCase     // userName → "user_name"
+encoder.dateEncodingStrategy = .iso8601
+encoder.outputFormatting = [.prettyPrinted, .sortedKeys]  // readable output</code></pre>
+
+<h3 id="codingkeys">CodingKeys</h3>
+
+<p>Override the JSON key names using a nested <code>CodingKeys</code> enum. Cases map property names to JSON keys:</p>
+
+<pre><code class="language-swift">struct Post: Codable {
+    let id: Int
+    let authorName: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case authorName = "author_name"   // map Swift camelCase → JSON snake_case
+        case createdAt  = "created_at"
+    }
+}</code></pre>
+
+<p>If any property is omitted from <code>CodingKeys</code>, it is excluded from encoding and decoding — useful for computed properties or locally-only state.</p>
+
+<h3 id="nested-structures">Nested Structures</h3>
+
+<p>Map nested JSON objects to nested Swift types:</p>
+
+<pre><code class="language-swift">// JSON: { "user": { "id": 1, "address": { "city": "London" } } }
+struct Address: Codable { let city: String }
+struct User: Codable {
+    let id: Int
+    let address: Address
+}
+struct Response: Codable { let user: User }</code></pre>
+
+<h3 id="handling-optional-fields">Handling Optional Fields</h3>
+
+<p><code>Optional&lt;T: Codable&gt;</code> is <code>Codable</code>. If a key is missing from JSON, the optional is <code>nil</code>. If a key is present with <code>null</code>, it is also <code>nil</code>:</p>
+
+<pre><code class="language-swift">struct Article: Codable {
+    let id: Int
+    let title: String
+    let subtitle: String?   // optional — may be missing or null in JSON
+}</code></pre>
+
+<h3 id="custom-datedecodingstrategy">Custom dateDecodingStrategy</h3>
+
+<p>For non-standard date formats:</p>
+<pre><code class="language-swift">let decoder = JSONDecoder()
+let formatter = DateFormatter()
+formatter.dateFormat = "yyyy-MM-dd"
+formatter.locale = Locale(identifier: "en_US_POSIX")
+decoder.dateDecodingStrategy = .formatted(formatter)
+
+// For multiple formats or Unix timestamps:
+decoder.dateDecodingStrategy = .custom { decoder in
+    let container = try decoder.singleValueContainer()
+    let timestamp = try container.decode(Double.self)
+    return Date(timeIntervalSince1970: timestamp)
+}</code></pre>
+
+<h3 id="manual-decoding--initfrom">Manual Decoding — <code>init(from:)</code></h3>
+
+<p>When auto-synthesis is insufficient — e.g., the API returns a type discriminator, or data requires transformation during decoding:</p>
+
+<pre><code class="language-swift">struct Event: Decodable {
+    let id: Int
+    let type: EventType
+    let payload: EventPayload
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id   = try container.decode(Int.self, forKey: .id)
+        type = try container.decode(EventType.self, forKey: .type)
+
+        // Decode payload based on the type discriminator
+        switch type {
+        case .message:
+            payload = try container.decode(MessagePayload.self, forKey: .payload)
+        case .reaction:
+            payload = try container.decode(ReactionPayload.self, forKey: .payload)
+        }
+    }
+
+    enum CodingKeys: String, CodingKey { case id, type, payload }
+}</code></pre>
+
+<h3 id="decoding-heterogeneous-arrays">Decoding Heterogeneous Arrays</h3>
+
+<p>When an array contains different types wrapped in a discriminator:</p>
+
+<pre><code class="language-swift">enum Feed: Decodable {
+    case post(Post)
+    case ad(Advertisement)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let kind = try container.decode(String.self, forKey: .kind)
+        switch kind {
+        case "post": self = .post(try Post(from: decoder))
+        case "ad":   self = .ad(try Advertisement(from: decoder))
+        default:     throw DecodingError.dataCorruptedError(
+            forKey: .kind, in: container, debugDescription: "Unknown kind: \(kind)"
+        )
+        }
+    }
+
+    enum CodingKeys: String, CodingKey { case kind }
+}</code></pre>
+
+<h3 id="decoding-nested-values-flatly">Decoding Nested Values Flatly</h3>
+
+<p>When JSON nests a value you want at the top level:</p>
+
+<pre><code class="language-swift">// JSON: { "data": { "user": { "id": 1, "name": "Alice" } } }
+// Swift: just User(id: 1, name: "Alice")
+struct UserResponse: Decodable {
+    let user: User
+
+    init(from decoder: Decoder) throws {
+        let root = try decoder.container(keyedBy: RootKeys.self)
+        let data = try root.nestedContainer(keyedBy: DataKeys.self, forKey: .data)
+        user = try data.decode(User.self, forKey: .user)
+    }
+
+    enum RootKeys: String, CodingKey { case data }
+    enum DataKeys: String, CodingKey { case user }
+}</code></pre>
+
+<h3 id="error-handling">Error Handling</h3>
+
+<p><code>JSONDecoder</code> throws <code>DecodingError</code> with four cases:</p>
+
+<table>
+<tr><td>Case</td><td>Cause</td></tr>
+<tr><td><code>.typeMismatch(type, context)</code></td><td>Expected Int, found String</td></tr>
+<tr><td><code>.valueNotFound(type, context)</code></td><td>Non-optional key was null</td></tr>
+<tr><td><code>.keyNotFound(key, context)</code></td><td>Non-optional key was missing</td></tr>
+<tr><td><code>.dataCorrupted(context)</code></td><td>Malformed JSON / invalid data</td></tr>
+</table>
+
+<p>The <code>context.codingPath</code> shows exactly where in the JSON tree the error occurred — essential for debugging.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── Basic decode / encode ─────────────────────────────────────
+struct Product: Codable {
+    let id: Int
+    let name: String
+    let priceInCents: Int
+    let isAvailable: Bool
+    let tags: [String]
+    let discount: Double?           // optional — may be absent
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case priceInCents = "price_in_cents"
+        case isAvailable  = "is_available"
+        case tags
+        case discount
+    }
+}
+
+let json = """
+{
+    "id": 42,
+    "name": "Widget Pro",
+    "price_in_cents": 1999,
+    "is_available": true,
+    "tags": ["sale", "featured"]
+}
+""".data(using: .utf8)!
+
+let product = try JSONDecoder().decode(Product.self, from: json)
+print(product.name)           // "Widget Pro"
+print(product.discount)       // nil — key absent
+
+let encoded = try JSONEncoder().encode(product)
+
+// ── convertFromSnakeCase — no CodingKeys needed ───────────────
+struct Article: Codable {
+    let id: Int
+    let authorName: String        // decoded from "author_name" automatically
+    let publishedAt: Date         // decoded from "published_at"
+}
+
+let decoder = JSONDecoder()
+decoder.keyDecodingStrategy = .convertFromSnakeCase
+decoder.dateDecodingStrategy = .iso8601
+
+// ── Custom date format ────────────────────────────────────────
+struct Event: Codable {
+    let title: String
+    let date: Date
+}
+
+let customDecoder = JSONDecoder()
+let formatter = DateFormatter()
+formatter.dateFormat = "dd/MM/yyyy"
+formatter.locale = Locale(identifier: "en_US_POSIX")
+customDecoder.dateDecodingStrategy = .formatted(formatter)
+
+// ── Polymorphic decoding with discriminator ───────────────────
+struct Notification: Decodable {
+    enum Kind: String, Decodable { case like, comment, follow }
+    struct LikePayload: Decodable { let postID: Int }
+    struct CommentPayload: Decodable { let commentText: String }
+
+    let id: String
+    let kind: Kind
+    let likePayload: LikePayload?
+    let commentPayload: CommentPayload?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id   = try c.decode(String.self, forKey: .id)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        switch kind {
+        case .like:
+            likePayload    = try c.decodeIfPresent(LikePayload.self, forKey: .payload)
+            commentPayload = nil
+        case .comment:
+            likePayload    = nil
+            commentPayload = try c.decodeIfPresent(CommentPayload.self, forKey: .payload)
+        case .follow:
+            likePayload = nil; commentPayload = nil
+        }
+    }
+
+    enum CodingKeys: String, CodingKey { case id, kind, payload }
+}
+
+// ── Error handling with descriptive messages ──────────────────
+func safeDecode&lt;T: Decodable&gt;(_ type: T.Type, from data: Data) -&gt; T? {
+    do {
+        return try JSONDecoder().decode(T.self, from: data)
+    } catch let DecodingError.keyNotFound(key, context) {
+        print("Missing key '\(key.stringValue)' at \(context.codingPath)")
+    } catch let DecodingError.typeMismatch(type, context) {
+        print("Type mismatch for \(type) at \(context.codingPath): \(context.debugDescription)")
+    } catch let DecodingError.valueNotFound(type, context) {
+        print("Missing value for \(type) at \(context.codingPath)")
+    } catch {
+        print("Decoding error: \(error)")
+    }
+    return nil
+}
+
+// ── Encoding for POST body ────────────────────────────────────
+struct CreatePostRequest: Encodable {
+    let title: String
+    let body: String
+    let tagIDs: [Int]
+
+    enum CodingKeys: String, CodingKey {
+        case title, body
+        case tagIDs = "tag_ids"
+    }
+}
+
+func makeCreatePostRequest(title: String, body: String, tags: [Int]) throws -&gt; URLRequest {
+    let url = URL(string: "https://api.example.com/posts")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase    // alternative to CodingKeys
+    request.httpBody = try encoder.encode(
+        CreatePostRequest(title: title, body: body, tagIDs: tags)
+    )
+    return request
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is <code>Codable</code> and how does the compiler synthesise it?<em></em></p>
+
+<p>A: <code>Codable</code> is a type alias for <code>Encodable &amp; Decodable</code>. When a type's stored properties all conform to <code>Codable</code>, the Swift compiler synthesises the <code>encode(to:)</code> and <code>init(from:)</code> implementations automatically at compile time. The synthesised code creates a keyed container and encodes/decodes each property using its property name as the key. If the JSON uses different key names, you override with a nested <code>CodingKeys: String, CodingKey</code> enum that maps Swift property names to JSON key strings. If any stored property is not <code>Codable</code>, the compiler reports an error and you must provide a manual implementation.</p>
+
+<p><strong>Q: How do you handle a JSON field whose key name uses snake_case when your Swift property uses camelCase?</strong></p>
+
+<p>A: Two approaches: (1) Set <code>decoder.keyDecodingStrategy = .convertFromSnakeCase</code> on the <code>JSONDecoder</code> — it automatically transforms <code>author_name</code> → <code>authorName</code> for all properties. (2) Provide a <code>CodingKeys</code> enum with explicit mappings: <code>case authorName = "author_name"</code>. The first approach is less verbose and is the standard choice when the entire API consistently uses snake_case. The second is necessary when only some keys differ or when the mapping is non-standard.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How do you decode a JSON response where the structure wraps the payload in a data envelope — e.g., <code>{ "data": { "user": {...} } }</code> — but you only want the inner <code>User</code> struct?<em></em></p>
+
+<p>A: Use a manual <code>init(from:)</code> with <code>nestedContainer(keyedBy:forKey:)</code> to traverse the envelope and decode the inner object directly. Alternatively, create a generic wrapper: <code>struct Envelope&lt;T: Decodable&gt;: Decodable { let data: T }</code> and decode <code>Envelope&lt;User&gt;.self</code>. Then access <code>.data</code>. The generic wrapper is reusable across all endpoints that share the same envelope structure and requires no manual implementation per type. For deeply nested envelopes (e.g., <code>data.user</code>), chain multiple <code>nestedContainer</code> calls or create a custom <code>Decoder</code> wrapper that transparently unwraps the envelope layer.</p>
+
+<p><em></em>Q: What is the difference between <code>decode</code> and <code>decodeIfPresent</code> in a custom <code>init(from:)</code>?<em></em></p>
+
+<p>A: <code>decode(_:forKey:)</code> requires the key to be present in the JSON and its value to be non-null. If the key is missing or null, it throws <code>DecodingError.keyNotFound</code> or <code>DecodingError.valueNotFound</code>. <code>decodeIfPresent(_:forKey:)</code> returns <code>nil</code> if the key is absent or its value is null, and throws only if the key is present with an incompatible type. Use <code>decodeIfPresent</code> for properties that should be <code>Optional</code> in Swift — it correctly handles both "key missing" and "key present with null value" as <code>nil</code>.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe a strategy for versioning your Codable models when the API changes incompatibly — e.g., a field is renamed or its type changes.</strong></p>
+
+<p>A: Several strategies: (1) <strong>Additive changes</strong> (new optional fields): auto-handled — new keys are decoded if present, ignored if absent (for <code>decodeIfPresent</code>), and encoding simply omits them. (2) <strong>Renamed fields</strong>: add the new key to <code>CodingKeys</code> and provide a manual <code>init(from:)</code> that tries the new key first and falls back to the old key with <code>decodeIfPresent</code>. (3) <strong>Type changes</strong> (e.g., <code>Int</code> → <code>String</code> for IDs): provide a custom <code>init(from:)</code> that tries both types: <code>if let idInt = try? c.decode(Int.self, forKey: .id) { id = String(idInt) } else { id = try c.decode(String.self, forKey: .id) }</code>. (4) <strong>Versioned model structs</strong>: maintain separate <code>UserV1</code>, <code>UserV2</code> types and a version-discriminating decoder that selects the correct model based on an API version header or field. (5) <em></em>Wrap in <code>AnyCodable</code><em></em>: use a flexible <code>AnyCodable</code> type for fields with unknown or changing shapes, parsing into a concrete type at a later stage.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>DecodingError.keyNotFound</code> for a key that exists in the JSON.<em></em></p>
+
+<p>Solution: Key name mismatch. Either the JSON uses snake_case and your property is camelCase (set <code>keyDecodingStrategy = .convertFromSnakeCase</code> or add <code>CodingKeys</code>), or there's a typo. Print <code>context.codingPath</code> in the error handler to locate the exact path.</p>
+
+<p><em></em>Issue: Date decodes as <code>0</code> or <code>1970-01-01</code>.<em></em></p>
+
+<p>Solution: The default <code>dateDecodingStrategy</code> is <code>.deferredToDate</code> which expects a <code>Double</code> (seconds since 2001-01-01). If your API sends ISO-8601 strings, set <code>decoder.dateDecodingStrategy = .iso8601</code>. For custom formats, use <code>.formatted(dateFormatter)</code>.</p>
+
+<p><em></em>Issue: <code>Optional</code> field with <code>null</code> value throws instead of returning <code>nil</code>.<em></em></p>
+
+<p>Solution: Use <code>decodeIfPresent(_:forKey:)</code> instead of <code>decode(_:forKey:)</code> in a custom <code>init(from:)</code>. For auto-synthesised conformance, declare the property as <code>Optional&lt;T&gt;</code> (<code>let field: T?</code>) — the compiler generates <code>decodeIfPresent</code> for optional properties.</p>
+
+<p><em></em>Issue: Encoding produces <code>null</code> for optional fields — server rejects unknown null fields.<em></em></p>
+
+<p>Solution: Use a custom <code>encode(to:)</code> that skips nil values: <code>if let value = optionalField { try container.encode(value, forKey: .optionalField) }</code>. Alternatively, set <code>encoder.outputFormatting = []</code> — but that doesn't omit nulls. Manual <code>encode(to:)</code> with conditional encoding is the correct solution.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="urlsession.md">URLSession</a> — provides the Data that JSONDecoder processes</li>
+<li><a href="http-rest-basics.md">HTTP &amp; REST Basics</a> — Content-Type headers govern the format</li>
+<li><a href="advanced-networking.md">Advanced Networking</a> — Codable in retry/caching pipelines</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

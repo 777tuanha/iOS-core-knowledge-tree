@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Networking — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../07-networking/index.html">Networking</a></span>
+    <span>Advanced Networking</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html" class="active">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="advanced-networking">Advanced Networking</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Production iOS networking goes far beyond making a single request and decoding the response. Real apps must handle transient failures gracefully (retry with backoff), intercept requests for logging or authentication (URLProtocol), cache responses intelligently (URLCache), load paginated data efficiently, and keep the user experience coherent when the device goes offline. These patterns — retry strategies, request interceptors, caching policies, pagination, and offline handling — are what separate a robust networking layer from a fragile one, and they are a key indicator of senior engineering experience.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine running a mail service for a mountain village. <strong>Retry with backoff</strong> is what the postman does when the road is blocked: waits a bit, tries again, waits longer if still blocked. <strong>URLProtocol</strong> is a checkpoint at the start of every road — it can inspect, log, or even redirect every letter before it leaves. <strong>URLCache</strong> is the village post office keeping copies of frequently-sent letters so the postman doesn't have to travel to the city for duplicates. <strong>Pagination</strong> is delivering a stack of letters in batches of 20 rather than dumping 10 000 at once. <strong>Offline handling</strong> is the postman noting which letters couldn't be delivered and retrying them automatically once the road reopens.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="retry-with-exponential-backoff-and-jitter">Retry with Exponential Backoff and Jitter</h3>
+
+<p>A naive retry (immediate re-request on failure) causes <strong>thundering herd</strong> — many clients hammering a recovering server simultaneously. Exponential backoff spreads retries over time; jitter (random offset) prevents synchronised spikes.</p>
+
+<pre><code>attempt 1 → wait 1s  + jitter
+attempt 2 → wait 2s  + jitter
+attempt 3 → wait 4s  + jitter
+attempt 4 → wait 8s  + jitter</code></pre>
+
+<p><strong>What to retry</strong>: 5xx server errors, <code>URLError.timedOut</code>, <code>URLError.networkConnectionLost</code>, 429 (after <code>Retry-After</code> delay). <strong>Never retry POST without an idempotency key</strong> — it may create duplicate resources.</p>
+
+<pre><code class="language-swift">struct RetryPolicy {
+    let maxAttempts: Int
+    let baseDelay: TimeInterval          // seconds
+    let maxDelay: TimeInterval
+
+    func delay(for attempt: Int) -&gt; TimeInterval {
+        let exponential = baseDelay * pow(2.0, Double(attempt))
+        let jitter = Double.random(in: 0...exponential * 0.3)
+        return min(exponential + jitter, maxDelay)
+    }
+}</code></pre>
+
+<h3 id="urlprotocol--request-interceptors">URLProtocol — Request Interceptors</h3>
+
+<p><code>URLProtocol</code> sits at the bottom of the URL loading system. Every <code>URLSession</code> request passes through registered <code>URLProtocol</code> subclasses before hitting the network. Uses: logging, mocking (unit tests with no real network), injecting auth headers, and throttle simulation.</p>
+
+<p><strong>Registration</strong>:</p>
+<ul>
+<li>Session-level (preferred): <code>config.protocolClasses = [MyProtocol.self]</code></li>
+<li>Global (affects <code>URLSession.shared</code> — use carefully): <code>URLProtocol.registerClass(MyProtocol.self)</code></li>
+</ul>
+
+<p>A <code>URLProtocol</code> subclass must implement four methods:</p>
+
+<table>
+<tr><td>Method</td><td>Purpose</td></tr>
+<tr><td><code>canInit(with:)</code></td><td>Return <code>true</code> if this protocol handles the request</td></tr>
+<tr><td><code>canonicalRequest(for:)</code></td><td>Return (optionally modified) canonical request</td></tr>
+<tr><td><code>startLoading()</code></td><td>Begin fetching; call client methods to deliver data/response/completion</td></tr>
+<tr><td><code>stopLoading()</code></td><td>Cancel in-flight work</td></tr>
+</table>
+
+<h3 id="urlcache--http-response-caching">URLCache — HTTP Response Caching</h3>
+
+<p><code>URLCache</code> is the system HTTP cache. It stores <code>CachedURLResponse</code> objects keyed by <code>URLRequest</code>. It respects <code>Cache-Control</code> response headers automatically when <code>requestCachePolicy = .useProtocolCachePolicy</code>.</p>
+
+<p><strong>Key cache policies</strong>:</p>
+
+<table>
+<tr><td>Policy</td><td>Behaviour</td></tr>
+<tr><td><code>.useProtocolCachePolicy</code></td><td>Honour <code>Cache-Control</code> and <code>Expires</code> (default)</td></tr>
+<tr><td><code>.returnCacheDataElseLoad</code></td><td>Use cached data if present, ignoring freshness; fall back to network</td></tr>
+<tr><td><code>.returnCacheDataDontLoad</code></td><td>Use cache only — fail if not cached (offline mode)</td></tr>
+<tr><td><code>.reloadIgnoringLocalCacheData</code></td><td>Always fetch from network</td></tr>
+<tr><td><code>.reloadRevalidatingCacheData</code></td><td>Conditional GET with <code>If-None-Match</code> / <code>If-Modified-Since</code></td></tr>
+</table>
+
+<p><strong>Manual cache configuration</strong>:</p>
+<pre><code class="language-swift">let cache = URLCache(
+    memoryCapacity: 20 * 1_024 * 1_024,   // 20 MB
+    diskCapacity:  150 * 1_024 * 1_024,   // 150 MB
+    directory: nil                          // default system directory
+)
+let config = URLSessionConfiguration.default
+config.urlCache = cache
+config.requestCachePolicy = .useProtocolCachePolicy</code></pre>
+
+<p><strong>Manual invalidation</strong>:</p>
+<pre><code class="language-swift">URLCache.shared.removeCachedResponse(for: request)
+URLCache.shared.removeAllCachedResponses()</code></pre>
+
+<p><strong>Stale-while-revalidate</strong>: Return cached (possibly stale) data immediately while fetching a fresh copy in the background, then update UI on completion. This pattern requires manual implementation since <code>URLCache</code> doesn't natively support it — read the cache, emit stale data, then fetch and update.</p>
+
+<h3 id="pagination-patterns">Pagination Patterns</h3>
+
+<table>
+<tr><td>Pattern</td><td>Key field</td><td>iOS use case</td></tr>
+<tr><td>Offset-based</td><td><code>?offset=20&amp;limit=20</code></td><td>Simple list APIs</td></tr>
+<tr><td>Page-based</td><td><code>?page=3&amp;per_page=20</code></td><td>Admin/web-facing APIs</td></tr>
+<tr><td>Cursor-based</td><td><code>?after=eyJpZCI6NDJ9</code></td><td>High-velocity feeds (Twitter, Instagram)</td></tr>
+<tr><td>Link header</td><td><code>Link: &lt;url&gt;; rel="next"</code></td><td>GitHub API, RFC 5988 standard</td></tr>
+</table>
+
+<p><strong>Cursor-based</strong> is preferred for production feeds: it remains stable under insertions/deletions, which cause offset-based results to skip or repeat items.</p>
+
+<p><strong>AsyncSequence pagination</strong>: model a paginated resource as an <code>AsyncSequence</code> — each call to <code>next()</code> fetches the next page transparently.</p>
+
+<h3 id="offline-handling-with-nwpathmonitor">Offline Handling with NWPathMonitor</h3>
+
+<p><code>NWPathMonitor</code> (Network framework) replaces the legacy <code>Reachability</code> library. It provides real-time network path status including interface type (Wi-Fi, cellular, loopback).</p>
+
+<pre><code class="language-swift">import Network
+
+class NetworkMonitor {
+    private let monitor = NWPathMonitor()
+    private(set) var isConnected = true
+
+    func start() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            self?.isConnected = path.status == .satisfied
+        }
+        monitor.start(queue: DispatchQueue(label: "NetworkMonitor"))
+    }
+
+    func stop() { monitor.cancel() }
+}</code></pre>
+
+<p><strong>Request queuing for offline</strong>: maintain a queue of pending operations; drain when connectivity is restored. For critical mutations (POST/PATCH), persist the queue to disk (UserDefaults, Core Data, or a JSON file in the Documents directory) so they survive app termination.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import Network
+
+// ── Retry with exponential backoff ────────────────────────────
+struct RetryPolicy {
+    let maxAttempts: Int
+    let baseDelay: TimeInterval
+    let maxDelay: TimeInterval
+
+    static let `default` = RetryPolicy(maxAttempts: 3, baseDelay: 1.0, maxDelay: 30.0)
+
+    func delay(for attempt: Int) -&gt; TimeInterval {
+        let exponential = baseDelay * pow(2.0, Double(attempt))
+        let jitter = Double.random(in: 0...(exponential * 0.3))
+        return min(exponential + jitter, maxDelay)
+    }
+}
+
+extension URLSession {
+    func data(for request: URLRequest, retryPolicy: RetryPolicy) async throws -&gt; (Data, URLResponse) {
+        var attempt = 0
+        while true {
+            do {
+                let result = try await data(for: request)
+                return result
+            } catch {
+                attempt += 1
+                guard attempt &lt; retryPolicy.maxAttempts, shouldRetry(error: error) else { throw error }
+                let delay = retryPolicy.delay(for: attempt)
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+        }
+    }
+
+    private func shouldRetry(error: Error) -&gt; Bool {
+        guard let urlError = error as? URLError else { return false }
+        return [.timedOut, .networkConnectionLost, .notConnectedToInternet]
+            .contains(urlError.code)
+    }
+}
+
+// Usage:
+// let (data, response) = try await URLSession.shared.data(for: request, retryPolicy: .default)
+
+// ── URLProtocol — logging interceptor ─────────────────────────
+class LoggingURLProtocol: URLProtocol {
+    private var dataTask: URLSessionDataTask?
+
+    override class func canInit(with request: URLRequest) -&gt; Bool {
+        // Prevent infinite loop — mark handled requests to skip them
+        return URLProtocol.property(forKey: "LoggingHandled", in: request) == nil
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -&gt; URLRequest { request }
+
+    override func startLoading() {
+        // Mark the request so this protocol doesn't intercept it again
+        let mutableRequest = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+        URLProtocol.setProperty(true, forKey: "LoggingHandled", in: mutableRequest)
+
+        print("→ \(mutableRequest.httpMethod ?? "GET") \(mutableRequest.url?.absoluteString ?? "")")
+        let start = Date()
+
+        let session = URLSession(configuration: .default)
+        dataTask = session.dataTask(with: mutableRequest as URLRequest) { [weak self] data, response, error in
+            guard let self else { return }
+            let elapsed = Date().timeIntervalSince(start)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            print("← \(status) (\(String(format: "%.2f", elapsed))s)")
+
+            if let error {
+                self.client?.urlProtocol(self, didFailWithError: error)
+                return
+            }
+            if let response { self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .allowed) }
+            if let data    { self.client?.urlProtocol(self, didLoad: data) }
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+        dataTask?.resume()
+    }
+
+    override func stopLoading() { dataTask?.cancel() }
+}
+
+// Register per-session:
+// let config = URLSessionConfiguration.default
+// config.protocolClasses = [LoggingURLProtocol.self]
+// let session = URLSession(configuration: config)
+
+// ── URLProtocol — mock for unit tests ─────────────────────────
+class MockURLProtocol: URLProtocol {
+    static var requestHandler: ((URLRequest) throws -&gt; (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -&gt; Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -&gt; URLRequest { request }
+
+    override func startLoading() {
+        guard let handler = MockURLProtocol.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.unknown)); return
+        }
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+// In tests:
+// MockURLProtocol.requestHandler = { _ in
+//     let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+//     return (response, mockData)
+// }
+// let config = URLSessionConfiguration.ephemeral
+// config.protocolClasses = [MockURLProtocol.self]
+// let session = URLSession(configuration: config)
+
+// ── Cursor-based pagination with AsyncSequence ────────────────
+struct Page&lt;T: Decodable&gt;: Decodable {
+    let items: [T]
+    let nextCursor: String?
+}
+
+struct PaginatedSequence&lt;T: Decodable&gt;: AsyncSequence {
+    typealias Element = [T]
+
+    private let makeRequest: (String?) -&gt; URLRequest
+    private let session: URLSession
+    private let decoder: JSONDecoder
+
+    init(session: URLSession = .shared, makeRequest: @escaping (String?) -&gt; URLRequest) {
+        self.session = session
+        self.makeRequest = makeRequest
+        self.decoder = JSONDecoder()
+        self.decoder.keyDecodingStrategy = .convertFromSnakeCase
+    }
+
+    struct AsyncIterator: AsyncIteratorProtocol {
+        private let sequence: PaginatedSequence&lt;T&gt;
+        private var cursor: String?
+        private var done = false
+
+        init(_ sequence: PaginatedSequence&lt;T&gt;) { self.sequence = sequence }
+
+        mutating func next() async throws -&gt; [T]? {
+            guard !done else { return nil }
+            let request = sequence.makeRequest(cursor)
+            let (data, _) = try await sequence.session.data(for: request)
+            let page = try sequence.decoder.decode(Page&lt;T&gt;.self, from: data)
+            cursor = page.nextCursor
+            done = page.nextCursor == nil
+            return page.items
+        }
+    }
+
+    func makeAsyncIterator() -&gt; AsyncIterator { AsyncIterator(self) }
+}
+
+// Usage — load all posts page by page:
+// let pages = PaginatedSequence&lt;Post&gt; { cursor in
+//     var components = URLComponents(string: "https://api.example.com/posts")!
+//     if let cursor { components.queryItems = [URLQueryItem(name: "after", value: cursor)] }
+//     return URLRequest(url: components.url!)
+// }
+// for try await posts in pages { display(posts) }
+
+// ── NWPathMonitor — connectivity tracking ─────────────────────
+final class NetworkMonitor {
+    static let shared = NetworkMonitor()
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "com.app.network-monitor")
+
+    @Published private(set) var isConnected: Bool = true
+    @Published private(set) var connectionType: NWInterface.InterfaceType = .other
+
+    private init() {}
+
+    func start() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                self?.isConnected = path.status == .satisfied
+                self?.connectionType = path.availableInterfaces
+                    .first?.type ?? .other
+            }
+        }
+        monitor.start(queue: queue)
+    }
+
+    func stop() { monitor.cancel() }
+}
+
+// ── Request queue for offline-first mutations ──────────────────
+struct PendingRequest: Codable {
+    let url: URL
+    let method: String
+    let headers: [String: String]
+    let body: Data?
+}
+
+actor RequestQueue {
+    private var pending: [PendingRequest] = []
+    private let storageURL: URL
+
+    init() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        storageURL = docs.appendingPathComponent("pending_requests.json")
+        load()
+    }
+
+    func enqueue(_ request: URLRequest) {
+        let pending = PendingRequest(
+            url: request.url!,
+            method: request.httpMethod ?? "GET",
+            headers: request.allHTTPHeaderFields ?? [:],
+            body: request.httpBody
+        )
+        self.pending.append(pending)
+        persist()
+    }
+
+    func flush(using session: URLSession) async {
+        guard !pending.isEmpty else { return }
+        var remaining: [PendingRequest] = []
+        for item in pending {
+            var request = URLRequest(url: item.url)
+            request.httpMethod = item.method
+            item.headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+            request.httpBody = item.body
+            do {
+                _ = try await session.data(for: request)
+            } catch {
+                remaining.append(item)   // keep failed requests for next flush
+            }
+        }
+        pending = remaining
+        persist()
+    }
+
+    private func persist() {
+        let data = try? JSONEncoder().encode(pending)
+        try? data?.write(to: storageURL)
+    }
+
+    private func load() {
+        guard let data = try? Data(contentsOf: storageURL) else { return }
+        pending = (try? JSONDecoder().decode([PendingRequest].self, from: data)) ?? []
+    }
+}
+
+// ── Stale-while-revalidate pattern ────────────────────────────
+actor StaleWhileRevalidateCache {
+    private let urlCache: URLCache
+    private let session: URLSession
+    private let decoder: JSONDecoder
+
+    init(session: URLSession = .shared) {
+        self.session = session
+        self.urlCache = URLCache(
+            memoryCapacity: 20 * 1_024 * 1_024,
+            diskCapacity: 100 * 1_024 * 1_024
+        )
+        self.decoder = JSONDecoder()
+        self.decoder.keyDecodingStrategy = .convertFromSnakeCase
+    }
+
+    /// Returns cached value immediately (if available), then fetches fresh data.
+    /// The caller receives two values via AsyncStream — first stale, then fresh.
+    func fetch&lt;T: Decodable&gt;(_ type: T.Type, request: URLRequest) -&gt; AsyncStream&lt;T&gt; {
+        AsyncStream { continuation in
+            Task {
+                // 1. Emit stale cached value immediately
+                if let cached = urlCache.cachedResponse(for: request),
+                   let stale = try? decoder.decode(T.self, from: cached.data) {
+                    continuation.yield(stale)
+                }
+
+                // 2. Fetch fresh value from network
+                do {
+                    let (data, response) = try await session.data(for: request)
+                    let cached = CachedURLResponse(response: response, data: data)
+                    urlCache.storeCachedResponse(cached, for: request)
+                    if let fresh = try? decoder.decode(T.self, from: data) {
+                        continuation.yield(fresh)
+                    }
+                } catch { /* network failure — stale data still displayed */ }
+
+                continuation.finish()
+            }
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is exponential backoff and why should you add jitter?</strong></p>
+
+<p>A: Exponential backoff is a retry strategy where the wait time between attempts doubles on each failure: 1s, 2s, 4s, 8s, up to a maximum cap. This prevents hammering a server that is already under stress. Without jitter (a random offset added to each delay), all clients that received the same error at the same time will retry in lockstep — every 1s, every 2s, etc. — creating periodic spikes that prevent the server from stabilising. Adding jitter spreads retries randomly across the delay window, smoothing server load and giving it a real chance to recover. In iOS, you should only retry idempotent operations (GET, PUT, DELETE) and 5xx errors / <code>URLError.timedOut</code>. Never automatically retry POST without an idempotency key.</p>
+
+<p><strong>Q: What is URLProtocol and what can you use it for?</strong></p>
+
+<p>A: <code>URLProtocol</code> is an abstract class that sits between <code>URLSession</code> and the actual network. Every URL request passes through a chain of registered <code>URLProtocol</code> subclasses. By subclassing it, you can: (1) <strong>Log</strong> all outgoing requests and incoming responses without modifying the call sites. (2) <strong>Mock</strong> network responses in unit tests — return fake <code>HTTPURLResponse</code> + <code>Data</code> without hitting the real network. (3) <strong>Inject auth headers</strong> at a single interception point rather than at every request builder. (4) <strong>Throttle or simulate latency</strong> for testing slow network conditions. The cleanest approach registers the protocol per-session via <code>URLSessionConfiguration.protocolClasses</code> to avoid polluting <code>URLSession.shared</code> and all other sessions.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: Compare cursor-based, offset-based, and page-based pagination. When should you use each?</strong></p>
+
+<p>A: <strong>Offset-based</strong> (<code>?offset=40&amp;limit=20</code>) is simple and supported by most SQL databases with <code>LIMIT</code>/<code>OFFSET</code>. The problem: if items are inserted or deleted while the user is scrolling, results shift — the user may see the same item twice (when an item is deleted, earlier items slide into the offset range) or skip an item. <strong>Page-based</strong> (<code>?page=3&amp;per_page=20</code>) is semantically cleaner for human-readable UIs but has the same instability problem. <strong>Cursor-based</strong> uses an opaque pointer (e.g., an encoded item ID or timestamp) as the continuation token. The server returns items after that cursor, making results stable under insertions and deletions. It is the correct choice for real-time feeds (social, chat). The tradeoff: you cannot jump to an arbitrary page — you must iterate from the start. In iOS, model cursor pagination as an <code>AsyncSequence</code> that calls <code>next()</code> when the user scrolls near the bottom of the list, fetching and appending the next batch transparently.</p>
+
+<p><em></em>Q: How does <code>URLCache</code> work, and when does it NOT cache even when configured?<em></em></p>
+
+<p>A: <code>URLCache</code> stores <code>CachedURLResponse</code> objects keyed by <code>URLRequest</code>. It caches responses automatically when: the request is a GET, the response is HTTP 200–206/301/304/307/410, and <code>Cache-Control</code> allows caching (<code>max-age</code>, <code>public</code>, or no <code>no-store</code> directive). Common reasons caching fails even when configured: (1) The response includes <code>Cache-Control: no-store</code> or <code>Cache-Control: no-cache</code> — the system honours these. (2) The request cache policy is <code>.reloadIgnoringLocalCacheData</code> — always bypasses cache. (3) The request is not GET (POST/PUT responses are not cached). (4) The response is HTTPS but the server sends <code>Cache-Control: private</code> without a configured shared cache. (5) Memory + disk capacity are set to zero (the default for <code>.ephemeral</code> configuration). Manual control is available via <code>urlCache.storeCachedResponse(_:for:)</code> (write) and <code>urlCache.removeCachedResponse(for:)</code> (invalidate).</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you design an offline-first networking layer for an iOS app that must sync mutations when connectivity is restored?</strong></p>
+
+<p>A: An offline-first layer has four components: (1) <strong>Connectivity monitoring</strong> using <code>NWPathMonitor</code> to track real-time path status. (2) <strong>A request queue</strong> — an <code>actor</code>-isolated data structure that enqueues failed mutations (POST/PATCH/DELETE with idempotency keys) and persists them to disk (so they survive app termination). (3) <strong>A flush mechanism</strong> — when connectivity is restored (<code>NWPathMonitor</code> fires <code>pathUpdateHandler</code> with <code>.satisfied</code>), drain the queue by replaying each persisted request. Remove succeeded requests; keep failed ones for the next attempt, with backoff. (4) <strong>A stale-while-revalidate read layer</strong> — return cached data from <code>URLCache</code> immediately for a fast UI, then fetch fresh data in the background and update the UI when it arrives. Critical correctness details: idempotency keys prevent duplicate mutations on retry; persisted requests must include all headers (auth token at enqueue time may differ from replay time — consider re-fetching the current token on flush); ordering matters for dependent mutations (e.g., create post then add comment — preserve order in the queue). For complex apps, <code>Core Data</code> or a local SQLite database as the source of truth (with background sync) is more robust than a raw request queue.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Retry logic retries a POST, creating duplicate server-side records.</strong></p>
+
+<p>Solution: Only auto-retry idempotent methods (GET, PUT, DELETE, HEAD). For POST, use an <strong>idempotency key</strong>: generate a <code>UUID</code> per request and send it as a header (<code>Idempotency-Key: &lt;UUID&gt;</code>). The server deduplicates requests with the same key. On retry, send the same UUID — the server detects the duplicate and returns the original response without creating a new record.</p>
+
+<p><strong>Issue: URLProtocol interceptor causes an infinite loop of requests.</strong></p>
+
+<p>Solution: The interceptor creates a new internal <code>URLSession</code> to forward the request, which triggers the same <code>URLProtocol</code> again. Fix: mark the request as already handled using <code>URLProtocol.setProperty(true, forKey: "handled", in: mutableRequest)</code> before forwarding, and return <code>false</code> in <code>canInit(with:)</code> for requests with that property set.</p>
+
+<p><em></em>Issue: NWPathMonitor reports <code>.satisfied</code> but HTTPS requests still fail.<em></em></p>
+
+<p>Solution: <code>.satisfied</code> means a network path exists, not that the specific server is reachable (e.g., the user is connected to a captive portal Wi-Fi that hasn't been authenticated). <code>NWPathMonitor</code> cannot detect reachability to a specific host. Handle <code>URLError.notConnectedToInternet</code> and <code>URLError.networkConnectionLost</code> errors at the request level; treat <code>NWPathMonitor</code> as a hint to update UI, not as a guarantee of end-to-end connectivity.</p>
+
+<p><strong>Issue: Cached responses are returned for API endpoints that should always reflect the latest data.</strong></p>
+
+<p>Solution: Set <code>requestCachePolicy = .reloadIgnoringLocalCacheData</code> for mutation-sensitive endpoints, or have the server send <code>Cache-Control: no-store</code> on responses that must not be cached. Alternatively, manually invalidate the cache entry after a successful write operation: <code>URLCache.shared.removeCachedResponse(for: affectedRequest)</code>. For fine-grained control, use a custom <code>URLCache</code> subclass that applies different policies based on the URL path.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="urlsession.md">URLSession</a> — the networking primitives that retry, cache, and interceptor patterns wrap</li>
+<li><a href="http-rest-basics.md">HTTP &amp; REST Basics</a> — idempotency, status codes, Retry-After header</li>
+<li><a href="codable-json.md">Codable &amp; JSON</a> — decoding paginated response bodies</li>
+<li><a href="../03-concurrency/async-await.md">async/await</a> — retry loops and AsyncSequence pagination use structured concurrency</li>
+<li><a href="../08-data-persistence/index.md">Data Persistence</a> — offline queues and local caches bridge networking and persistence</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

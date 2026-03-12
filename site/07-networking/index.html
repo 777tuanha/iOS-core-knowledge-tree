@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Networking — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../07-networking/index.html">Networking</a></span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html" class="active">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1>Networking</h1>
+      <p>Networking is how an iOS app communicates with the outside world — fetching data from APIs, uploading files, receiving push payloads, and synchronising state with a server. Every production iOS app does networking. Senior engineers must understand the full stack: the HTTP/REST protocol layer, Apple's <code>URLSession</code> API, Swift's <code>Codable</code> system for serialisation, and the advanced patterns that make networking robust in the real world — retry, interceptors, caching, pagination, and offline handling.
+
+Apple's networking stack is built around <code>URLSession</code>, a mature, powerful API that supports data tasks, download/upload tasks, WebSocket, background transfers, and authentication. In modern Swift it integrates directly with async/await. For reactive pipelines, <code>URLSession.dataTaskPublisher</code> brings it into Combine.</p>
+
+      <h2>Topics in this section</h2>
+      <ul class="topic-list">
+        <li><a href="advanced-networking.html">Advanced Networking</a></li>
+        <li><a href="codable-json.html">Codable & JSON</a></li>
+        <li><a href="http-rest-basics.html">HTTP & REST Basics</a></li>
+        <li><a href="urlsession.html">URLSession</a></li>
+        
+      </ul>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTTP & REST Basics — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../07-networking/index.html">Networking</a></span>
+    <span>Http Rest Basics</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html" class="active">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="http--rest-basics">HTTP &amp; REST Basics</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>HTTP (HyperText Transfer Protocol) is the application-layer protocol underlying almost all web API communication. REST (Representational State Transfer) is an architectural style — a set of constraints — that governs how HTTP resources should be designed. Senior iOS engineers must understand both: HTTP because <code>URLSession</code> works at this level, and REST because most production APIs they consume are RESTful. Understanding status codes, headers, methods, and idempotency is essential for building correct error handling, retry logic, and caching.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of HTTP like sending letters. Each letter (request) has an address (URL), a type of action (method — "please send me", "please update"), and optional content (body). The post office (server) sends back a reply (response) with a status ("delivered successfully" = 200, "address not found" = 404, "post office on fire" = 500). REST is the convention for organising what those addresses mean: <code>/users</code> is the list of all users; <code>/users/42</code> is user number 42. The convention makes APIs predictable and self-documenting.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="http-methods">HTTP Methods</h3>
+
+<table>
+<tr><td>Method</td><td>Semantics</td><td>Idempotent?</td><td>Safe?</td><td>Has body?</td></tr>
+<tr><td>GET</td><td>Retrieve a resource</td><td>Yes</td><td>Yes</td><td>No</td></tr>
+<tr><td>POST</td><td>Create a resource / submit action</td><td>No</td><td>No</td><td>Yes</td></tr>
+<tr><td>PUT</td><td>Replace a resource entirely</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+<tr><td>PATCH</td><td>Partially update a resource</td><td>No*</td><td>No</td><td>Yes</td></tr>
+<tr><td>DELETE</td><td>Remove a resource</td><td>Yes</td><td>No</td><td>No</td></tr>
+<tr><td>HEAD</td><td>Like GET but no body (check existence/ETag)</td><td>Yes</td><td>Yes</td><td>No</td></tr>
+<tr><td>OPTIONS</td><td>Discover allowed methods (CORS preflight)</td><td>Yes</td><td>Yes</td><td>No</td></tr>
+</table>
+
+<p><strong>Idempotent</strong>: calling the method multiple times has the same effect as calling it once.</p>
+<p><strong>Safe</strong>: the method does not modify server state.</p>
+
+<p><strong>iOS implication</strong>: Only retry idempotent methods automatically. Retrying a POST can create duplicate resources.</p>
+
+<h3 id="http-status-codes">HTTP Status Codes</h3>
+
+<table>
+<tr><td>Range</td><td>Category</td><td>Common codes</td></tr>
+<tr><td>1xx</td><td>Informational</td><td>100 Continue, 101 Switching Protocols</td></tr>
+<tr><td>2xx</td><td>Success</td><td>200 OK, 201 Created, 204 No Content</td></tr>
+<tr><td>3xx</td><td>Redirection</td><td>301 Moved Permanently, 304 Not Modified</td></tr>
+<tr><td>4xx</td><td>Client error</td><td>400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 409 Conflict, 422 Unprocessable Entity, 429 Too Many Requests</td></tr>
+<tr><td>5xx</td><td>Server error</td><td>500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout</td></tr>
+</table>
+
+<p><strong>Key distinctions</strong>:</p>
+<ul>
+<li><strong>401 vs 403</strong>: 401 means unauthenticated (no valid token); 403 means authenticated but unauthorised (valid token, insufficient permissions).</li>
+<li><strong>400 vs 422</strong>: 400 is a malformed request (bad JSON structure); 422 is well-formed but semantically invalid (email already in use).</li>
+<li><strong>429</strong>: Too Many Requests — rate limited; response includes <code>Retry-After</code> header.</li>
+<li><strong>503</strong>: Service Unavailable — temporary; safe to retry after a delay.</li>
+</ul>
+
+<h3 id="http-headers">HTTP Headers</h3>
+
+<p>Headers are key-value metadata attached to requests and responses.</p>
+
+<p><strong>Common request headers</strong>:</p>
+
+<table>
+<tr><td>Header</td><td>Purpose</td><td>Example</td></tr>
+<tr><td><code>Authorization</code></td><td>Authentication token</td><td><code>Bearer eyJhbGci...</code></td></tr>
+<tr><td><code>Content-Type</code></td><td>MIME type of the request body</td><td><code>application/json; charset=utf-8</code></td></tr>
+<tr><td><code>Accept</code></td><td>MIME types the client accepts</td><td><code>application/json</code></td></tr>
+<tr><td><code>Accept-Language</code></td><td>Client's preferred language</td><td><code>en-US, en;q=0.9</code></td></tr>
+<tr><td><code>User-Agent</code></td><td>Client identification</td><td><code>MyApp/2.1 (iOS 17; iPhone)</code></td></tr>
+<tr><td><code>If-None-Match</code></td><td>Conditional GET (ETag-based)</td><td><code>"abc123"</code></td></tr>
+<tr><td><code>If-Modified-Since</code></td><td>Conditional GET (date-based)</td><td><code>Wed, 01 Jan 2025 00:00:00 GMT</code></td></tr>
+</table>
+
+<p><strong>Common response headers</strong>:</p>
+
+<table>
+<tr><td>Header</td><td>Purpose</td></tr>
+<tr><td><code>Content-Type</code></td><td>MIME type of the response body</td></tr>
+<tr><td><code>Cache-Control</code></td><td>Caching directives (<code>max-age=3600</code>, <code>no-cache</code>, <code>no-store</code>)</td></tr>
+<tr><td><code>ETag</code></td><td>Entity tag for conditional requests</td></tr>
+<tr><td><code>Last-Modified</code></td><td>Last modification date of the resource</td></tr>
+<tr><td><code>Retry-After</code></td><td>How long to wait before retrying (429/503 responses)</td></tr>
+<tr><td><code>X-RateLimit-Remaining</code></td><td>Remaining requests in the current window</td></tr>
+<tr><td><code>Location</code></td><td>URL of a newly created resource (201 Created)</td></tr>
+</table>
+
+<h3 id="rest-constraints">REST Constraints</h3>
+
+<p>REST is defined by six architectural constraints:</p>
+
+<ol>
+<li><strong>Client-Server</strong>: Separation of UI from data storage.</li>
+<li><strong>Stateless</strong>: Each request contains all information needed; no server-side session state.</li>
+<li><strong>Cacheable</strong>: Responses declare whether they can be cached.</li>
+<li><strong>Uniform Interface</strong>: Resources identified by URLs; standard HTTP methods; hypermedia (HATEOAS).</li>
+<li><strong>Layered System</strong>: Client doesn't know if it's talking to the server directly or a proxy/CDN.</li>
+<li><strong>Code on Demand</strong> (optional): Server can deliver executable code (e.g., JavaScript).</li>
+</ol>
+
+<h3 id="restful-resource-design">RESTful Resource Design</h3>
+
+<pre><code>GET    /posts           → list all posts
+POST   /posts           → create a new post
+GET    /posts/42        → get post 42
+PUT    /posts/42        → replace post 42
+PATCH  /posts/42        → partially update post 42
+DELETE /posts/42        → delete post 42
+GET    /posts/42/comments → list comments on post 42</code></pre>
+
+<h3 id="content-negotiation">Content Negotiation</h3>
+
+<p>Client and server negotiate format via headers:</p>
+<ul>
+<li>Client sends <code>Accept: application/json</code> — prefers JSON.</li>
+<li>Server responds <code>Content-Type: application/json</code> — confirming JSON.</li>
+<li>If server can't satisfy <code>Accept</code>, it returns <code>406 Not Acceptable</code>.</li>
+</ul>
+
+<h3 id="caching-with-etags">Caching with ETags</h3>
+
+<pre><code>1. Client: GET /posts/42
+2. Server: 200 OK, ETag: "abc123", body: {...}
+3. (time passes)
+4. Client: GET /posts/42, If-None-Match: "abc123"
+5. Server: 304 Not Modified (no body) — client uses cached copy
+     OR
+   Server: 200 OK, ETag: "xyz789", body: {...} — new content</code></pre>
+
+<p><code>URLCache</code> handles this automatically when <code>Cache-Control</code> headers are correct.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── Building URLRequests with correct HTTP method + headers ───
+func makeGetRequest(url: URL, token: String) -&gt; URLRequest {
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"                                  // explicit — GET is default
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    return request
+}
+
+func makePostRequest&lt;T: Encodable&gt;(url: URL, body: T, token: String) throws -&gt; URLRequest {
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.httpBody = try JSONEncoder().encode(body)           // encode body to JSON
+    return request
+}
+
+func makePatchRequest&lt;T: Encodable&gt;(url: URL, body: T, token: String) throws -&gt; URLRequest {
+    var request = URLRequest(url: url)
+    request.httpMethod = "PATCH"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.httpBody = try JSONEncoder().encode(body)
+    return request
+}
+
+// ── Validating HTTP status codes ──────────────────────────────
+enum NetworkError: Error {
+    case unauthorized                // 401
+    case forbidden                   // 403
+    case notFound                    // 404
+    case rateLimited(retryAfter: TimeInterval?)  // 429
+    case serverError(statusCode: Int)            // 5xx
+    case unexpected(statusCode: Int)
+}
+
+func validate(response: URLResponse, data: Data) throws -&gt; Data {
+    guard let http = response as? HTTPURLResponse else {
+        throw NetworkError.unexpected(statusCode: -1)
+    }
+    switch http.statusCode {
+    case 200...299:
+        return data                   // success — return data for decoding
+    case 401:
+        throw NetworkError.unauthorized
+    case 403:
+        throw NetworkError.forbidden
+    case 404:
+        throw NetworkError.notFound
+    case 429:
+        let retryAfter = (http.value(forHTTPHeaderField: "Retry-After"))
+            .flatMap { TimeInterval($0) }
+        throw NetworkError.rateLimited(retryAfter: retryAfter)
+    case 500...599:
+        throw NetworkError.serverError(statusCode: http.statusCode)
+    default:
+        throw NetworkError.unexpected(statusCode: http.statusCode)
+    }
+}
+
+// ── Full request + validation ─────────────────────────────────
+struct Post: Decodable { let id: Int; let title: String }
+
+func fetchPost(id: Int, token: String) async throws -&gt; Post {
+    let url = URL(string: "https://api.example.com/posts/\(id)")!
+    let request = makeGetRequest(url: url, token: token)
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+    let validData = try validate(response: response, data: data)
+    return try JSONDecoder().decode(Post.self, from: validData)
+}
+
+// ── Reading response headers ──────────────────────────────────
+func fetchWithETag(url: URL) async throws -&gt; (Data, String?) {
+    let (data, response) = try await URLSession.shared.data(from: url)
+    let etag = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "ETag")
+    return (data, etag)
+}
+
+// ── Conditional GET with If-None-Match ───────────────────────
+func fetchIfChanged(url: URL, etag: String?) async throws -&gt; Data? {
+    var request = URLRequest(url: url)
+    if let etag { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+    guard let http = response as? HTTPURLResponse else { return data }
+
+    if http.statusCode == 304 { return nil }    // not modified — use cached copy
+    return data
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between PUT and PATCH?</strong></p>
+
+<p>A: <code>PUT</code> replaces the entire resource at the target URL with the request body. If you <code>PUT</code> a user object, all fields are replaced — omitting a field removes it. <code>PATCH</code> applies a partial update — only the fields included in the request body are changed. In iOS, use <code>PUT</code> when the client owns the complete resource representation and can always send the full object. Use <code>PATCH</code> for incremental edits (e.g., updating a user's display name without sending their entire profile). <code>PUT</code> is idempotent; <code>PATCH</code> technically is not, though many APIs treat it as idempotent in practice.</p>
+
+<p><strong>Q: What is the difference between a 401 and a 403 status code?</strong></p>
+
+<p>A: <code>401 Unauthorized</code> means the request is <strong>unauthenticated</strong> — no valid credentials were provided, or the token is expired. The correct action is to re-authenticate (refresh the token or prompt for login). <code>403 Forbidden</code> means the request is <strong>authenticated</strong> (the server knows who you are) but <strong>unauthorised</strong> — your account lacks permission to access the resource. Re-authenticating won't help; the user simply doesn't have access. In iOS networking layers, these require different handling: 401 triggers a token refresh; 403 shows an "insufficient permissions" error to the user.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: Explain ETags and conditional requests. Why are they important for mobile networking?</strong></p>
+
+<p>A: An ETag is an opaque identifier (hash or version string) the server assigns to a resource. On a GET response, the server includes <code>ETag: "abc123"</code>. On subsequent requests, the client sends <code>If-None-Match: "abc123"</code>. If the resource hasn't changed, the server returns <code>304 Not Modified</code> with no body — saving bandwidth. If changed, it returns <code>200 OK</code> with the new body and new ETag. For mobile networks, this is significant: a 304 response costs only the round-trip (headers only), while a full JSON payload might be 100KB+. <code>URLCache</code> handles ETags automatically when <code>Cache-Control</code> headers permit caching and when using the <code>.useProtocolCachePolicy</code> cache policy.</p>
+
+<p><strong>Q: When should you retry a failed request and when should you not?</strong></p>
+
+<p>A: Retry only <strong>idempotent</strong> requests where it is safe to call multiple times: GET, PUT, DELETE, HEAD. Never auto-retry POST (could create duplicate records) or PATCH without idempotency keys. Retry for: <code>5xx</code> server errors (transient failures), <code>429 Too Many Requests</code> (after the <code>Retry-After</code> delay), network timeouts (<code>URLError.timedOut</code>), and DNS failures. Do not retry for: <code>4xx</code> client errors (the request is wrong — retrying won't help), <code>401</code> without first refreshing the token, or <code>403</code> (permission denied). Always implement exponential backoff with jitter to avoid thundering-herd when a server recovers — see <a href="advanced-networking.md">Advanced Networking</a>.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe HTTP/2 multiplexing and how it affects iOS networking compared to HTTP/1.1.</strong></p>
+
+<p>A: HTTP/1.1 sends one request per TCP connection (with pipelining rarely used in practice). HTTP/2 multiplexes multiple concurrent requests over a single TCP connection using binary-framed streams. For iOS apps that make 10–20 concurrent API calls on a screen load, HTTP/1.1 required multiple TCP+TLS handshakes, with each new connection costing 100–300ms. HTTP/2 amortises this cost — all requests share one connection, headers are compressed (HPACK), and the server can push responses proactively. <code>URLSession</code> transparently uses HTTP/2 when the server supports ALPN negotiation. Developers generally don't need to configure anything, but understanding this is important for: diagnosing why batching 20 requests into one is less valuable on HTTP/2 than on HTTP/1.1; understanding server-push use cases; and troubleshooting why <code>URLSession</code> maintains only one connection to the same host under HTTP/2.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Server returns 200 even for errors — body contains <code>{ "error": "not found" }</code>.<em></em></p>
+
+<p>Solution: Some APIs (especially older ones) use HTTP 200 for all responses and encode errors in the body. Your <code>validate</code> function must check both the HTTP status and the response body structure. Add a <code>tryMap</code> step in your pipeline to parse the body and throw an error if it contains an error field.</p>
+
+<p><em></em>Issue: <code>Authorization</code> header is stripped on redirect.<em></em></p>
+
+<p>Solution: <code>URLSession</code> drops the <code>Authorization</code> header by default on cross-origin redirects (security measure). Use <code>URLSessionTaskDelegate.urlSession(_:task:willPerformHTTPRedirection:newRequest:completionHandler:)</code> to re-add the header to the new request when the redirect is to a trusted domain.</p>
+
+<p><strong>Issue: POST request creates duplicate records on retry.</strong></p>
+
+<p>Solution: Implement <strong>idempotency keys</strong> — a client-generated UUID sent as a header (e.g., <code>Idempotency-Key: &lt;UUID&gt;</code>). The server deduplicates requests with the same key. Alternatively, move the retry logic to only apply to GET requests and implement a separate "check then create" flow for POST.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="urlsession.md">URLSession</a> — the iOS API that sends HTTP requests</li>
+<li><a href="codable-json.md">Codable &amp; JSON</a> — decoding HTTP response bodies</li>
+<li><a href="advanced-networking.md">Advanced Networking</a> — retry, caching, pagination, offline</li>
+<li><a href="../05-reactive-programming/combine-networking.md">Combine Networking</a> — Combine pipeline for HTTP requests</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

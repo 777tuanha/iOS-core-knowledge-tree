@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>URLSession — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../07-networking/index.html">Networking</a></span>
+    <span>Urlsession</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html" class="active">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="urlsession">URLSession</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>URLSession</code> is Apple's high-level networking API, providing a unified interface for HTTP/HTTPS requests, file downloads and uploads, WebSocket connections, and background transfers. It manages connection pooling, TLS negotiation, authentication challenges, cookies, caching, and HTTP/2 multiplexing automatically. In modern Swift it integrates natively with async/await via <code>data(for:)</code>, <code>download(for:)</code>, and <code>upload(for:from:)</code>. Understanding URLSession's architecture — configurations, task types, delegate callbacks, and background sessions — is foundational for all iOS networking work.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p><code>URLSession</code> is like a courier company. You give the company a delivery request (<code>URLRequest</code>) — the address (URL), the package type (method), and any customs forms (headers). The company handles all the logistics: finding the address (DNS), opening a road (TCP connection), securing the truck (TLS), and delivering the package. When delivery is complete, the company calls you back (completion handler or async return) with the reply. You can have one courier company per app (<code>URLSession.shared</code>) or create your own with custom rules (<code>URLSessionConfiguration</code>).</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="urlsession-architecture">URLSession Architecture</h3>
+
+<pre><code>URLSession
+  ├── URLSessionConfiguration  (session-level settings)
+  ├── URLSessionDelegate       (session-level events: auth, metrics)
+  └── URLSessionTask subclasses:
+        ├── URLSessionDataTask       (data in memory)
+        ├── URLSessionDownloadTask   (file to disk, resumable)
+        ├── URLSessionUploadTask     (data/file → server)
+        ├── URLSessionStreamTask     (TCP/TLS stream)
+        └── URLSessionWebSocketTask  (WebSocket)</code></pre>
+
+<h3 id="urlsessionconfiguration">URLSessionConfiguration</h3>
+
+<p>The configuration controls session-level behaviour and is set once at creation — it cannot be changed after the session is initialised.</p>
+
+<table>
+<tr><td>Configuration type</td><td>Description</td></tr>
+<tr><td><code>.default</code></td><td>Disk-persistent cache, cookies, credentials</td></tr>
+<tr><td><code>.ephemeral</code></td><td>No persistence — cache/cookies/credentials in memory only; cleared on session release</td></tr>
+<tr><td><code>.background(withIdentifier:)</code></td><td>Transfers continue after app is suspended or terminated</td></tr>
+</table>
+
+<p>Key properties:</p>
+<pre><code class="language-swift">let config = URLSessionConfiguration.default
+config.timeoutIntervalForRequest = 30      // per-request timeout (default 60s)
+config.timeoutIntervalForResource = 300    // total resource timeout
+config.waitsForConnectivity = true         // queue request until network available
+config.httpAdditionalHeaders = ["User-Agent": "MyApp/1.0"]  // added to every request
+config.urlCache = URLCache(memoryCapacity: 20_000_000, diskCapacity: 100_000_000)
+config.requestCachePolicy = .useProtocolCachePolicy  // honour Cache-Control
+config.httpMaximumConnectionsPerHost = 6   // limit concurrent connections</code></pre>
+
+<h3 id="task-types">Task Types</h3>
+
+<p><strong>URLSessionDataTask</strong> — fetches data directly into memory. Standard for API calls.</p>
+
+<p><strong>URLSessionDownloadTask</strong> — writes response to a temporary file. Essential for large files (video, documents) because it doesn't hold the entire file in memory. Supports <strong>resumable downloads</strong> with resume data:</p>
+<pre><code class="language-swift">let resumeData = task.cancel(byProducingResumeData:)
+// later:
+let resumedTask = session.downloadTask(withResumeData: resumeData)</code></pre>
+
+<p><strong>URLSessionUploadTask</strong> — sends data or a file to the server. Preferred over a data task with a body for large uploads because it streams the body rather than loading it into memory.</p>
+
+<p><strong>URLSessionWebSocketTask</strong> — bidirectional WebSocket connection. Supports <code>send(_:)</code>, <code>receive()</code>, and <code>sendPing(pongReceiveHandler:)</code>.</p>
+
+<h3 id="urlrequest-configuration">URLRequest Configuration</h3>
+
+<pre><code class="language-swift">var request = URLRequest(url: url)
+request.httpMethod = "POST"
+request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+request.httpBody = try JSONEncoder().encode(body)
+request.timeoutInterval = 15           // overrides session-level timeout for this request
+request.cachePolicy = .reloadIgnoringLocalCacheData   // bypass cache</code></pre>
+
+<h3 id="asyncawait-api-ios-15">async/await API (iOS 15+)</h3>
+
+<pre><code class="language-swift">// Data task
+let (data, response) = try await URLSession.shared.data(for: request)
+
+// Download task
+let (localURL, response) = try await URLSession.shared.download(for: request)
+
+// Upload task
+let (data, response) = try await URLSession.shared.upload(for: request, from: bodyData)
+
+// Bytes (streaming)
+let (asyncBytes, response) = try await URLSession.shared.bytes(for: request)
+for try await byte in asyncBytes { /* process byte by byte */ }</code></pre>
+
+<p>All async methods throw <code>URLError</code> on network failure. They are automatically cancelled when the enclosing <code>Task</code> is cancelled — no <code>AnyCancellable</code> needed.</p>
+
+<h3 id="completion-handler-api-pre-ios-15--callback-style">Completion Handler API (pre-iOS 15 / callback style)</h3>
+
+<pre><code class="language-swift">let task = URLSession.shared.dataTask(with: request) { data, response, error in
+    if let error { /* handle */ return }
+    guard let data, let response else { return }
+    // validate + decode
+}
+task.resume()   // tasks start suspended — must call resume()</code></pre>
+
+<p><strong>Important</strong>: Completion handlers are called on an arbitrary background queue — always dispatch UI updates to the main queue.</p>
+
+<h3 id="urlsession-delegate">URLSession Delegate</h3>
+
+<p>For fine-grained control: authentication, upload progress, redirect handling, metrics.</p>
+
+<pre><code class="language-swift">class NetworkDelegate: NSObject, URLSessionDataDelegate, URLSessionTaskDelegate {
+
+    // Authentication challenge (basic auth, client certificate)
+    func urlSession(_ session: URLSession,
+                    task: URLSessionTask,
+                    didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -&gt; Void) {
+        // Certificate pinning happens here
+        completionHandler(.performDefaultHandling, nil)
+    }
+
+    // Upload/download progress
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    didSendBodyData bytesSent: Int64,
+                    totalBytesSent: Int64,
+                    totalBytesExpectedToSend: Int64) {
+        let progress = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
+        print("Upload progress: \(progress)")
+    }
+
+    // HTTP redirect
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -&gt; Void) {
+        completionHandler(request)   // nil to block redirect
+    }
+}</code></pre>
+
+<h3 id="background-sessions">Background Sessions</h3>
+
+<p>Background sessions allow transfers to continue after the app is suspended or terminated by the OS.</p>
+
+<pre><code class="language-swift">// Create a background session with a unique identifier
+let config = URLSessionConfiguration.background(withIdentifier: "com.myapp.uploads")
+config.isDiscretionary = true          // allow OS to schedule at optimal time
+config.sessionSendsLaunchEvents = true // wake app when transfer completes
+let bgSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+
+// In AppDelegate — handle background session completion
+func application(_ application: UIApplication,
+                 handleEventsForBackgroundURLSession identifier: String,
+                 completionHandler: @escaping () -&gt; Void) {
+    backgroundCompletionHandler = completionHandler
+}
+
+// In URLSessionDelegate
+func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+    DispatchQueue.main.async {
+        backgroundCompletionHandler?()   // tell system all events are processed
+        backgroundCompletionHandler = nil
+    }
+}</code></pre>
+
+<h3 id="metrics">Metrics</h3>
+
+<p><code>URLSessionTaskMetrics</code> provides detailed timing breakdowns: DNS lookup, TCP connect, TLS handshake, request sent, response start, response end. Accessed via <code>URLSessionTaskDelegate.urlSession(_:task:didFinishCollecting:)</code>.</p>
+
+<h3 id="urlsessionshared-vs-custom-session">URLSession.shared vs Custom Session</h3>
+
+<table>
+<tr><td></td><td>URLSession.shared</td><td>Custom URLSession</td></tr>
+<tr><td>Configuration</td><td>Cannot change</td><td>Full control</td></tr>
+<tr><td>Delegate</td><td>None</td><td>Custom delegate possible</td></tr>
+<tr><td>Background transfers</td><td>Not supported</td><td>Supported</td></tr>
+<tr><td>Memory</td><td>Shared cache</td><td>Isolated cache</td></tr>
+<tr><td>Best for</td><td>Simple one-off requests</td><td>Production networking layers</td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+
+// ── Generic async network client ──────────────────────────────
+actor NetworkClient {
+    private let session: URLSession
+    private let decoder: JSONDecoder
+
+    init(configuration: URLSessionConfiguration = .default) {
+        self.session = URLSession(configuration: configuration)
+        self.decoder = JSONDecoder()
+        self.decoder.keyDecodingStrategy = .convertFromSnakeCase
+        self.decoder.dateDecodingStrategy = .iso8601
+    }
+
+    func fetch&lt;T: Decodable&gt;(_ type: T.Type, request: URLRequest) async throws -&gt; T {
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    @discardableResult
+    func send(request: URLRequest) async throws -&gt; Data {
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return data
+    }
+
+    private func validate(response: URLResponse, data: Data) throws {
+        guard let http = response as? HTTPURLResponse else { return }
+        guard (200...299).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+    }
+}
+
+// ── Download task with progress ────────────────────────────────
+class FileDownloader: NSObject, URLSessionDownloadDelegate {
+    private lazy var session = URLSession(
+        configuration: .default,
+        delegate: self,
+        delegateQueue: nil
+    )
+    var onProgress: ((Double) -&gt; Void)?
+    var onComplete: ((URL) -&gt; Void)?
+
+    func download(url: URL) {
+        let task = session.downloadTask(with: url)
+        task.resume()
+    }
+
+    // URLSessionDownloadDelegate
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didFinishDownloadingTo location: URL) {
+        // Move temp file to permanent location before returning
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(
+            location.lastPathComponent
+        )
+        try? FileManager.default.moveItem(at: location, to: dest)
+        DispatchQueue.main.async { self.onComplete?(dest) }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64,
+                    totalBytesWritten: Int64,
+                    totalBytesExpectedToWrite: Int64) {
+        guard totalBytesExpectedToWrite &gt; 0 else { return }
+        let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        DispatchQueue.main.async { self.onProgress?(progress) }
+    }
+}
+
+// ── WebSocket ──────────────────────────────────────────────────
+class ChatWebSocket {
+    private var task: URLSessionWebSocketTask?
+
+    func connect(to url: URL) {
+        task = URLSession.shared.webSocketTask(with: url)
+        task?.resume()
+        receiveNext()
+    }
+
+    func send(text: String) {
+        task?.send(.string(text)) { error in
+            if let error { print("Send error: \(error)") }
+        }
+    }
+
+    private func receiveNext() {
+        task?.receive { [weak self] result in
+            switch result {
+            case .success(let message):
+                switch message {
+                case .string(let text): print("Received: \(text)")
+                case .data(let data): print("Received data: \(data.count) bytes")
+                @unknown default: break
+                }
+                self?.receiveNext()   // queue next receive
+            case .failure(let error):
+                print("Receive error: \(error)")
+            }
+        }
+    }
+
+    func disconnect() {
+        task?.cancel(with: .normalClosure, reason: nil)
+    }
+}
+
+// ── Background download ────────────────────────────────────────
+class BackgroundDownloadManager: NSObject, URLSessionDownloadDelegate {
+    static let sessionIdentifier = "com.myapp.background-download"
+    var backgroundCompletionHandler: (() -&gt; Void)?
+
+    private lazy var session: URLSession = {
+        let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
+        config.isDiscretionary = false          // download ASAP, not at system's convenience
+        config.sessionSendsLaunchEvents = true
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+
+    func startDownload(url: URL) {
+        let task = session.downloadTask(with: url)
+        task.earliestBeginDate = nil            // start immediately
+        task.resume()
+    }
+
+    func urlSession(_ session: URLSession,
+                    downloadTask: URLSessionDownloadTask,
+                    didFinishDownloadingTo location: URL) {
+        // Store file permanently — temp file is deleted after this returns
+        let dest = /* permanent URL */ location
+        try? FileManager.default.copyItem(at: location, to: dest)
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        DispatchQueue.main.async {
+            self.backgroundCompletionHandler?()
+            self.backgroundCompletionHandler = nil
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>URLSessionDataTask</code>, <code>URLSessionDownloadTask</code>, and <code>URLSessionUploadTask</code>?<em></em></p>
+
+<p>A: <code>URLSessionDataTask</code> fetches the response body directly into an in-memory <code>Data</code> object — appropriate for API calls where the response is small enough to fit comfortably in RAM. <code>URLSessionDownloadTask</code> writes the response to a temporary file on disk as it arrives — appropriate for large files (video, audio, large documents) because it never holds the full content in memory. Crucially, download tasks support <strong>resumable downloads</strong>: if interrupted, you can obtain resume data and restart from where you left off. <code>URLSessionUploadTask</code> sends a request body from a file or data stream — like a data task but designed for sending large bodies without loading them entirely into memory.</p>
+
+<p><em></em>Q: Why must you call <code>task.resume()</code> after creating a URLSessionTask?<em></em></p>
+
+<p>A: All <code>URLSessionTask</code> objects are created in a <strong>suspended</strong> state. This design allows you to configure the task (set priority, description, etc.) before it begins work, and to create tasks ahead of time and start them later. If <code>resume()</code> is not called, the task never starts and no network request is sent. The completion handler is never called. This is a common oversight when using the callback API — the async/await API (<code>session.data(for:)</code>) handles this automatically and does not require a <code>resume()</code> call.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: When should you use a custom <code>URLSession</code> instead of <code>URLSession.shared</code>?<em></em></p>
+
+<p>A: <code>URLSession.shared</code> is convenient but has limitations: you cannot change its configuration, it uses a shared cache and cookie store, it has no delegate (so no authentication handling, progress callbacks, or metrics), and it cannot perform background transfers. Use a custom session when: (1) you need a background configuration for downloads/uploads that survive app suspension; (2) you need a delegate for authentication challenges (certificate pinning, client certificates); (3) you need upload/download progress; (4) you need an ephemeral session (privacy — no caching, no cookies, credentials cleared on release); (5) you need custom timeout intervals, cache policies, or additional headers applied session-wide.</p>
+
+<p><em></em>Q: How does <code>waitsForConnectivity</code> change URLSession's behaviour?<em></em></p>
+
+<p>A: By default (<code>waitsForConnectivity = false</code>), if the network is unavailable when a task starts, it fails immediately with <code>URLError.notConnectedToInternet</code>. With <code>waitsForConnectivity = true</code>, URLSession queues the request and waits for connectivity before starting the task. When connectivity is restored, the task automatically begins. The delegate callback <code>urlSession(_:taskIsWaitingForConnectivity:)</code> fires so you can update UI (show "waiting for network" state). This is particularly useful for foreground tasks where you want to automatically retry when connectivity returns without writing retry logic yourself.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe how background URLSession transfers work when the app is terminated and how to correctly handle the completion.</strong></p>
+
+<p>A: When an app with a background URLSession is terminated by the OS (memory pressure, user swipe), in-flight background tasks continue running in a system-managed process. When a task completes, the OS relaunches the app in the background and calls <code>application(_:handleEventsForBackgroundURLSession:completionHandler:)</code>. The app must store the completion handler, recreate the background <code>URLSession</code> with the same identifier (matching the one delivered), and wait for all delegate callbacks to fire. <code>URLSessionDelegate.urlSessionDidFinishEvents(forBackgroundURLSession:)</code> fires when all pending events have been delivered. At that point, you call the stored completion handler — signalling to the OS that your app has finished processing and it can take a new snapshot. Calling the handler too early or forgetting it causes issues: the OS may not correctly snapshot the app state for the background task.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Completion handler is never called.</strong></p>
+
+<p>Solution: Forgot to call <code>task.resume()</code>. Every URLSessionTask is created suspended.</p>
+
+<p><strong>Issue: UI update from completion handler causes purple runtime warning.</strong></p>
+
+<p>Solution: URLSession delivers completion callbacks on a background queue. Wrap UI updates in <code>DispatchQueue.main.async { }</code> or use <code>await MainActor.run { }</code> in async context.</p>
+
+<p><strong>Issue: Task is not cancelled when the owning object is deallocated.</strong></p>
+
+<p>Solution: Store the <code>URLSessionTask</code> as a property and call <code>task?.cancel()</code> in <code>deinit</code>. With async/await, cancel the enclosing <code>Task</code> handle. With Combine, cancel the <code>AnyCancellable</code>.</p>
+
+<p><strong>Issue: Background session events delivered after app relaunch but delegate is nil.</strong></p>
+
+<p>Solution: You must recreate the <code>URLSession</code> with the same identifier before <code>application(_:handleEventsForBackgroundURLSession:completionHandler:)</code> returns. Store the session as an app-level singleton. The OS will deliver buffered events to the delegate as soon as the session is recreated.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="http-rest-basics.md">HTTP &amp; REST Basics</a> — HTTP methods, status codes, headers</li>
+<li><a href="codable-json.md">Codable &amp; JSON</a> — decoding the Data returned by URLSession</li>
+<li><a href="advanced-networking.md">Advanced Networking</a> — URLCache, retry, URLProtocol interceptors</li>
+<li><a href="../03-concurrency/async-await.md">async/await</a> — URLSession's async API uses structured concurrency</li>
+<li><a href="../05-reactive-programming/combine-networking.md">Combine Networking</a> — dataTaskPublisher</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>
