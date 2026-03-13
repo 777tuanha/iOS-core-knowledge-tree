@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AVFoundation — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../09-ios-platform/index.html">Ios Platform</a></span>
+    <span>Avfoundation</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html" class="active">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="avfoundation">AVFoundation</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>AVFoundation is Apple's framework for working with audiovisual media: playing video and audio, capturing from camera and microphone, compositing media assets, and managing audio sessions. It underpins every media experience on iOS — from simple video playback to custom camera UIs and audio mixing. The framework has two primary subsystems: <strong>playback</strong> (<code>AVPlayer</code>, <code>AVPlayerItem</code>, <code>AVPlayerViewController</code>) for consuming media from URLs or local files, and <strong>capture</strong> (<code>AVCaptureSession</code>, <code>AVCaptureDevice</code>, <code>AVCaptureInput</code>, <code>AVCaptureOutput</code>) for recording from hardware inputs. <code>AVAudioSession</code> manages how the app interacts with the audio hardware and other audio-producing apps system-wide.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of AVFoundation as a professional AV studio. <strong>AVPlayer</strong> is the projector — you feed it a film reel (<code>AVPlayerItem</code>) and it plays back video through a screen (<code>AVPlayerLayer</code> or <code>AVPlayerViewController</code>). <strong>AVCaptureSession</strong> is the recording studio — microphones and cameras (<code>AVCaptureInput</code>) feed signal into recording equipment (<code>AVCaptureOutput</code>) that writes to disk or streams preview to a monitor. <strong>AVAudioSession</strong> is the studio's mixing board routing — it decides whether your app's audio goes through the speaker, headphones, or Bluetooth, and whether it should duck, pause, or mix with background music.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="avplayer-and-playback-pipeline">AVPlayer and Playback Pipeline</h3>
+
+<pre><code>AVURLAsset (media file / HLS URL)
+    │
+    ▼
+AVPlayerItem  (loading state, tracks, timing)
+    │
+    ▼
+AVPlayer      (playback control: rate, seek, volume)
+    │
+    ├──► AVPlayerLayer          (renders video into CALayer)
+    └──► AVPlayerViewController (full-featured player UI)</code></pre>
+
+<p><strong>Key AVPlayerItem states</strong> (accessed via <code>KVO</code> or <code>async</code> sequences):</p>
+<ul>
+<li><code>.unknown</code> — not loaded</li>
+<li><code>.readyToPlay</code> — buffer loaded, can start</li>
+<li><code>.failed</code> — error; check <code>item.error</code></li>
+</ul>
+
+<p><strong>Buffering</strong>: <code>AVPlayerItem.isPlaybackLikelyToKeepUp</code> and <code>preferredForwardBufferDuration</code> control adaptive buffering behaviour.</p>
+
+<h3 id="observing-playback">Observing Playback</h3>
+
+<p>KVO and notifications are the traditional approach; iOS 16+ adds <code>AVPlayer.currentTimePublisher()</code> and async sequences:</p>
+
+<pre><code class="language-swift">// KVO on status
+playerItem.observe(\.status) { item, _ in
+    if item.status == .readyToPlay { player.play() }
+}
+
+// Periodic time observer
+player.addPeriodicTimeObserver(
+    forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+    queue: .main
+) { time in
+    updateProgressUI(time)
+}
+
+// iOS 15+ async
+for await _ in player.currentItem?.publisher(for: \.status).values ?? Empty().values {
+    // handle status change
+}</code></pre>
+
+<h3 id="avplayerviewcontroller">AVPlayerViewController</h3>
+
+<p>The system-provided full-featured player UI (transport controls, AirPlay, Picture-in-Picture, subtitles):</p>
+
+<pre><code class="language-swift">let playerVC = AVPlayerViewController()
+playerVC.player = player
+present(playerVC, animated: true) {
+    player.play()
+}</code></pre>
+
+<h3 id="avcapturesession--capture-pipeline">AVCaptureSession — Capture Pipeline</h3>
+
+<pre><code>AVCaptureDevice (camera / microphone)
+    │
+    ▼
+AVCaptureDeviceInput
+    │ added to session
+    ▼
+AVCaptureSession
+    │ outputs
+    ├──► AVCapturePhotoOutput    (still photos)
+    ├──► AVCaptureMovieFileOutput (video recording to file)
+    ├──► AVCaptureVideoDataOutput (raw frame access)
+    └──► AVCaptureAudioDataOutput (raw audio samples)</code></pre>
+
+<p><strong>Session presets</strong>: <code>AVCaptureSession.Preset</code> controls output quality — <code>.photo</code>, <code>.high</code>, <code>.medium</code>, <code>.low</code>, <code>.hd1920x1080</code>.</p>
+
+<p><em></em>All <code>AVCaptureSession</code> configuration must happen on a dedicated serial background queue<em></em> — never on the main thread.</p>
+
+<h3 id="avcapturedevice--selecting-and-configuring-camera">AVCaptureDevice — Selecting and Configuring Camera</h3>
+
+<pre><code class="language-swift">// Preferred: discovery session for multi-camera selection
+let discovery = AVCaptureDevice.DiscoverySession(
+    deviceTypes: [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera],
+    mediaType: .video,
+    position: .back
+)
+let device = discovery.devices.first
+
+// Lock configuration before changing
+try device?.lockForConfiguration()
+device?.focusMode = .continuousAutoFocus
+device?.exposureMode = .continuousAutoExposure
+device?.unlockForConfiguration()</code></pre>
+
+<h3 id="avaudiosession">AVAudioSession</h3>
+
+<p><code>AVAudioSession</code> is a shared singleton that arbitrates audio routing and behaviour for the entire process.</p>
+
+<p><strong>Categories</strong> (most important):</p>
+
+<table>
+<tr><td>Category</td><td>Behaviour</td></tr>
+<tr><td><code>.playback</code></td><td>Audio plays even when silent switch is on / screen is locked</td></tr>
+<tr><td><code>.record</code></td><td>Only recording; playback muted</td></tr>
+<tr><td><code>.playAndRecord</code></td><td>Simultaneous play + record (VoIP, video call)</td></tr>
+<tr><td><code>.ambient</code></td><td>Mixes with other audio; silenced by silent switch</td></tr>
+<tr><td><code>.soloAmbient</code></td><td>Ducks other audio; silenced by silent switch (default)</td></tr>
+</table>
+
+<pre><code class="language-swift">try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+try AVAudioSession.sharedInstance().setActive(true)</code></pre>
+
+<p><strong>Interruptions</strong> (phone calls, Siri): observe <code>AVAudioSession.interruptionNotification</code>. On <code>.began</code>, pause; on <code>.ended</code>, optionally resume if <code>shouldResume</code> is set.</p>
+
+<h3 id="picture-in-picture-pip">Picture-in-Picture (PiP)</h3>
+
+<p>Requires <code>AVPlayerViewController</code> (automatic) or <code>AVPictureInPictureController</code> (custom player):</p>
+<ol>
+<li>Enable Background Modes → Audio, AirPlay, and Picture in Picture.</li>
+<li>Set <code>AVAudioSession.category = .playback</code>.</li>
+<li><code>AVPictureInPictureController(playerLayer: layer)</code> for custom players.</li>
+</ol>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import AVFoundation
+import AVKit
+import UIKit
+
+// ── Simple video player ───────────────────────────────────────
+class VideoPlayerViewController: UIViewController {
+    private var player: AVPlayer?
+    private var playerLayer: AVPlayerLayer?
+    private var timeObserver: Any?
+
+    func loadVideo(url: URL) {
+        let item = AVPlayerItem(url: url)
+        let player = AVPlayer(playerItem: item)
+        self.player = player
+
+        let layer = AVPlayerLayer(player: player)
+        layer.videoGravity = .resizeAspect
+        view.layer.addSublayer(layer)
+        playerLayer = layer
+
+        // Observe readiness
+        item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            if item.status == .readyToPlay {
+                self?.player?.play()
+            } else if item.status == .failed {
+                print("Playback failed: \(item.error?.localizedDescription ?? "")")
+            }
+        }.store(in: &amp;observations)
+
+        // Progress
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            self?.updateProgress(time: time)
+        }
+
+        setupAudioSession()
+    }
+
+    private func setupAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Audio session error: \(error)")
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        playerLayer?.frame = view.bounds
+    }
+
+    deinit {
+        if let observer = timeObserver { player?.removeTimeObserver(observer) }
+    }
+
+    private func updateProgress(time: CMTime) {
+        guard let duration = player?.currentItem?.duration, duration.isNumeric else { return }
+        let progress = time.seconds / duration.seconds
+        print("Progress: \(Int(progress * 100))%")
+    }
+
+    private var observations: [NSKeyValueObservation] = []
+}
+
+// ── Camera capture session ────────────────────────────────────
+class CameraManager: NSObject {
+    private let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "com.app.camera.session")
+    private var photoOutput = AVCapturePhotoOutput()
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+
+    var onPhotoCapture: ((UIImage) -&gt; Void)?
+
+    func setup(in view: UIView) {
+        sessionQueue.async { [weak self] in
+            self?.configureSession()
+            DispatchQueue.main.async {
+                self?.addPreviewLayer(to: view)
+                self?.session.startRunning()
+            }
+        }
+    }
+
+    private func configureSession() {
+        session.beginConfiguration()
+        session.sessionPreset = .photo
+
+        // Add camera input
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else {
+            session.commitConfiguration(); return
+        }
+        session.addInput(input)
+
+        // Add photo output
+        if session.canAddOutput(photoOutput) {
+            session.addOutput(photoOutput)
+            photoOutput.isHighResolutionCaptureEnabled = true
+        }
+
+        session.commitConfiguration()
+    }
+
+    private func addPreviewLayer(to view: UIView) {
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspectFill
+        layer.frame = view.bounds
+        view.layer.insertSublayer(layer, at: 0)
+        previewLayer = layer
+    }
+
+    func capturePhoto() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            let settings = AVCapturePhotoSettings()
+            settings.isHighResolutionPhotoEnabled = true
+            self.photoOutput.capturePhoto(with: settings, delegate: self)
+        }
+    }
+
+    func stop() {
+        sessionQueue.async { self.session.stopRunning() }
+    }
+}
+
+extension CameraManager: AVCapturePhotoCaptureDelegate {
+    func photoOutput(_ output: AVCapturePhotoOutput,
+                     didFinishProcessingPhoto photo: AVCapturePhoto,
+                     error: Error?) {
+        guard let data = photo.fileDataRepresentation(),
+              let image = UIImage(data: data) else { return }
+        DispatchQueue.main.async { self.onPhotoCapture?(image) }
+    }
+}
+
+// ── Audio session interruption handling ───────────────────────
+class AudioInterruptionHandler {
+    private var player: AVPlayer?
+
+    init(player: AVPlayer) {
+        self.player = player
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInterruption),
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        switch type {
+        case .began:
+            player?.pause()
+        case .ended:
+            guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            if options.contains(.shouldResume) {
+                player?.play()
+            }
+        @unknown default: break
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>AVPlayerViewController</code> and a custom <code>AVPlayerLayer</code>?<em></em></p>
+
+<p>A: <code>AVPlayerViewController</code> is the system-provided full-featured playback UI: transport controls (play/pause, scrubbing, volume), AirPlay button, subtitles, audio track selection, and automatic Picture-in-Picture support. It requires minimal code and follows Apple's HIG. A custom <code>AVPlayerLayer</code> (a <code>CALayer</code> subclass that renders video frames) gives you complete control over the UI — custom scrubber design, gesture recognisers, overlay elements. You build all controls yourself. Use <code>AVPlayerViewController</code> for standard media playback (podcasts, video streaming). Use custom <code>AVPlayerLayer</code> when the design requires a non-standard player UI, when embedding video as a background element, or when tight integration with custom controls is needed.</p>
+
+<p><strong>Q: What is AVAudioSession and why must you configure it before playing audio?</strong></p>
+
+<p>A: <code>AVAudioSession</code> is a process-level singleton that tells iOS how your app uses audio — whether it should play when the silent switch is on, whether it should mix with other apps' audio or duck it, and whether the device's microphone is in use. Without configuration, the default category <code>.soloAmbient</code> is used, which means audio is silenced when the silent switch is on and stops if the screen locks. For a music or video app where playback should continue in the background and ignore the silent switch, you must set <code>.playback</code> category before starting the player. The audio session must also be activated (<code>setActive(true)</code>) to register your app's audio intent with the OS. Failing to configure AVAudioSession is a common cause of "audio works on Simulator but stops when the screen locks on device."</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you prevent dropped frames and UI hitches when configuring an AVCaptureSession?</strong></p>
+
+<p>A: All <code>AVCaptureSession</code> configuration and <code>startRunning()</code>/<code>stopRunning()</code> calls are blocking — they can take 100ms+. Calling them on the main thread causes visible UI hitches and violates HIG. The correct pattern: (1) Create a dedicated serial background queue (<code>sessionQueue = DispatchQueue(label: "camera.session")</code>). (2) All session operations (<code>beginConfiguration</code>, <code>addInput</code>, <code>addOutput</code>, <code>commitConfiguration</code>, <code>startRunning</code>, <code>stopRunning</code>) go exclusively on this queue. (3) The preview layer (<code>AVCaptureVideoPreviewLayer</code>) is added to the view hierarchy on the main thread, but it reads from the session independently. (4) Delegate callbacks (photo capture, video frame, audio sample) are delivered on the session queue — dispatch UI updates to <code>DispatchQueue.main</code>. This pattern ensures the main thread remains responsive while camera operations execute in the background.</p>
+
+<p><strong>Q: What happens to AVPlayer when an audio interruption begins (e.g., an incoming call)?</strong></p>
+
+<p>A: When an interruption begins, iOS sends <code>AVAudioSession.interruptionNotification</code> with type <code>.began</code>. The system automatically pauses audio output, but <code>AVPlayer.rate</code> may not be set to 0 — the player may think it is still playing. Your interruption handler must explicitly call <code>player.pause()</code> to synchronise state. When the interruption ends (call dismissed), the notification fires with type <code>.ended</code> and optionally <code>shouldResume</code> in the options dictionary — only resume automatically if this flag is set (it's not always set; e.g., if another app began playing, you should not auto-resume to avoid competing audio). Additionally, after an interruption ends, <code>AVAudioSession</code> may no longer be active — call <code>setActive(true)</code> before resuming.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you implement a camera app that supports simultaneous front and back camera capture (multi-camera)?</strong></p>
+
+<p>A: Use <code>AVCaptureMultiCamSession</code> (iOS 13+), a subclass of <code>AVCaptureSession</code> that supports multiple camera inputs simultaneously. Key constraints: not all devices support multi-cam (check <code>AVCaptureMultiCamSession.isMultiCamSupported</code>); power consumption is significantly higher; only specific device/format combinations are supported (query <code>AVCaptureDeviceFormat.supportedMaxPhotoDimensions</code>). Architecture: (1) Create <code>AVCaptureMultiCamSession</code>. (2) Discover and add both <code>builtInWideAngleCamera</code> (front) and <code>builtInWideAngleCamera</code> (back) inputs. (3) Add two <code>AVCaptureVideoDataOutput</code> instances (one per camera), each with its own delegate. (4) Add two <code>AVCaptureVideoPreviewLayer</code> instances for the preview split view. (5) Run on the session queue. Each output's <code>setSampleBufferDelegate</code> delivers frames independently on a dedicated capture queue. Compose the two streams into a single output (e.g., picture-in-picture effect) using <code>CoreImage</code> or <code>Metal</code> frame-by-frame.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>AVPlayer</code> plays audio but shows a black screen (no video).<em></em></p>
+
+<p>Solution: <code>AVPlayerLayer</code> is not added to the view hierarchy, or its <code>frame</code> is zero. Ensure <code>playerLayer.frame = view.bounds</code> is set in <code>viewDidLayoutSubviews</code>, not <code>viewDidLoad</code> (bounds are not yet correct at <code>viewDidLoad</code>). Also verify the video track exists in the asset and the URL is valid.</p>
+
+<p><strong>Issue: AVCaptureSession crashes with "session configuration is not committed".</strong></p>
+
+<p>Solution: Ensure every <code>session.beginConfiguration()</code> is followed by <code>session.commitConfiguration()</code> even in error paths. Use a <code>defer { session.commitConfiguration() }</code> immediately after <code>beginConfiguration()</code> to guarantee the commit fires.</p>
+
+<p><strong>Issue: Audio stops playing when the screen locks.</strong></p>
+
+<p>Solution: The <code>AVAudioSession</code> category is <code>.soloAmbient</code> (default) or <code>.ambient</code>, both of which are silenced on screen lock. Set <code>AVAudioSession.sharedInstance().setCategory(.playback)</code> and add the <strong>Audio, AirPlay, and Picture in Picture</strong> background mode in Xcode's Signing &amp; Capabilities.</p>
+
+<p><strong>Issue: Camera permission is denied after the user previously granted it.</strong></p>
+
+<p>Solution: Check <code>AVCaptureDevice.authorizationStatus(for: .video)</code>. If <code>.denied</code>, the OS will not re-present the permission dialog — you must direct the user to Settings. Present an alert with "Open Settings" that calls <code>UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="app-lifecycle.md">App Lifecycle</a> — pause AVPlayer in <code>sceneWillResignActive</code>; stop capture session in background</li>
+<li><a href="background-tasks.md">Background Tasks</a> — background audio requires <code>.playback</code> audio session + background mode</li>
+<li><a href="core-animation.md">Core Animation</a> — <code>AVPlayerLayer</code> and <code>AVCaptureVideoPreviewLayer</code> are <code>CALayer</code> subclasses</li>
+<li><a href="../04-ui-frameworks/uiview-lifecycle.md">UIView Lifecycle</a> — set <code>playerLayer.frame</code> in <code>layoutSubviews</code>/<code>viewDidLayoutSubviews</code></li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

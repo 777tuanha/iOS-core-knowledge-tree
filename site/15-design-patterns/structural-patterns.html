@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Structural Patterns — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../15-design-patterns/index.html">Design Patterns</a></span>
+    <span>Structural Patterns</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html" class="active">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="structural-patterns">Structural Patterns</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Structural patterns deal with <strong>how classes and objects are composed</strong> to form larger structures — making incompatible interfaces compatible, adding behaviour without subclassing, simplifying complex subsystems, and treating individual objects and compositions uniformly. The four GoF structural patterns most relevant to iOS are: <strong>Adapter</strong> (wrap a third-party or legacy interface to match what your code expects), <strong>Decorator</strong> (add behaviour by wrapping, without changing the wrapped object), <strong>Facade</strong> (provide a simple interface to a complex subsystem), and <strong>Composite</strong> (treat a single item and a collection of items with the same interface). These patterns are prominent throughout UIKit and Swift — <code>UIView</code> is a Composite (a view contains views), <code>UINavigationController</code> is a Facade over the navigation stack, and third-party SDK wrappers are typically Adapters.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p><strong>Adapter</strong>: you buy a US power adapter that converts a European socket into a US plug. The wall socket interface hasn't changed; the device interface hasn't changed; the adapter makes them compatible. <strong>Decorator</strong>: you order a plain coffee, then add a sleeve (warmth), a lid (spill-proof), and a cup holder (grip) — each is a wrapper that adds one capability without altering the coffee itself. <strong>Facade</strong>: a hotel concierge is a facade over the hotel's complex operations (kitchen, housekeeping, transport) — you ask for "dinner and a taxi" and the concierge coordinates everything; you don't interact with each department directly. <strong>Composite</strong>: a file system where a folder and a single file both respond to "get size" — you treat them identically whether you're dealing with one file or a folder containing thousands.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="adapter">Adapter</h3>
+
+<p>The Adapter pattern converts one interface into another. In iOS, this most commonly appears when:</p>
+<ul>
+<li>Wrapping a third-party SDK to depend on your own protocol (so you can swap SDKs without changing call sites).</li>
+<li>Making an Objective-C delegate into a Swift <code>AsyncSequence</code> or Combine publisher.</li>
+<li>Adapting a callback-based API to <code>async/await</code>.</li>
+</ul>
+
+<p>Swift's <code>withCheckedContinuation</code> / <code>withCheckedThrowingContinuation</code> is the idiomatic async adapter.</p>
+
+<h3 id="decorator">Decorator</h3>
+
+<p>The Decorator pattern adds behaviour by wrapping an object that conforms to the same protocol. Each decorator forwards calls to the wrapped object and adds its own processing. This is more flexible than subclassing — decorators can be combined in any order at runtime.</p>
+
+<p>iOS examples: <code>UIScrollView</code> decorates <code>UIView</code> with scrolling; <code>UIButton</code> decorates <code>UIControl</code> with press handling. In networking: <code>LoggingURLProtocol</code> wraps <code>URLSession</code>, adding logging before forwarding.</p>
+
+<h3 id="facade">Facade</h3>
+
+<p>A Facade provides a simplified API over a complex subsystem of multiple classes. It hides the subsystem's internals from the client — the client only knows the facade.</p>
+
+<p>iOS examples: <code>UINavigationController</code> (facade over a stack + transitions), <code>AVPlayer</code> (facade over audio session + item + layer pipeline), <code>URLSession</code> (facade over TCP connection + TLS + HTTP parsing).</p>
+
+<h3 id="composite">Composite</h3>
+
+<p>The Composite pattern lets you treat individual objects and compositions of those objects through the same interface. A node can be a leaf or a container of more nodes.</p>
+
+<p>iOS examples: <code>UIView</code> (a view is a composite of subviews — <code>addSubview</code>, <code>subviews</code>, <code>removeFromSuperview</code> work identically on <code>UIView</code> and <code>UIStackView</code>). SwiftUI's <code>View</code> protocol — <code>VStack</code> and <code>Text</code> both conform to <code>View</code>; a <code>VStack</code> is a composite of <code>View</code>s.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import UIKit
+import Combine
+
+// ── Adapter: Wrap a callback API as async ─────────────────────
+protocol LocationService {
+    func currentLocation() async throws -&gt; Coordinate
+}
+
+struct Coordinate { let lat: Double; let lon: Double }
+
+// Existing third-party SDK with callback API
+final class LegacyLocationSDK {
+    func fetchLocation(completion: @escaping (Double, Double, Error?) -&gt; Void) {
+        // … SDK implementation
+    }
+}
+
+// Adapter wraps LegacyLocationSDK and conforms to LocationService
+final class LocationServiceAdapter: LocationService {
+    private let sdk = LegacyLocationSDK()
+
+    func currentLocation() async throws -&gt; Coordinate {
+        try await withCheckedThrowingContinuation { continuation in
+            sdk.fetchLocation { lat, lon, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: Coordinate(lat: lat, lon: lon))
+                }
+            }
+        }
+    }
+}
+
+// ── Adapter: Combine publisher wrapping delegate ──────────────
+protocol ImageLoader {
+    var imagePublisher: AnyPublisher&lt;UIImage, Error&gt; { get }
+}
+
+// Wraps a third-party image loader that uses a delegate
+final class SDKImageLoaderAdapter: NSObject, ImageLoader {
+    private let subject = PassthroughSubject&lt;UIImage, Error&gt;()
+    lazy var imagePublisher: AnyPublisher&lt;UIImage, Error&gt; = subject.eraseToAnyPublisher()
+
+    func load(url: URL) {
+        // Call SDK, forward to subject in its callback
+        // sdk.loadImage(url, delegate: self)
+    }
+    // In delegate callback:
+    // subject.send(image) / subject.send(completion: .failure(error))
+}
+
+// ── Decorator: Logging network layer ──────────────────────────
+protocol NetworkClient {
+    func fetch(_ request: URLRequest) async throws -&gt; Data
+}
+
+final class URLSessionNetworkClient: NetworkClient {
+    func fetch(_ request: URLRequest) async throws -&gt; Data {
+        let (data, _) = try await URLSession.shared.data(for: request)
+        return data
+    }
+}
+
+// Decorator adds logging; wraps any NetworkClient
+final class LoggingNetworkClient: NetworkClient {
+    private let wrapped: NetworkClient
+
+    init(wrapping client: NetworkClient) { wrapped = client }
+
+    func fetch(_ request: URLRequest) async throws -&gt; Data {
+        let start = CFAbsoluteTimeGetCurrent()
+        print("[Network] → \(request.httpMethod ?? "GET") \(request.url?.path ?? "")")
+        do {
+            let data = try await wrapped.fetch(request)
+            let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+            print("[Network] ← \(data.count) bytes in \(String(format: "%.0f", ms))ms")
+            return data
+        } catch {
+            print("[Network] ✗ \(error)")
+            throw error
+        }
+    }
+}
+
+// Stack decorators at composition root:
+// let client: NetworkClient = LoggingNetworkClient(
+//     wrapping: RetryingNetworkClient(
+//         wrapping: URLSessionNetworkClient()
+//     )
+// )
+
+// ── Decorator: Retrying network client ────────────────────────
+final class RetryingNetworkClient: NetworkClient {
+    private let wrapped: NetworkClient
+    private let maxRetries: Int
+
+    init(wrapping client: NetworkClient, maxRetries: Int = 3) {
+        wrapped = client; self.maxRetries = maxRetries
+    }
+
+    func fetch(_ request: URLRequest) async throws -&gt; Data {
+        var lastError: Error?
+        for attempt in 1...maxRetries {
+            do {
+                return try await wrapped.fetch(request)
+            } catch {
+                lastError = error
+                if attempt &lt; maxRetries {
+                    try? await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 500_000_000))
+                }
+            }
+        }
+        throw lastError!
+    }
+}
+
+// ── Facade: Analytics Facade ──────────────────────────────────
+// Hides Firebase, Mixpanel, and internal logging behind one API
+final class AnalyticsFacade {
+    private let firebase: FirebaseAnalyticsClient
+    private let mixpanel: MixpanelClient
+    private let internalLogger: InternalEventLogger
+
+    init() {
+        firebase = FirebaseAnalyticsClient()
+        mixpanel = MixpanelClient()
+        internalLogger = InternalEventLogger()
+    }
+
+    func logEvent(_ event: AppEvent) {
+        firebase.log(name: event.rawValue, parameters: event.parameters)
+        mixpanel.track(event: event.rawValue, properties: event.parameters)
+        internalLogger.record(event)
+    }
+}
+
+// Call site never knows about the three backends:
+// AnalyticsFacade.shared.logEvent(.feedLoaded(postCount: posts.count))
+
+// ── Composite: SwiftUI View tree ──────────────────────────────
+// SwiftUI's View protocol is itself a composite pattern example
+// Both Text and VStack conform to View; they're used identically
+
+struct CompositeExampleView: View {
+    var body: some View {
+        VStack {       // Composite — contains child Views
+            Text("Header")     // Leaf
+            HStack {           // Composite
+                Text("Left")   // Leaf
+                Text("Right")  // Leaf
+            }
+        }
+    }
+}
+
+// Custom composite: a view hierarchy that renders recursively
+indirect enum MenuItem {
+    case leaf(title: String, action: () -&gt; Void)
+    case group(title: String, children: [MenuItem])
+}
+
+struct MenuView: View {
+    let item: MenuItem
+
+    var body: some View {
+        switch item {
+        case .leaf(let title, let action):
+            Button(title) { action() }
+        case .group(let title, let children):
+            DisclosureGroup(title) {
+                ForEach(children.indices, id: \.self) { i in
+                    MenuView(item: children[i])   // recursive composite
+                }
+            }
+        }
+    }
+}
+
+// Placeholder types for compilation:
+final class FirebaseAnalyticsClient { func log(name: String, parameters: [String: Any]) {} }
+final class MixpanelClient { func track(event: String, properties: [String: Any]) {} }
+final class InternalEventLogger { func record(_ event: AppEvent) {} }
+enum AppEvent: String {
+    case feedLoaded
+    var parameters: [String: Any] { [:] }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the Adapter pattern and give an example from iOS SDK?</strong></p>
+
+<p>A: The Adapter pattern converts the interface of a class into another interface that clients expect. It lets classes with incompatible interfaces work together. iOS SDK example: <code>UITableViewDiffableDataSource</code> adapts the data model (an <code>NSDiffableDataSourceSnapshot</code> of hashable items) to the <code>UITableViewDataSource</code> protocol that <code>UITableView</code> requires — you don't need to implement <code>numberOfSections</code> and <code>cellForRow</code> because the diffable data source adapts your model to those methods. Another example: <code>withCheckedContinuation</code> adapts callback-based APIs to Swift's <code>async/await</code> — the continuation is an adapter between the completion handler interface and the suspension-based async interface.</p>
+
+<p><em></em>Q: What is the Facade pattern? How does <code>AVPlayer</code> use it?<em></em></p>
+
+<p>A: A Facade provides a simplified, unified interface to a complex subsystem of multiple classes, hiding the subsystem's complexity from clients. <code>AVPlayer</code> is a facade over: <code>AVURLAsset</code> (the media source), <code>AVPlayerItem</code> (decoding pipeline, buffering state, tracks), <code>AVPlayerLayer</code> (the CALayer for video rendering), <code>AVAudioSession</code> (audio routing), and the underlying <code>AudioToolbox</code> and <code>VideoToolbox</code> frameworks. Instead of managing all of these individually, clients interact with just <code>AVPlayer.play()</code>, <code>AVPlayer.pause()</code>, and <code>AVPlayer.rate</code> — the player facade coordinates the subsystem internally. The Facade pattern is appropriate when you have a complex subsystem that clients should not need to understand in full to use.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does the Decorator pattern differ from subclassing for adding behaviour, and when should you prefer it?</strong></p>
+
+<p>A: Subclassing adds behaviour at compile time — a <code>LoggingViewController: UIViewController</code> always has logging; you cannot create a non-logging version of the same class without a separate type. Decoration adds behaviour at runtime — you compose <code>LoggingNetworkClient(wrapping: URLSessionNetworkClient())</code> for production and <code>URLSessionNetworkClient()</code> alone for tests. Decorators follow the open/closed principle: you extend behaviour by adding a new decorator class rather than modifying existing classes. Prefer decorators over subclassing when: (1) you need to combine multiple behaviours independently (Logging + Retry + Caching on any <code>NetworkClient</code> implementation, in any combination); (2) you're decorating a class from a library you don't control (you can't subclass a <code>final</code> class); (3) the decorating logic is orthogonal to the core logic and should be reusable across multiple types. Prefer subclassing only when you need access to <code>protected</code> (internal) state of the parent class that isn't exposed through the protocol.</p>
+
+<p><strong>Q: Describe a real-world use of the Composite pattern in a SwiftUI or UIKit app.</strong></p>
+
+<p>A: In UIKit, <code>UIView</code> is the canonical Composite — both a leaf <code>UILabel</code> and a container <code>UIStackView</code> respond to <code>addSubview</code>, <code>removeFromSuperview</code>, <code>frame</code>, <code>layoutIfNeeded</code>, and <code>drawHierarchy(in:afterScreenUpdates:)</code> through the same <code>UIView</code> interface. A render pass, layout pass, or hit-test recursion operates uniformly on the entire tree. In SwiftUI, the <code>View</code> protocol is the composite interface — both a <code>Text</code> leaf and a <code>VStack</code> container conform to <code>View</code>, allowing the layout engine to recursively compute sizes and positions without caring whether a node is a leaf or a container. In app code, the Composite pattern is useful for: (1) Document/outline structures (folders + files, each conforming to <code>DocumentNode</code>). (2) Rendering pipelines where a <code>CompositeRenderer</code> calls <code>render(in:)</code> on each child. (3) Validation rule trees where a <code>CompositeRule</code> validates by checking all child rules.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a networking stack that composes Logging, Retry, Caching, and Authentication decorators, and explain how to order them.</strong></p>
+
+<p>A: Stack from innermost to outermost: <code>URLSessionNetworkClient</code> → <code>AuthDecorator</code> → <code>CachingDecorator</code> → <code>RetryDecorator</code> → <code>LoggingDecorator</code>. Ordering rationale: (1) <strong>Auth decorator wraps URLSession</strong> — it injects the <code>Authorization</code> header into the request and handles 401 responses by refreshing the token and retrying once. It must be inside the cache to ensure that only authenticated requests are cached, and inside retry to ensure the token refresh happens as part of the retry logic. (2) <strong>Caching decorator</strong> — wraps the authenticated client. A cache hit short-circuits all downstream decorators (no network call, no logging of the real request). Cache storage uses the authenticated response. (3) <strong>Retry decorator</strong> — wraps the cache. A retry attempts the cache decorator again — if the first attempt gets a network error and the cache has a stale entry, the cache could serve the stale response on retry. Configure retry to not retry on 401 (handled by AuthDecorator) or 404 (not retryable). (4) <strong>Logging decorator</strong> is outermost — it sees the final request (with auth headers) and the final response (from cache or network). This ensures the log accurately reflects what the app sent and received. Compose at the app's dependency container: <code>let client: NetworkClient = LoggingNetworkClient(wrapping: RetryingNetworkClient(wrapping: CachingNetworkClient(wrapping: AuthenticatingNetworkClient(wrapping: URLSessionNetworkClient()))))</code></p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Decorator causes a stack overflow — the decorator wraps itself.</strong></p>
+
+<p>Solution: Each decorator must wrap a different instance. A common mistake: <code>let client = LoggingNetworkClient(wrapping: client)</code> where <code>client</code> is the same variable (wrapping itself in a cycle). Build the chain with explicit intermediates: <code>let base = URLSessionNetworkClient(); let authenticated = AuthNetworkClient(wrapping: base); let logged = LoggingNetworkClient(wrapping: authenticated)</code>.</p>
+
+<p><strong>Issue: Facade hides errors from the subsystem, making debugging harder.</strong></p>
+
+<p>Solution: The Facade should not swallow errors silently. Either let errors propagate (throws or <code>Result</code>), or translate them into a facade-level error enum that preserves the cause. Use <code>os_log</code> inside the facade for diagnostic logging without exposing internal types to the caller. If needed, provide an optional <code>debugMode</code> on the facade that exposes subsystem details.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="creational-patterns.md">Creational Patterns</a> — factories that produce adaptable types</li>
+<li><a href="behavioral-patterns.md">Behavioral Patterns</a> — Strategy pattern for interchangeable algorithms</li>
+<li><a href="ios-patterns.md">iOS-Specific Patterns</a> — Delegate as a structural callback pattern</li>
+<li><a href="../07-networking/advanced-networking.md">Advanced Networking</a> — LoggingURLProtocol as Adapter/Decorator</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

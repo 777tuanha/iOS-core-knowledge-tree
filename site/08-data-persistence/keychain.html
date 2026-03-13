@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Keychain — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../08-data-persistence/index.html">Data Persistence</a></span>
+    <span>Keychain</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html" class="active">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="keychain">Keychain</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>The Keychain is Apple's secure credential storage system. It stores small, sensitive data items — passwords, tokens, cryptographic keys, and certificates — using hardware-backed AES-256 encryption. Unlike <code>UserDefaults</code>, Keychain data persists across app installs (on device), can survive app deletion (with the right accessibility attribute), and is protected by the Secure Enclave on modern devices. iOS enforces access control at the kernel level: only the app that wrote an item (or apps in the same Keychain group) can read it. The C-level <code>Security</code> framework (<code>SecItem</code> API) is the underlying interface; most production code wraps it in a Swift abstraction.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>The Keychain is like a safety-deposit box at a bank. Your app is the box owner — you have the key (your bundle ID / entitlement). The bank vault (Secure Enclave / OS security layer) ensures no other tenant can open your box, even if the device is connected to a computer. You can lock the box differently depending on when it should be openable: always (even when the device is locked), only when unlocked, or only after the user authenticates with Face ID. You can also add a deposit box to a shared vault (Keychain group) so your other apps can access it too.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="secitem-api">SecItem API</h3>
+
+<p>All Keychain operations use four C functions:</p>
+
+<table>
+<tr><td>Function</td><td>Operation</td></tr>
+<tr><td><code>SecItemAdd(_:_:)</code></td><td>Create a new item</td></tr>
+<tr><td><code>SecItemCopyMatching(_:_:)</code></td><td>Read one or more items</td></tr>
+<tr><td><code>SecItemUpdate(_:_:)</code></td><td>Update an existing item</td></tr>
+<tr><td><code>SecItemDelete(_:)</code></td><td>Delete one or more items</td></tr>
+</table>
+
+<p>Each function takes a <code>CFDictionary</code> (query) containing item class, attributes, and search parameters.</p>
+
+<h3 id="item-classes">Item Classes</h3>
+
+<table>
+<tr><td>Class</td><td>Use case</td></tr>
+<tr><td><code>kSecClassGenericPassword</code></td><td>App tokens, passwords, arbitrary secrets</td></tr>
+<tr><td><code>kSecClassInternetPassword</code></td><td>Passwords associated with a URL and username</td></tr>
+<tr><td><code>kSecClassCertificate</code></td><td>X.509 certificates</td></tr>
+<tr><td><code>kSecClassKey</code></td><td>Cryptographic keys (RSA, EC)</td></tr>
+<tr><td><code>kSecClassIdentity</code></td><td>Certificate + private key pair</td></tr>
+</table>
+
+<p>For most iOS apps, <code>kSecClassGenericPassword</code> covers all use cases.</p>
+
+<h3 id="accessibility-attributes">Accessibility Attributes</h3>
+
+<p>Controls when the item is accessible — balancing security with usability:</p>
+
+<table>
+<tr><td>Attribute</td><td>Accessible when</td></tr>
+<tr><td><code>.afterFirstUnlock</code></td><td>After first unlock after boot; survives background — <strong>recommended for tokens</strong></td></tr>
+<tr><td><code>.whenUnlocked</code></td><td>Only while device is unlocked (default)</td></tr>
+<tr><td><code>.whenPasscodeSetThisDeviceOnly</code></td><td>Only if passcode is set; not transferred/backed up; most secure</td></tr>
+<tr><td><code>.afterFirstUnlockThisDeviceOnly</code></td><td>Like <code>afterFirstUnlock</code> but not transferred to new devices</td></tr>
+<tr><td><code>.whenUnlockedThisDeviceOnly</code></td><td><code>whenUnlocked</code> + not transferred</td></tr>
+</table>
+
+<p>The <code>ThisDeviceOnly</code> variants are not migrated via iCloud Keychain or device backup — use these for device-bound secrets like device attestation keys.</p>
+
+<h3 id="keychain-groups-sharing-between-apps">Keychain Groups (Sharing Between Apps)</h3>
+
+<p>By default, a Keychain item is accessible only to the app that created it (keyed by bundle ID). To share items between apps from the same developer:</p>
+
+<ol>
+<li>Enable the <strong>Keychain Sharing</strong> capability in Xcode.</li>
+<li>Add a shared group identifier (e.g., <code>com.mycompany.sharedKeychain</code>).</li>
+<li>Set <code>kSecAttrAccessGroup</code> in all query dictionaries to the shared group.</li>
+</ol>
+
+<p>This is used to share an auth token between a main app, a share extension, and a widget.</p>
+
+<h3 id="access-control--biometrics">Access Control — Biometrics</h3>
+
+<p><code>SecAccessControlCreateWithFlags</code> adds biometric (Face ID / Touch ID) or device passcode requirements to individual items:</p>
+
+<pre><code class="language-swift">let access = SecAccessControlCreateWithFlags(
+    nil,
+    kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+    .userPresence,     // Face ID or passcode fallback
+    nil
+)!</code></pre>
+
+<p>With <code>.userPresence</code>, reading the item presents a system authentication prompt. If authentication fails, <code>errSecAuthFailed</code> is returned.</p>
+
+<h3 id="icloud-keychain">iCloud Keychain</h3>
+
+<p>Setting <code>kSecAttrSynchronizable = kCFBooleanTrue</code> opts the item into iCloud Keychain sync across the user's devices. Do NOT use this for device-bound secrets (certificates, device keys). Tokens that should work on all the user's devices (e.g., a refresh token) are appropriate candidates.</p>
+
+<h3 id="error-codes">Error Codes</h3>
+
+<p>Common <code>OSStatus</code> values:</p>
+
+<table>
+<tr><td>Code</td><td>Constant</td><td>Meaning</td></tr>
+<tr><td>0</td><td><code>errSecSuccess</code></td><td>Success</td></tr>
+<tr><td>-25300</td><td><code>errSecItemNotFound</code></td><td>Item does not exist</td></tr>
+<tr><td>-25299</td><td><code>errSecDuplicateItem</code></td><td>Item already exists</td></tr>
+<tr><td>-128</td><td><code>errSecUserCanceled</code></td><td>User cancelled biometric prompt</td></tr>
+<tr><td>-25293</td><td><code>errSecAuthFailed</code></td><td>Biometric/passcode auth failed</td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import Security
+
+// ── Generic Keychain wrapper ──────────────────────────────────
+enum KeychainError: Error {
+    case itemNotFound
+    case duplicateItem
+    case invalidData
+    case unexpectedStatus(OSStatus)
+}
+
+struct KeychainItem {
+    let service: String                          // identifies the app/context
+    let account: String                          // identifies the specific secret
+    let accessGroup: String?                     // nil → app-private; set for shared groups
+
+    init(service: String, account: String, accessGroup: String? = nil) {
+        self.service = service
+        self.account = account
+        self.accessGroup = accessGroup
+    }
+
+    // ── Write / Update ───────────────────────────────────────
+    func save(_ value: String) throws {
+        guard let data = value.data(using: .utf8) else { throw KeychainError.invalidData }
+        try save(data)
+    }
+
+    func save(_ data: Data) throws {
+        // Try to update first; if not found, add new
+        let query = baseQuery()
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+
+        if status == errSecItemNotFound {
+            var addQuery = baseQuery()
+            addQuery[kSecValueData as String] = data
+            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            status = SecItemAdd(addQuery as CFDictionary, nil)
+        }
+
+        guard status == errSecSuccess else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    // ── Read ─────────────────────────────────────────────────
+    func read() throws -&gt; Data {
+        var query = baseQuery()
+        query[kSecMatchLimit as String]       = kSecMatchLimitOne
+        query[kSecReturnData as String]       = kCFBooleanTrue
+        query[kSecReturnAttributes as String] = kCFBooleanTrue
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &amp;result)
+
+        switch status {
+        case errSecSuccess:
+            guard let dict = result as? [String: Any],
+                  let data = dict[kSecValueData as String] as? Data else {
+                throw KeychainError.invalidData
+            }
+            return data
+        case errSecItemNotFound:
+            throw KeychainError.itemNotFound
+        default:
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    func readString() throws -&gt; String {
+        let data = try read()
+        guard let string = String(data: data, encoding: .utf8) else {
+            throw KeychainError.invalidData
+        }
+        return string
+    }
+
+    // ── Delete ───────────────────────────────────────────────
+    func delete() throws {
+        let query = baseQuery()
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    // ── Private ──────────────────────────────────────────────
+    private func baseQuery() -&gt; [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String:       kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        if let group = accessGroup {
+            query[kSecAttrAccessGroup as String] = group
+        }
+        return query
+    }
+}
+
+// ── Token storage convenience layer ──────────────────────────
+enum Credentials {
+    private static let accessToken   = KeychainItem(service: "com.myapp.auth", account: "access_token")
+    private static let refreshToken  = KeychainItem(service: "com.myapp.auth", account: "refresh_token")
+
+    static func saveTokens(access: String, refresh: String) throws {
+        try accessToken.save(access)
+        try refreshToken.save(refresh)
+    }
+
+    static func accessToken() throws -&gt; String  { try accessToken.readString() }
+    static func refreshToken() throws -&gt; String { try refreshToken.readString() }
+
+    static func clearAll() {
+        try? accessToken.delete()
+        try? refreshToken.delete()
+    }
+}
+
+// Usage:
+// try Credentials.saveTokens(access: "eyJ...", refresh: "r_abc123")
+// let token = try Credentials.accessToken()
+// Credentials.clearAll()   // on logout
+
+// ── Biometric-protected item ──────────────────────────────────
+func saveBiometricItem(secret: Data, label: String) throws {
+    let access = SecAccessControlCreateWithFlags(
+        nil,
+        kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+        .userPresence,      // Face ID or passcode fallback
+        nil
+    )!
+
+    let query: [String: Any] = [
+        kSecClass as String:              kSecClassGenericPassword,
+        kSecAttrService as String:        "com.myapp.biometric",
+        kSecAttrAccount as String:        label,
+        kSecValueData as String:          secret,
+        kSecAttrAccessControl as String:  access,
+        kSecUseDataProtectionKeychain as String: true
+    ]
+
+    let status = SecItemAdd(query as CFDictionary, nil)
+    guard status == errSecSuccess else { throw KeychainError.unexpectedStatus(status) }
+}
+
+// ── iCloud Keychain (synchronisable) ─────────────────────────
+func saveToiCloudKeychain(value: String, key: String) throws {
+    guard let data = value.data(using: .utf8) else { throw KeychainError.invalidData }
+
+    // Delete existing synchronisable item first (duplicates must include synchronizable in query)
+    let deleteQuery: [String: Any] = [
+        kSecClass as String:              kSecClassGenericPassword,
+        kSecAttrService as String:        "com.myapp.cloud",
+        kSecAttrAccount as String:        key,
+        kSecAttrSynchronizable as String: kCFBooleanTrue!
+    ]
+    SecItemDelete(deleteQuery as CFDictionary)
+
+    let addQuery: [String: Any] = [
+        kSecClass as String:              kSecClassGenericPassword,
+        kSecAttrService as String:        "com.myapp.cloud",
+        kSecAttrAccount as String:        key,
+        kSecValueData as String:          data,
+        kSecAttrSynchronizable as String: kCFBooleanTrue!,
+        kSecAttrAccessible as String:     kSecAttrAccessibleAfterFirstUnlock
+    ]
+    let status = SecItemAdd(addQuery as CFDictionary, nil)
+    guard status == errSecSuccess else { throw KeychainError.unexpectedStatus(status) }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: Why should you store authentication tokens in the Keychain rather than UserDefaults?</strong></p>
+
+<p>A: <code>UserDefaults</code> stores data as a plain plist file on disk — it is protected only by the app sandbox, not encrypted. Any tool with sandbox access (e.g., an iTunes backup on a non-encrypted Mac, or a jailbroken device) can read it. The Keychain encrypts data with AES-256, and on modern devices the encryption keys are protected by the Secure Enclave. Access is enforced by the OS kernel — no other app can read your Keychain items unless you explicitly share them via a Keychain group. Additionally, the Keychain persists across app reinstalls (unless explicitly deleted), which means you can restore a user's session after they reinstall the app — something UserDefaults cannot do.</p>
+
+<p><strong>Q: What is a Keychain accessibility attribute and which should you use for an auth token?</strong></p>
+
+<p>A: The accessibility attribute controls when the item can be read. For a background-accessible auth token (one that a background URLSession task needs to attach to a request even while the device is locked), use <code>kSecAttrAccessibleAfterFirstUnlock</code>. This makes the item accessible after the first unlock following a device reboot, covering both foreground and background app states. Avoid <code>kSecAttrAccessibleAlways</code> (deprecated) and prefer <code>ThisDeviceOnly</code> variants for items that should not roam to other devices. For highly sensitive keys that should only be accessible when the screen is unlocked, use <code>kSecAttrAccessibleWhenUnlocked</code>.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you share Keychain items between your main app and a widget extension?</strong></p>
+
+<p>A: Enable the <strong>Keychain Sharing</strong> capability in Xcode for both the main app target and the extension target, using the same Keychain group identifier (e.g., <code>com.mycompany.sharedKeychain</code>). In every <code>SecItem</code> query that needs to be shared, set <code>kSecAttrAccessGroup</code> to that identifier. Items written with this access group are visible to all apps and extensions with the same entitlement. Without the access group key, each target writes to its own private namespace (keyed by the process's application identifier). Note: the group identifier must be prefixed with the Team ID in the entitlement file (<code>&lt;TeamID&gt;.com.mycompany.sharedKeychain</code>), but in code you reference it without the Team ID prefix.</p>
+
+<p><strong>Q: How does biometric authentication integrate with Keychain, and what happens when Face ID fails?</strong></p>
+
+<p>A: Items can be protected with <code>SecAccessControlCreateWithFlags</code> using flags like <code>.userPresence</code> (Face ID with passcode fallback), <code>.biometryAny</code> (Face ID or Touch ID, no passcode fallback), or <code>.biometryCurrentSet</code> (fails if enrolled biometrics change — used for secure keys). When <code>SecItemCopyMatching</code> is called for a biometric-protected item, the system presents a Face ID/Touch ID prompt. The <code>LAContext</code> used for the prompt can be pre-evaluated and injected into the query via <code>kSecUseAuthenticationContext</code> to avoid duplicate prompts. On authentication failure (<code>errSecAuthFailed</code>) or user cancellation (<code>errSecUserCanceled</code>), your code must handle the error — typically by falling back to a passcode prompt or locking the session.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: What are the risks of using <code>kSecAttrSynchronizable = true</code> for storing auth tokens?<em></em></p>
+
+<p>A: Synchronisable items are synced to iCloud Keychain and thus to all the user's Apple devices. Risks: (1) <strong>Token leakage across devices</strong>: a token issued for an iPhone can be used from the user's Mac or iPad — depending on your backend's token binding model, this may be acceptable or a security issue. (2) <strong>Delayed revocation</strong>: if you revoke a token server-side, the old token still exists on other synced devices until iCloud sync propagates. (3) <strong>Backup exposure</strong>: iCloud Keychain is encrypted end-to-end but adds a cloud attack surface vs. device-only storage. (4) <em></em><code>ThisDeviceOnly</code> mismatch<em></em>: synchronisable items cannot use <code>ThisDeviceOnly</code> accessibility attributes — the OS will reject the combination. The recommendation: use synchronisable Keychain for user-facing credentials (passwords, long-lived refresh tokens) where multi-device access is desired, and <code>ThisDeviceOnly</code> for device-bound keys (attestation, signing keys, session-bound access tokens).</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>errSecItemNotFound</code> (-25300) even though the item was saved.<em></em></p>
+
+<p>Solution: The query used to read doesn't match the query used to write. Check that <code>kSecAttrService</code>, <code>kSecAttrAccount</code>, and <code>kSecAttrAccessGroup</code> are identical in both queries. A missing <code>kSecAttrAccessGroup</code> defaults to the app's private namespace — if the writer set a group and the reader didn't, they look in different namespaces.</p>
+
+<p><strong>Issue: Keychain item is deleted when the user reinstalls the app.</strong></p>
+
+<p>Solution: By default, Keychain items survive reinstallation on device. However, on Simulator they are cleared on reinstall, and if the device is erased, items are cleared. If you see deletion on real device reinstall, verify the item was not written with <code>.whenPasscodeSetThisDeviceOnly</code> (which can be cleared when the passcode is removed) and confirm no <code>SecItemDelete</code> is called at launch.</p>
+
+<p><em></em>Issue: <code>errSecDuplicateItem</code> (-25299) when trying to save.<em></em></p>
+
+<p>Solution: An item with the same <code>kSecAttrService</code> + <code>kSecAttrAccount</code> already exists. Either delete before adding, or use <code>SecItemUpdate</code> to modify the existing item. The recommended pattern is: try update first; if <code>errSecItemNotFound</code>, then add.</p>
+
+<p><em></em>Issue: Biometric prompt does not appear — returns <code>errSecInteractionNotAllowed</code>.<em></em></p>
+
+<p>Solution: Keychain operations that require user interaction cannot run in a background thread without an <code>LAContext</code>. Create an <code>LAContext</code>, call <code>evaluatePolicy(_:localizedReason:reply:)</code> first, then pass the context to the Keychain query via <code>kSecUseAuthenticationContext</code>. Also ensure the app is in the foreground — biometric prompts are not presented for background processes.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="userdefaults.md">UserDefaults</a> — for non-sensitive preferences</li>
+<li><a href="file-system.md">File System</a> — for larger encrypted data (NSFileProtection)</li>
+<li><a href="data-sync.md">Data Synchronization</a> — iCloud Keychain as a sync mechanism</li>
+<li><a href="../06-architecture/dependency-injection.md">Dependency Injection</a> — inject a Keychain protocol for testable credential storage</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

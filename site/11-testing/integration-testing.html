@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Integration Testing — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../11-testing/index.html">Testing</a></span>
+    <span>Integration Testing</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="integration-testing">Integration Testing</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Integration tests verify that multiple real components work correctly together — a ViewModel with a real Repository, a Repository with a real database, or a networking layer with a mocked-but-realistic HTTP server. Unlike unit tests (which replace all dependencies with test doubles), integration tests exercise the actual collaboration between components, catching bugs that arise at boundaries: data mapping errors, SQL constraint violations, serialisation mismatches, and concurrency issues between layers. The key technique is <strong>selective mocking</strong>: replace only the boundary that would be slow, non-deterministic, or destructive (real network, real file system with side effects) while keeping real implementations for everything else. A well-structured integration test suite typically uses an in-memory database, a <code>URLProtocol</code>-based mock server, and real business logic.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>A unit test checks that a single machine part works in isolation on a test bench. An integration test assembles two or three real parts together and checks that they work as a sub-assembly. You still control the inputs — you don't use the real engine, but you use real gears and a real gearbox. The goal is to find mismatches at the joins: a gear that's the right shape but the wrong tooth pitch, or a gearbox that's mechanically correct but leaks fluid when two parts seal against each other.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="what-to-mock-vs-what-to-keep-real">What to Mock vs What to Keep Real</h3>
+
+<table>
+<tr><td>Layer</td><td>Integration test approach</td></tr>
+<tr><td>Network (URLSession)</td><td>Replace with <code>MockURLProtocol</code> or local HTTP server</td></tr>
+<tr><td>Database (Core Data / GRDB)</td><td>Use in-memory store — real schema, no disk I/O</td></tr>
+<tr><td>File system</td><td>Use temp directory; clean up in <code>tearDown</code></td></tr>
+<tr><td>Keychain</td><td>Use a test Keychain group or in-memory fake</td></tr>
+<tr><td>Business logic (ViewModel, Repository)</td><td><strong>Real</strong> — this is what you're testing</td></tr>
+<tr><td>External services (Analytics, Crash reporting)</td><td>Replace with no-op stubs</td></tr>
+</table>
+
+<h3 id="mocking-the-network-with-urlprotocol">Mocking the Network with URLProtocol</h3>
+
+<p><code>MockURLProtocol</code> intercepts <code>URLSession</code> requests and returns canned responses without hitting the network. Register it per-session (not globally) to avoid polluting other tests:</p>
+
+<pre><code class="language-swift">final class MockURLProtocol: URLProtocol {
+    static var requestHandler: ((URLRequest) throws -&gt; (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -&gt; Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -&gt; URLRequest { request }
+
+    override func startLoading() {
+        guard let handler = MockURLProtocol.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.unknown)); return
+        }
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}</code></pre>
+
+<p>Build the <code>URLSession</code> with <code>MockURLProtocol</code> registered:</p>
+<pre><code class="language-swift">let config = URLSessionConfiguration.ephemeral
+config.protocolClasses = [MockURLProtocol.self]
+let session = URLSession(configuration: config)</code></pre>
+
+<h3 id="in-memory-core-data">In-Memory Core Data</h3>
+
+<p>Pass an in-memory store to avoid touching the file system:</p>
+
+<pre><code class="language-swift">let container = NSPersistentContainer(name: "MyApp")
+container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+container.loadPersistentStores { _, error in
+    XCTAssertNil(error, "Store should load without error")
+}</code></pre>
+
+<p>Or use <code>PersistenceController.preview</code> (described in <a href="../08-data-persistence/core-data.md">Core Data</a>) which already uses <code>/dev/null</code>.</p>
+
+<h3 id="in-memory-grdb">In-Memory GRDB</h3>
+
+<pre><code class="language-swift">let db = try DatabaseQueue()   // DatabaseQueue() with no path = in-memory
+try AppDatabase.migrator.migrate(db)</code></pre>
+
+<h3 id="testing-repository--database-together">Testing Repository + Database Together</h3>
+
+<p>This is the sweet spot for integration tests: the repository uses real SQL, the schema is real, but no file is written to disk:</p>
+
+<pre><code class="language-swift">final class PostRepositoryIntegrationTests: XCTestCase {
+    var db: DatabaseQueue!
+    var sut: PostRepository!
+
+    override func setUp() async throws {
+        db = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(db)
+        sut = PostRepository(db: db)
+    }
+
+    override func tearDown() async throws {
+        db = nil
+        sut = nil
+    }
+}</code></pre>
+
+<h3 id="testing-viewmodel--network-together">Testing ViewModel + Network Together</h3>
+
+<p>A ViewModel integration test uses a real ViewModel with a real Repository but a mock URLSession. This catches: JSON decoding mismatches, error propagation chains, and state machine bugs at the ViewModel–Repository boundary.</p>
+
+<h3 id="async-integration-tests">Async Integration Tests</h3>
+
+<p>Use <code>async throws</code> test methods. For Combine pipelines, collect values via <code>publisher.values</code> async sequence or <code>XCTestExpectation</code>.</p>
+
+<h3 id="test-fixtures">Test Fixtures</h3>
+
+<p>Load realistic JSON responses from test bundle files instead of hardcoding in test code:</p>
+
+<pre><code class="language-swift">func loadFixture(named name: String, extension ext: String = "json") -&gt; Data {
+    let bundle = Bundle(for: type(of: self))
+    let url = bundle.url(forResource: name, withExtension: ext)!
+    return try! Data(contentsOf: url)
+}</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import XCTest
+@testable import NetworkKit
+@testable import FeedFeature
+
+// ── Integration test: ViewModel + Repository + Mock Network ───
+final class FeedIntegrationTests: XCTestCase {
+    var sut: FeedViewModel!
+    var repository: FeedRepository!
+    var session: URLSession!
+
+    override func setUp() async throws {
+        // Real URLSession with mock protocol
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        session = URLSession(configuration: config)
+
+        // Real repository using our mock session
+        repository = FeedRepository(session: session, baseURL: URL(string: "https://api.test")!)
+
+        // Real ViewModel
+        sut = FeedViewModel(repository: repository)
+    }
+
+    override func tearDown() async throws {
+        MockURLProtocol.requestHandler = nil
+        sut = nil
+        repository = nil
+        session = nil
+    }
+
+    func test_loadFeed_withValidResponse_publishesPosts() async throws {
+        // Given: mock server returns a valid JSON response
+        let fixture = """
+        {"data": [{"id": "1", "title": "Hello World", "author_name": "Alice"}]}
+        """.data(using: .utf8)!
+
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/feed")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                          httpVersion: nil, headerFields: nil)!
+            return (response, fixture)
+        }
+
+        // When
+        await sut.loadFeed()
+
+        // Then
+        XCTAssertEqual(sut.posts.count, 1)
+        XCTAssertEqual(sut.posts.first?.title, "Hello World")
+        XCTAssertEqual(sut.posts.first?.authorName, "Alice")  // snake_case mapping
+    }
+
+    func test_loadFeed_withMalformedJSON_setsErrorMessage() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let badJSON = "{not valid json".data(using: .utf8)!
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                          httpVersion: nil, headerFields: nil)!
+            return (response, badJSON)
+        }
+
+        await sut.loadFeed()
+
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertTrue(sut.posts.isEmpty)
+    }
+
+    func test_loadFeed_with401_triggersSignOut() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401,
+                                          httpVersion: nil, headerFields: nil)!
+            return (response, Data())
+        }
+
+        await sut.loadFeed()
+
+        XCTAssertTrue(sut.isSignedOut)
+    }
+}
+
+// ── Integration test: Repository + GRDB (in-memory) ──────────
+import GRDB
+
+final class PostRepositoryDBTests: XCTestCase {
+    var db: DatabaseQueue!
+    var sut: PostRepository!
+
+    override func setUp() async throws {
+        db = try DatabaseQueue()           // in-memory — no disk
+        try AppDatabase.migrator.migrate(db)
+        sut = PostRepository(db: db)
+    }
+
+    override func tearDown() async throws {
+        db = nil; sut = nil
+    }
+
+    func test_insertAndFetch_roundTrip() async throws {
+        // Given
+        var post = Post(id: nil, title: "Test Post", body: "Body", authorId: 1,
+                        publishedAt: Date(), isFeatured: false)
+
+        // When
+        try await sut.insert(&amp;post)
+        let fetched = try await sut.fetchAll()
+
+        // Then
+        XCTAssertEqual(fetched.count, 1)
+        XCTAssertEqual(fetched.first?.title, "Test Post")
+        XCTAssertNotNil(post.id)   // id set after insert
+    }
+
+    func test_fetchFeatured_returnsOnlyFeaturedPosts() async throws {
+        var featured = Post(id: nil, title: "Featured", body: "", authorId: 1,
+                            publishedAt: Date(), isFeatured: true)
+        var regular  = Post(id: nil, title: "Regular", body: "", authorId: 1,
+                            publishedAt: Date(), isFeatured: false)
+
+        try await sut.insert(&amp;featured)
+        try await sut.insert(&amp;regular)
+
+        let result = try await sut.fetchFeatured()
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.title, "Featured")
+    }
+
+    func test_delete_removesPostFromDatabase() async throws {
+        var post = Post(id: nil, title: "ToDelete", body: "", authorId: 1,
+                        publishedAt: Date(), isFeatured: false)
+        try await sut.insert(&amp;post)
+        let id = try XCTUnwrap(post.id)
+
+        try await sut.delete(id: id)
+
+        let remaining = try await sut.fetchAll()
+        XCTAssertTrue(remaining.isEmpty)
+    }
+}
+
+// ── Integration test: Core Data ───────────────────────────────
+import CoreData
+
+final class NoteRepositoryCoreDataTests: XCTestCase {
+    var container: NSPersistentContainer!
+    var sut: NoteRepository!
+
+    override func setUp() async throws {
+        container = NSPersistentContainer(name: "MyApp")
+        container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation&lt;Void, Error&gt;) in
+            container.loadPersistentStores { _, error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume() }
+            }
+        }
+        container.viewContext.automaticallyMergesChangesFromParent = true
+        sut = NoteRepository(container: container)
+    }
+
+    func test_createAndFetch_persistsNote() async throws {
+        try await sut.create(title: "Meeting Notes", body: "Discussed Q4 roadmap")
+        let notes = try sut.fetchAll()
+        XCTAssertEqual(notes.count, 1)
+        XCTAssertEqual(notes.first?.title, "Meeting Notes")
+    }
+}
+
+// ── Fixture helper ────────────────────────────────────────────
+extension XCTestCase {
+    func loadFixture(named name: String, ext: String = "json") throws -&gt; Data {
+        let bundle = Bundle(for: type(of: self))
+        let url = try XCTUnwrap(bundle.url(forResource: name, withExtension: ext),
+                                "Fixture '\(name).\(ext)' not found in test bundle")
+        return try Data(contentsOf: url)
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between a unit test and an integration test?</strong></p>
+
+<p>A: A <strong>unit test</strong> exercises one unit in complete isolation — all collaborators are replaced with test doubles. It verifies that a single function, method, or class behaves correctly for a specific input. A <strong>unit test should never touch disk, network, or a real database</strong>. An <strong>integration test</strong> exercises multiple real components working together — a ViewModel with a real Repository, a Repository with a real (in-memory) database, or a network client with a mock HTTP server. It verifies that the components integrate correctly: that the ViewModel correctly maps errors from the Repository, that the Repository correctly transforms SQL rows into domain models, or that the JSON decoding survives a real API response shape. Integration tests catch boundary bugs that unit tests (with their simplified doubles) can miss.</p>
+
+<p><strong>Q: Why use an in-memory database for integration tests rather than a real on-disk file?</strong></p>
+
+<p>A: Two reasons: speed and isolation. An in-memory database is an order of magnitude faster — no filesystem I/O, no fsync. More importantly, each test gets a fresh, empty database created in <code>setUp</code> and discarded in <code>tearDown</code> — tests are completely isolated from each other with no risk of leftover data from a previous run affecting results. A real on-disk file requires careful cleanup (delete the file in <code>tearDown</code>), which can fail if a test crashes, leaving corrupted state for subsequent runs. In-memory databases are a no-cost way to get full test isolation with real schema validation, real constraints, and real query behaviour.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you test that a ViewModel correctly handles a specific HTTP error status code end-to-end?</strong></p>
+
+<p>A: Use <code>MockURLProtocol</code> registered on an <code>URLSessionConfiguration.ephemeral</code> instance (not globally — to avoid affecting other tests). Set <code>MockURLProtocol.requestHandler</code> to return an <code>HTTPURLResponse</code> with the desired status code (e.g., 429) and any relevant headers (<code>Retry-After</code>). Inject the mock <code>URLSession</code> into the real <code>Repository</code>, inject the real <code>Repository</code> into the real <code>ViewModel</code>. Call the ViewModel's load function and assert the resulting published state. This tests the full chain: network layer error detection → error propagation to Repository → Repository error mapping → ViewModel error handling → <code>@Published</code> state. Without <code>MockURLProtocol</code>, you'd either hit the real network (flaky, slow) or stub the Repository (missing the network→Repository mapping).</p>
+
+<p><strong>Q: How do you test async Combine pipelines in integration tests without introducing timing-dependent waits?</strong></p>
+
+<p>A: Prefer two approaches: (1) <em></em><code>async</code> sequence<em></em>: convert the publisher to an <code>AsyncSequence</code> using <code>.values</code> and collect results in an <code>async throws</code> test. Use <code>.prefix(n)</code> to collect exactly <code>n</code> values, which terminates without a timeout once <code>n</code> values are received. (2) <strong>Synchronous mock delivery</strong>: configure the <code>MockURLProtocol</code> to deliver responses synchronously (it calls the client delegate methods in <code>startLoading</code> immediately, on the same thread). With synchronous delivery, Combine pipelines can often be observed without any async waiting — the downstream subscriber receives values before the <code>await</code> on the session call returns. Avoid <code>XCTestExpectation</code> with generous timeouts — they make the test suite slow and hide race conditions.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design an integration test strategy for a feature that involves: (a) fetching data from a REST API, (b) persisting to Core Data, and (c) displaying in a SwiftUI view.</strong></p>
+
+<p>A: Test each boundary independently: (1) <strong>Network → Decoder</strong>: integration test with <code>MockURLProtocol</code> verifying that the real <code>JSONDecoder</code> (with <code>keyDecodingStrategy = .convertFromSnakeCase</code>) correctly maps the API's snake_case JSON to domain models. Use real fixture files from <code>Tests/Fixtures/</code> to avoid brittle inline strings. (2) <strong>Decoder → Core Data</strong>: integration test with an in-memory <code>NSPersistentContainer</code> verifying that the Repository correctly inserts decoded models into the correct entities, handles unique constraints, and fetches with the correct predicates. (3) <strong>Core Data → ViewModel</strong>: integration test verifying the ViewModel's <code>NSFetchedResultsController</code> (or <code>@FetchRequest</code>) correctly reflects inserted/deleted records. (4) <strong>ViewModel → SwiftUI View</strong>: snapshot test (with <code>swift-snapshot-testing</code>) against the ViewModel in a known state — doesn't require the full stack. (5) <strong>End-to-end (optional)</strong>: one XCUITest that installs the app with a mock server (via launch arguments enabling <code>MockURLProtocol</code> globally) and verifies the complete flow. Keep this to a minimal happy path — the detailed edge cases are covered at lower layers.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>MockURLProtocol</code> is not intercepting requests — real network calls are made.<em></em></p>
+
+<p>Solution: The mock protocol must be registered on the same <code>URLSessionConfiguration</code> instance used by the system under test. If the production code uses <code>URLSession.shared</code> (or creates its own <code>URLSession</code> internally), the mock won't intercept. Inject <code>URLSession</code> through constructor or environment — integration tests must control the session. Verify by setting <code>MockURLProtocol.requestHandler = nil</code> and checking for the "unexpected request" error.</p>
+
+<p><strong>Issue: Core Data integration tests are slow — each test takes 200ms+.</strong></p>
+
+<p>Solution: Loading a Core Data stack from disk is expensive. Use <code>/dev/null</code> as the store URL for all test stores, and share one container between tests in the same class (created in <code>class func setUp</code>) rather than recreating per test. Reset the store between tests with <code>NSBatchDeleteRequest</code> rather than recreating the stack.</p>
+
+<p><strong>Issue: Integration tests pass locally but fail on CI with "fixture file not found."</strong></p>
+
+<p>Solution: Test bundle resources must be listed in the test target's <code>Copy Bundle Resources</code> build phase (or SPM <code>testTarget</code> <code>resources</code> array). Fixtures in a subdirectory are not automatically included. Also check that the fixture files are included in the test target membership (not just the app target).</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="unit-testing.md">Unit Testing</a> — foundation of the test pyramid; test doubles</li>
+<li><a href="ui-testing.md">UI Testing</a> — full end-to-end layer above integration tests</li>
+<li><a href="../07-networking/advanced-networking.md">Advanced Networking</a> — <code>MockURLProtocol</code> implementation</li>
+<li><a href="../08-data-persistence/core-data.md">Core Data</a> — in-memory persistent container for testing</li>
+<li><a href="../08-data-persistence/sqlite-realm.md">SQLite &amp; Realm</a> — in-memory DatabaseQueue for GRDB tests</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

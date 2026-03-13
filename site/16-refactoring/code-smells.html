@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code Smells — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../16-refactoring/index.html">Refactoring</a></span>
+    <span>Code Smells</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html" class="active">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="code-smells">Code Smells</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>A code smell is a surface symptom in code that indicates a deeper problem with the design — not a bug, but a signal that the code may be hard to understand, extend, or test. The term was popularised by Martin Fowler and Kent Beck. In iOS and Swift development, the most common smells are: <strong>Long Method</strong> (a function doing too much), <strong>Large Class</strong> (a class with too many responsibilities — the "Massive View Controller" in iOS), <strong>Duplicate Code</strong> (the same logic in multiple places), <strong>Tight Coupling</strong> (a type that directly creates or depends on a concrete implementation rather than an abstraction), <strong>Feature Envy</strong> (a method that is more interested in the data of another class than its own), and <strong>Primitive Obsession</strong> (using raw types like <code>String</code>, <code>Int</code>, or <code>Bool</code> instead of domain-specific value types). Recognizing smells is the first step — the second is applying the appropriate refactoring.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Code smells are like symptoms a doctor looks for: a persistent cough is not the disease itself, but it signals something might be wrong. A very long function (the cough) signals the function might be doing too many things (the disease: violation of single responsibility). Just as a doctor diagnoses from symptoms and prescribes treatment, a developer identifies smells and applies refactoring techniques. Most smells are not emergencies — code with smells usually works fine — but they accumulate and make future changes progressively slower and riskier.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="long-method">Long Method</h3>
+
+<p>A method longer than 20–30 lines typically does more than one thing. Signs: multiple blank lines separating "sections", comments above groups of lines (which are often better expressed as extracted functions), deeply nested <code>if</code>/<code>guard</code>/<code>for</code> combinations.</p>
+
+<p><strong>Why it's a problem</strong>: hard to understand (reader must hold the entire method in mind), hard to test (can't test the inner sections in isolation), hard to reuse (logic is buried).</p>
+
+<p><strong>Detection in iOS</strong>: a <code>viewDidLoad</code> that sets up networking, layout, animations, and analytics. A JSON decoder method that also validates, maps, and persists.</p>
+
+<h3 id="large-class-massive-view-controller">Large Class (Massive View Controller)</h3>
+
+<p>A class with too many instance variables, too many methods, or too many responsibilities. In iOS, this manifests as the "Massive View Controller" anti-pattern — a UIViewController conforming to 5 protocols, owning network code, business logic, and complex layout.</p>
+
+<p><strong>Why it's a problem</strong>: every change to the class risks breaking unrelated functionality; the class is hard to test in isolation.</p>
+
+<p><strong>Signs</strong>: more than 500 lines, more than 10 instance variables, conformance to 4+ protocols, <code>// MARK: - Network</code>, <code>// MARK: - Business Logic</code>, <code>// MARK: - UI</code> sections all in one file.</p>
+
+<h3 id="duplicate-code">Duplicate Code</h3>
+
+<p>The same (or very similar) logic appears in two or more places. A bug fix in one copy won't be applied to the others.</p>
+
+<p><strong>Types in iOS</strong>:</p>
+<ul>
+<li>Copy-pasted animation blocks across multiple view controllers.</li>
+<li>Identical error handling in every networking call.</li>
+<li>Repeated date formatting code in multiple view models.</li>
+</ul>
+
+<h3 id="tight-coupling">Tight Coupling</h3>
+
+<p>A type directly creates or references a concrete dependency — <code>let service = NetworkService()</code> inside a class. The class is inseparable from <code>NetworkService</code> and cannot be tested with a mock.</p>
+
+<p><strong>Signs</strong>: <code>let x = ConcreteType()</code> inside <code>init</code> without injection; <code>ClassName.shared</code> singleton access throughout the codebase; <code>import ThirdPartySDK</code> in 20 files instead of behind an adapter.</p>
+
+<h3 id="feature-envy">Feature Envy</h3>
+
+<p>A method that accesses the data or methods of another class more than its own. This is a signal that the method belongs in the other class.</p>
+
+<pre><code class="language-swift">// Smell: PostFormatter accesses Post's properties extensively
+// — the formatting logic probably belongs in Post or PostViewModel
+final class PostFormatter {
+    func formatSubtitle(post: Post) -&gt; String {
+        "\(post.author.firstName) \(post.author.lastName) · \(post.publishedAt.formatted())"
+    }
+}</code></pre>
+
+<h3 id="primitive-obsession">Primitive Obsession</h3>
+
+<p>Using primitive types (<code>String</code>, <code>Int</code>, <code>Bool</code>) where a domain-specific value type would be safer and more expressive. Common in iOS: storing currency as <code>Double</code> (floating-point rounding errors), email as <code>String</code> (no validation), user ID as <code>Int</code> (can be confused with post ID).</p>
+
+<pre><code class="language-swift">// Smell:
+func transfer(from account: Int, to: Int, amount: Double) { ... }
+
+// Better:
+struct AccountID: RawRepresentable { let rawValue: String }
+struct Money: Equatable { let cents: Int; let currency: Currency }
+func transfer(from: AccountID, to: AccountID, amount: Money) { ... }</code></pre>
+
+<h3 id="divergent-change">Divergent Change</h3>
+
+<p>A class that must be modified every time a different kind of change is made to the system. If adding a new payment method requires changes in 6 different places in one class, that class has divergent change.</p>
+
+<h3 id="shotgun-surgery">Shotgun Surgery</h3>
+
+<p>The inverse of Divergent Change: a single change requires many small changes across many classes. Every time you change the <code>User</code> model, you touch 15 files.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ══════════════════════════════════════════════════════════════
+// ── SMELL: Long Method ────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+// BEFORE — one massive method with four distinct responsibilities
+final class OrderViewController: UIViewController {
+
+    func submitOrder() {
+        // 1. Validate (10 lines)
+        guard !cartItems.isEmpty else {
+            showAlert(title: "Error", message: "Your cart is empty")
+            return
+        }
+        guard let address = selectedAddress else {
+            showAlert(title: "Error", message: "No delivery address selected")
+            return
+        }
+
+        // 2. Calculate total (8 lines)
+        let subtotal = cartItems.reduce(Decimal(0)) { $0 + $1.price * Decimal($1.quantity) }
+        let tax = subtotal * 0.1
+        let shipping = subtotal &gt; 50 ? Decimal(0) : Decimal(5)
+        let total = subtotal + tax + shipping
+
+        // 3. Submit network request (15 lines)
+        isLoading = true
+        let order = Order(items: cartItems, address: address, total: total)
+        NetworkService.shared.submitOrder(order) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                switch result {
+                case .success(let order): self?.navigateToConfirmation(order: order)
+                case .failure(let error): self?.showAlert(title: "Error", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private var cartItems: [CartItem] = []
+    private var selectedAddress: Address? = nil
+    private var isLoading = false
+    private func showAlert(title: String, message: String) {}
+    private func navigateToConfirmation(order: Order) {}
+}
+
+// AFTER — each responsibility extracted into a focused method
+// (shown as extension for clarity; in practice, move to ViewModel)
+extension OrderViewController {
+
+    func submitOrderRefactored() {
+        guard validateCart() else { return }
+        guard let address = selectedAddress else {
+            showAlert(title: "Error", message: "No delivery address selected"); return
+        }
+        let total = calculateTotal()
+        placeOrder(address: address, total: total)
+    }
+
+    private func validateCart() -&gt; Bool {
+        guard !cartItems.isEmpty else {
+            showAlert(title: "Error", message: "Your cart is empty")
+            return false
+        }
+        return true
+    }
+
+    private func calculateTotal() -&gt; Decimal {
+        let subtotal = cartItems.reduce(Decimal(0)) { $0 + $1.price * Decimal($1.quantity) }
+        return subtotal + subtotal * 0.1 + (subtotal &gt; 50 ? 0 : 5)
+    }
+
+    private func placeOrder(address: Address, total: Decimal) {
+        isLoading = true
+        let order = Order(items: cartItems, address: address, total: total)
+        NetworkService.shared.submitOrder(order) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                switch result {
+                case .success(let o): self?.navigateToConfirmation(order: o)
+                case .failure(let e): self?.showAlert(title: "Error", message: e.localizedDescription)
+                }
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── SMELL: Primitive Obsession ────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+// BEFORE
+func calculateDiscount(userType: String, orderTotal: Double) -&gt; Double {
+    // "premium", "standard", "guest" — easy to mistype
+    userType == "premium" ? orderTotal * 0.2 : 0
+}
+
+// AFTER
+enum UserType: String { case premium, standard, guest }
+struct Money: Equatable, Comparable {
+    let cents: Int
+    static func &lt; (lhs: Money, rhs: Money) -&gt; Bool { lhs.cents &lt; rhs.cents }
+    func discount(percent: Int) -&gt; Money { Money(cents: cents * percent / 100) }
+}
+
+func calculateDiscount(userType: UserType, orderTotal: Money) -&gt; Money {
+    userType == .premium ? orderTotal.discount(percent: 20) : Money(cents: 0)
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── SMELL: Duplicate Code ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+// BEFORE — same error handling in multiple ViewModels
+// In FeedViewModel:
+// do { posts = try await repository.fetchPosts() }
+// catch let e as NetworkError { errorMessage = e.userFacingMessage }
+// catch { errorMessage = "Something went wrong" }
+//
+// In ProfileViewModel — IDENTICAL pattern
+
+// AFTER — extracted shared error handler
+extension Error {
+    var userFacingMessage: String {
+        if let networkError = self as? NetworkError {
+            return networkError.userFacingMessage
+        }
+        return "Something went wrong. Please try again."
+    }
+}
+
+// Placeholder types:
+struct CartItem { let price: Decimal; let quantity: Int }
+struct Address {}
+struct Order { let items: [CartItem]; let address: Address; let total: Decimal }
+enum NetworkError: Error { case serverError(Int)
+    var userFacingMessage: String { "Server error" }
+}
+final class NetworkService {
+    static let shared = NetworkService()
+    func submitOrder(_ order: Order, completion: @escaping (Result&lt;Order, Error&gt;) -&gt; Void) {}
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the "Massive View Controller" anti-pattern and why is it a problem in iOS?</strong></p>
+
+<p>A: Massive View Controller (MVC) is an iOS-specific instance of the Large Class code smell where <code>UIViewController</code> accumulates network calls, data transformation, business rules, navigation logic, and UI setup in one file. It happens because <code>UIViewController</code>'s delegate/data source protocols (UITableViewDataSource, UITableViewDelegate, NSFetchedResultsControllerDelegate) are often implemented directly on the VC, making it convenient but bloated. Problems: (1) <strong>Untestable</strong>: a VC requires the full UIKit lifecycle (<code>loadView</code>, <code>viewDidLoad</code>) to test, making unit tests slow and fragile. (2) <strong>Hard to read</strong>: a 2000-line VC with mixed concerns requires understanding the whole file to make a change. (3) <strong>Impossible to reuse</strong>: business logic buried in a VC can't be shared with another VC or a widget extension. Solutions: extract business logic into a <code>ViewModel</code>, networking into a <code>Repository</code>, navigation into a <code>Coordinator</code>, and data source logic into a dedicated <code>DataSource</code> object.</p>
+
+<p><strong>Q: What is duplicate code (DRY violation) and why is it dangerous?</strong></p>
+
+<p>A: Duplicate code is the same (or very similar) logic appearing in two or more places. The "Don't Repeat Yourself" principle states that every piece of knowledge should have a single, authoritative representation. Danger: (1) <strong>Bug propagation</strong>: a fix applied to one copy is not automatically applied to the others. The bug resurfaces in the untouched copy, often in a production incident. (2) <strong>Inconsistency</strong>: over time, duplicate copies diverge as different developers modify them independently, leading to subtly different behaviours for the same conceptual operation. (3) <strong>Refactoring cost</strong>: every future change to the logic must be made N times. The fix: extract the logic into a shared function, extension, protocol default, or base class (depending on the context), then replace all copies with calls to the single authoritative implementation.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you identify and resolve tight coupling in an iOS codebase?</strong></p>
+
+<p>A: Identify tight coupling by looking for: <code>let x = ConcreteType()</code> inside an <code>init</code>, <code>ClassName.shared</code> calls scattered throughout the codebase, <code>import ThirdPartySDK</code> in non-adapter files, and types that cannot be unit tested without the real dependency present. Resolve by: (1) <strong>Introduce a protocol (seam)</strong>: define <code>protocol AnalyticsService</code> and make both the real <code>FirebaseAnalytics</code> and a <code>MockAnalytics</code> conform. (2) <strong>Constructor injection</strong>: change <code>class FeedViewModel { let analytics = FirebaseAnalytics() }</code> to <code>class FeedViewModel { init(analytics: AnalyticsService) { ... } }</code>. (3) <strong>Adapter for third-party code</strong>: create <code>FirebaseAnalyticsAdapter: AnalyticsService</code> that wraps <code>FirebaseAnalytics</code>. Only the adapter file imports <code>Firebase</code>. All other code depends on <code>AnalyticsService</code>. (4) <strong>Dependency container</strong>: create an <code>AppDependencies</code> struct that wires real implementations at the app entry point, and pass mock implementations in tests.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: You've been asked to improve a 3000-line UIViewController with mixed responsibilities. Describe your step-by-step refactoring approach without breaking existing functionality.</strong></p>
+
+<p>A: Systematic six-step approach: (1) <strong>Write characterisation tests</strong>: before touching anything, write tests that capture the VC's current behaviour (even if imperfect). These are safety nets. Use Snapshot tests for UI states, unit tests for any pure functions you can identify. (2) <strong>Extract the pure logic first</strong>: look for methods that don't use <code>self</code> (or use only non-UIKit properties). These can be moved to static functions or a new struct without changing any interface. Run the tests after each extraction. (3) <strong>Extract the ViewModel</strong>: move <code>@IBOutlet</code>-unrelated state (<code>var isLoading</code>, <code>var posts</code>, network calls) into a new <code>ViewModel</code> class. Wire it to the VC via <code>@Published</code>/<code>ObservableObject</code> or a closure-based binding. This is the highest-value extraction — it immediately makes the business logic testable. (4) <strong>Extract the data source</strong>: if the VC conforms to <code>UITableViewDataSource</code>/<code>UICollectionViewDataSource</code>, extract those methods into a dedicated <code>DataSource</code> class that takes the data model as input. (5) <strong>Extract navigation</strong>: pull <code>present</code>, <code>push</code>, <code>performSegue</code> calls into a <code>Coordinator</code>. The VC exposes callbacks; the coordinator handles navigation. (6) <strong>Validate and commit incrementally</strong>: commit after each extraction with a message like "refactor: extract PostListDataSource from FeedViewController". All tests must pass at each commit. Never do all six steps in one commit — small commits make bisecting regressions easy.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: You identified duplicate code in two view controllers but they're not identical — one has extra validation.</strong></p>
+
+<p>Solution: This is parallel implementation drift — the copies started identical and diverged. Extract the common core into a shared function, and parameterise the different parts: the extra validation becomes an optional parameter or a strategy protocol. Create a unified <code>validateAndFormat(input: String, validators: [ValidationStrategy]) -&gt; Result&lt;String, ValidationError&gt;</code> function that both callers use with their respective validator sets.</p>
+
+<p><em></em>Issue: You want to fix tight coupling but the codebase has hundreds of call sites for <code>AnalyticsService.shared</code>.<em></em></p>
+
+<p>Solution: Use an IDE refactoring (Xcode's "Rename") to change <code>AnalyticsService.shared.log(...)</code> to a wrapper function <code>logAnalyticsEvent(...)</code> in one global file. This consolidates all call sites to one function. Then update that function to accept an <code>AnalyticsService</code> parameter (defaulting to <code>AnalyticsService.shared</code>), making it injectable. Migrate call sites gradually, starting with the most-tested classes.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="refactoring-techniques.md">Refactoring Techniques</a> — the fixes for each smell</li>
+<li><a href="../15-design-patterns/index.md">Design Patterns</a> — the patterns refactoring moves toward</li>
+<li><a href="../11-testing/testable-architecture.md">Testable Architecture</a> — tests needed before refactoring</li>
+<li><a href="../04-ui-frameworks/mvvm-coordinator.md">MVVM &amp; Coordinator</a> — the target architecture for MVC-smell refactoring</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

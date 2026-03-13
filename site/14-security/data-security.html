@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Security — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../14-security/index.html">Security</a></span>
+    <span>Data Security</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html" class="active">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="data-security">Data Security</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Data security on iOS protects sensitive information at rest — preventing an attacker with physical access to the device, or access to an unencrypted backup, from reading credentials, personal data, or encryption keys. The primary tools are: the <strong>Keychain</strong> (the correct storage for secrets — credentials, tokens, encryption keys), <strong>CryptoKit</strong> (Swift-native symmetric and asymmetric cryptography), <strong>NSFileProtection</strong> (per-file encryption tied to the device's lock state), and secure data lifecycle practices (scrubbing memory, excluding sensitive files from backups, avoiding logging PII). Common mistakes — storing tokens in <code>UserDefaults</code>, using <code>Data(contentsOf:)</code> with no file protection, or embedding API keys in the binary — expose data to backup extraction, file-system inspection on jailbroken devices, and reverse engineering.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of your iPhone as a safe with multiple compartments. The Keychain is the deep vault — a safe within the safe, protected by the device's hardware encryption keys and biometric lock. Even if someone copies the entire device filesystem (via an unencrypted backup), the Keychain data is still encrypted with device-specific keys that cannot be extracted. <code>NSFileProtection.complete</code> puts a file behind the vault door — the file is encrypted while the phone is locked and can only be read after the user unlocks the device. <code>UserDefaults</code> and the app's Documents folder are the unlocked drawer on the desk — convenient, but not protected beyond the device's full-disk encryption, and accessible from iTunes backups.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="keychain-vs-userdefaults">Keychain vs UserDefaults</h3>
+
+<table>
+<tr><td>Property</td><td>Keychain</td><td>UserDefaults</td></tr>
+<tr><td>At-rest encryption</td><td>Hardware-backed, Secure Enclave</td><td>Standard full-disk encryption only</td></tr>
+<tr><td>Accessible from backup</td><td>No (by default)</td><td>Yes — plaintext in backup</td></tr>
+<tr><td>Persists after app delete</td><td>Yes (unless <code>secAttrAccessible</code> = <code>.whenPasscodeSet</code>)</td><td>No</td></tr>
+<tr><td>Access control</td><td>Biometric, passcode, device lock</td><td>None</td></tr>
+<tr><td>Thread safety</td><td>Yes</td><td>Yes</td></tr>
+<tr><td>Best for</td><td>Credentials, tokens, private keys</td><td>Preferences, flags</td></tr>
+</table>
+
+<h3 id="cryptokit">CryptoKit</h3>
+
+<p>Apple's <code>CryptoKit</code> framework (iOS 13+) provides modern, memory-safe cryptography:</p>
+
+<ul>
+<li><strong>AES-GCM</strong>: authenticated encryption (confidentiality + integrity + authenticity).</li>
+<li><strong>ChaCha20-Poly1305</strong>: alternative to AES-GCM, faster on devices without AES hardware instructions.</li>
+<li><strong>ECDH (Curve25519)</strong>: key agreement for end-to-end encryption.</li>
+<li><strong>Ed25519</strong>: digital signatures.</li>
+<li><strong>HMAC-SHA256/384/512</strong>: message authentication codes.</li>
+<li><strong>SHA-256/384/512</strong>: cryptographic hashing.</li>
+<li><strong>HKDF</strong>: key derivation from a shared secret.</li>
+</ul>
+
+<p>Never use: <code>CommonCrypto</code> ECB mode, <code>SecRandom</code> for key derivation, <code>MD5</code>/<code>SHA1</code> for security-sensitive hashing.</p>
+
+<h3 id="nsfileprotection-levels">NSFileProtection Levels</h3>
+
+<table>
+<tr><td>Level</td><td>When accessible</td></tr>
+<tr><td><code>.complete</code></td><td>Only when device is unlocked</td></tr>
+<tr><td><code>.completeUnlessOpen</code></td><td>Accessible if file was open when locked; new files require unlock</td></tr>
+<tr><td><code>.completeUntilFirstUserAuthentication</code></td><td>After first unlock since reboot (default for most files)</td></tr>
+<tr><td><code>.none</code></td><td>Always accessible (no protection)</td></tr>
+</table>
+
+<p>For sensitive files, use <code>.complete</code>. For files that background tasks must read (e.g., database): <code>.completeUntilFirstUserAuthentication</code>. The protection class is set as an extended attribute on the file — it doesn't change the file's format.</p>
+
+<h3 id="secure-data-deletion">Secure Data Deletion</h3>
+
+<p>In-memory sensitive data (passwords, keys) should be zeroed after use. Swift's <code>Data</code> and <code>String</code> do not guarantee zeroing on deallocation. Use <code>SecureBytes</code> or <code>UnsafeMutableRawBufferPointer</code> with <code>memset_s</code>:</p>
+
+<pre><code class="language-swift">// Zero-fill before releasing
+func zeroise(_ data: inout Data) {
+    data.withUnsafeMutableBytes { ptr in
+        memset_s(ptr.baseAddress, ptr.count, 0, ptr.count)
+    }
+}</code></pre>
+
+<h3 id="binary-secret-protection">Binary Secret Protection</h3>
+
+<p>Never embed API secrets directly in the binary. Strings in a Mach-O binary are trivially extracted with <code>strings MyApp.app/MyApp</code>. Mitigations:</p>
+<ol>
+<li>Server-side proxy: the app calls your server, which calls the third-party API with the secret.</li>
+<li>Obfuscate constants at compile time (build-time XOR or string splitting) — not cryptographically secure but raises the bar.</li>
+<li>Fetch secrets from a secure server at runtime (authenticate the request with a hardware-attested device check via <code>DeviceCheck</code> or <code>AppAttest</code>).</li>
+</ol>
+
+<h3 id="app-attest">App Attest</h3>
+
+<p><code>DCAppAttestService</code> (iOS 14+) cryptographically proves to your server that the request originates from a genuine, unmodified iOS app on a real Apple device. This prevents credential stuffing and API abuse from bots:</p>
+
+<ol>
+<li>Generate an attestation key: <code>DCAppAttestService.shared.generateKey</code>.</li>
+<li>Attest the key against Apple's servers.</li>
+<li>Send subsequent requests with an assertion — your server verifies the assertion using Apple's public key, proving the request came from the legit app.</li>
+</ol>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import CryptoKit
+import Security
+
+// ── AES-GCM encryption / decryption ───────────────────────────
+struct EncryptedPayload: Codable {
+    let nonce: Data       // 12-byte random nonce
+    let ciphertext: Data  // encrypted data + authentication tag (last 16 bytes)
+}
+
+enum DataEncryptor {
+
+    /// Encrypts `plaintext` with `key` using AES-GCM (256-bit).
+    static func encrypt(_ plaintext: Data, using key: SymmetricKey) throws -&gt; EncryptedPayload {
+        let nonce = AES.GCM.Nonce()   // 12 random bytes
+        let sealedBox = try AES.GCM.seal(plaintext, using: key, nonce: nonce)
+        return EncryptedPayload(
+            nonce: Data(nonce),
+            ciphertext: sealedBox.ciphertext + sealedBox.tag   // append tag
+        )
+    }
+
+    /// Decrypts `payload` with `key`, verifying the authentication tag.
+    static func decrypt(_ payload: EncryptedPayload, using key: SymmetricKey) throws -&gt; Data {
+        let nonce = try AES.GCM.Nonce(data: payload.nonce)
+        // Last 16 bytes = tag; preceding bytes = ciphertext
+        let ciphertext = payload.ciphertext.dropLast(16)
+        let tag = payload.ciphertext.suffix(16)
+        let sealedBox = try AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertext, tag: tag)
+        return try AES.GCM.open(sealedBox, using: key)
+    }
+}
+
+// ── Deriving a key from a passphrase ──────────────────────────
+func deriveKey(from passphrase: String, salt: Data) -&gt; SymmetricKey {
+    let passphraseBytes = Data(passphrase.utf8)
+    // PBKDF2 with SHA-256, 100,000 iterations (NIST recommendation)
+    return SymmetricKey(data: HKDF&lt;SHA256&gt;.deriveKey(
+        inputKeyMaterial: SymmetricKey(data: passphraseBytes),
+        salt: salt,
+        outputByteCount: 32
+    ))
+}
+
+// ── Storing an encryption key in the Keychain ─────────────────
+func storeKey(_ key: SymmetricKey, tag: String) throws {
+    let keyData = key.withUnsafeBytes { Data($0) }
+    let query: [CFString: Any] = [
+        kSecClass: kSecClassGenericPassword,
+        kSecAttrAccount: tag,
+        kSecValueData: keyData,
+        kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    ]
+    let status = SecItemAdd(query as CFDictionary, nil)
+    if status == errSecDuplicateItem {
+        let update: [CFString: Any] = [kSecValueData: keyData]
+        SecItemUpdate(query as CFDictionary, update as CFDictionary)
+    } else if status != errSecSuccess {
+        throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+    }
+}
+
+// ── NSFileProtection on a sensitive file ──────────────────────
+func writeProtected(data: Data, to url: URL) throws {
+    try data.write(to: url, options: .atomic)
+    try (url as NSURL).setResourceValue(
+        URLFileProtection.complete,   // only accessible when unlocked
+        forKey: .fileProtectionKey
+    )
+}
+
+// ── Secure memory zeroing ──────────────────────────────────────
+func withSensitiveData&lt;T&gt;(_ data: Data, body: (Data) -&gt; T) -&gt; T {
+    var mutableData = data
+    defer {
+        mutableData.withUnsafeMutableBytes { ptr in
+            guard let base = ptr.baseAddress else { return }
+            memset_s(base, ptr.count, 0, ptr.count)
+        }
+    }
+    return body(mutableData)
+}
+
+// ── Checking if UserDefaults contains plaintext tokens (audit) ─
+func auditUserDefaultsForSecrets() {
+    let knownSensitiveKeys = ["authToken", "sessionID", "password", "apiKey"]
+    for key in knownSensitiveKeys {
+        if UserDefaults.standard.string(forKey: key) != nil {
+            assertionFailure("⚠️ Sensitive value '\(key)' found in UserDefaults — move to Keychain")
+        }
+    }
+}
+
+// ── Ed25519 digital signature ──────────────────────────────────
+func signAndVerify() throws {
+    let privateKey = Curve25519.Signing.PrivateKey()
+    let publicKey = privateKey.publicKey
+
+    let message = Data("Important message".utf8)
+    let signature = try privateKey.signature(for: message)
+
+    let isValid = publicKey.isValidSignature(signature, for: message)
+    assert(isValid, "Signature verification failed")
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: Where should an iOS app store an OAuth access token and why?</strong></p>
+
+<p>A: In the <strong>Keychain</strong> with <code>kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly</code>. The Keychain is encrypted with device-specific hardware keys derived from the Secure Enclave — it cannot be read from device backups (even unencrypted backups), and it is not accessible to other apps (without a shared Keychain group). <code>UserDefaults</code> stores data in a plist file inside the app container — readable from unencrypted iTunes/Finder backups, accessible to file-system tools on jailbroken devices, and not protected beyond full-disk encryption. The <code>ThisDeviceOnly</code> suffix prevents the token from syncing to iCloud Keychain — important for short-lived access tokens that should not survive a device restore.</p>
+
+<p><em></em>Q: What does <code>NSFileProtection.complete</code> do and when should you use it?<em></em></p>
+
+<p>A: <code>NSFileProtection.complete</code> encrypts the file with a per-file key that is wrapped with the user's passcode-derived key. The file key is available only when the device is unlocked — when the device is locked, the key is purged from memory and the file is inaccessible. Use it for files containing sensitive user data: encrypted database WAL files, private keys exported to disk, health data exports, financial documents. Do not use it for database files that background tasks must read (e.g., BGAppRefreshTask runs while the device may be locked) — use <code>.completeUntilFirstUserAuthentication</code> instead, which keeps the file accessible after the first unlock since reboot.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: What is AES-GCM and why should you use it instead of AES-CBC for encrypting user data?</strong></p>
+
+<p>A: AES-GCM (Galois/Counter Mode) provides <strong>authenticated encryption</strong>: it simultaneously encrypts data (confidentiality via AES-CTR) and computes an authentication tag (integrity + authenticity via GHASH). Decryption fails with an error if the ciphertext or associated data has been tampered with. AES-CBC (Cipher Block Chaining) provides only confidentiality — it does not authenticate. A CBC-encrypted ciphertext can be bit-flipped by an attacker without the recipient detecting the tampering (padding oracle attacks, CBC malleability attacks). AES-GCM is the standard choice in modern protocols (TLS 1.3, iOS CryptoKit). The <code>AES.GCM.open</code> call in CryptoKit throws if the tag doesn't match, ensuring the app never processes tampered data. Always use a fresh random nonce (12 bytes from <code>AES.GCM.Nonce()</code>) for each encryption — reusing a nonce with the same key is catastrophic (it reveals the keystream).</p>
+
+<p><em></em>Q: How does <code>DCAppAttestService</code> protect your API from abuse, and what are its limitations?<em></em></p>
+
+<p>A: <code>DCAppAttestService</code> generates a device-specific attestation key pair in the Secure Enclave. Apple's servers sign the public key, creating an attestation certificate that binds the key to: the App ID, the device's UDID, the iOS version, and the fact that the device has not been jailbroken (as determined by Apple's server-side assessment). Your server receives the attestation certificate and can verify it against Apple's public key, confirming the request came from a legitimate, unmodified instance of your app on a real Apple device. Limitations: (1) Apple's assessment is not a guarantee — sophisticated jailbreaks may pass attestation. (2) It requires network availability — first-time key generation and attestation require an internet connection. (3) Attestation keys are bound to the device; they are lost if the app is uninstalled (unless backed up to iCloud, which requires careful handling). (4) Rate limits: Apple imposes attestation rate limits per device/app, so this cannot be called on every API request — use assertions for individual calls after initial attestation.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design an end-to-end encrypted messaging feature for an iOS app where the server cannot read message content.</strong></p>
+
+<p>A: Four-layer architecture: (1) <strong>Key generation</strong>: on account creation, generate a Curve25519 key pair (<code>Curve25519.KeyAgreement.PrivateKey</code>) per user on-device. Store the private key in the Keychain with <code>.whenPasscodeSetThisDeviceOnly</code> and biometric access control. Upload only the public key to the server. (2) <strong>Message encryption (sender)</strong>: when Alice sends to Bob, fetch Bob's public key from the server. Perform ECDH key agreement: <code>try alicePrivate.sharedSecretFromKeyAgreement(with: bobPublic)</code>. Derive a symmetric key using HKDF: <code>sharedSecret.hkdfDerivedSymmetricKey(using: SHA256.self, salt: Data(), sharedInfo: Data(), outputByteCount: 32)</code>. Encrypt the message with AES-GCM. Send the ciphertext + Alice's public key (needed by Bob to reproduce the ECDH) to the server. (3) <strong>Decryption (receiver)</strong>: Bob's device fetches the ciphertext and Alice's public key. Performs the same ECDH to derive the shared secret. Decrypts with AES-GCM — the authentication tag verifies integrity. (4) <strong>Key rotation and forward secrecy</strong>: use the Signal protocol's Double Ratchet algorithm (or a simplified version with per-message ephemeral keys) for forward secrecy — compromise of one message key does not compromise past or future keys. The server stores only ciphertext and public keys — it cannot decrypt messages, making it resilient to server-side breaches.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: CryptoKit throws an error when decrypting data that was encrypted on a different device.</strong></p>
+
+<p>Solution: The key must be the same on both devices. If you're generating a key on-device and not sharing it, decryption on another device will always fail — this is expected. If you need cross-device encryption (e.g., synced notes), derive the key from a shared secret (user password + server-stored salt using PBKDF2/HKDF), or use asymmetric ECDH with the receiver's public key. Also check that the nonce stored with the ciphertext is correctly serialised and deserialised — a truncated or misaligned nonce causes AES-GCM to fail.</p>
+
+<p><strong>Issue: App is rejected because it uses encryption (US export compliance).</strong></p>
+
+<p>Solution: Apps using standard encryption (AES, RSA, TLS) must declare this in the App Store Connect export compliance section. For apps using only standard OS-provided encryption (HTTPS, Keychain, CloudKit), check "Yes, but I only use encryption that is exempt" — standard OS encryption is exempt from EAR (Export Administration Regulations). Apps implementing their own non-exempt encryption (custom protocols, VPN) need an ERN (Encryption Registration Number).</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="../08-data-persistence/keychain.md">Keychain — Data Persistence</a> — <code>SecItem</code> API, biometric access control</li>
+<li><a href="network-security.md">Network Security</a> — TLS and certificate pinning</li>
+<li><a href="app-security.md">App Security</a> — protecting the binary and runtime</li>
+<li><a href="../08-data-persistence/file-system.md">File System</a> — <code>NSFileProtection</code> and backup exclusion</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

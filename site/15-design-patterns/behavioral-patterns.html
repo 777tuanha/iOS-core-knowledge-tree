@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Behavioral Patterns — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../15-design-patterns/index.html">Design Patterns</a></span>
+    <span>Behavioral Patterns</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html" class="active">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="behavioral-patterns">Behavioral Patterns</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Behavioral patterns deal with <strong>algorithms and the assignment of responsibilities between objects</strong> — how objects communicate, how they share data, and how they distribute work. The four GoF behavioral patterns most important to iOS are: <strong>Observer</strong> (one-to-many notification when state changes — the foundation of <code>NotificationCenter</code>, <code>KVO</code>, <code>Combine</code>, and <code>@Published</code>), <strong>Strategy</strong> (interchangeable algorithms behind a common interface — enabling runtime algorithm selection without conditionals), <strong>Command</strong> (encapsulate a request as an object — enabling undo/redo, queuing, and logging of operations), and <strong>State</strong> (alter an object's behaviour when its internal state changes — formalising a finite state machine instead of a tangle of boolean flags). Understanding these patterns allows you to recognise them when they appear in Apple frameworks and apply them deliberately when designing app architecture.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p><strong>Observer</strong>: a newspaper subscription — readers (observers) register once, and every time a new edition is published (state changes), they receive a copy automatically. <strong>Strategy</strong>: GPS navigation with selectable routes — "fastest", "avoid tolls", "scenic" are interchangeable algorithms; you swap them without rebuilding the GPS. <strong>Command</strong>: a restaurant order ticket — the waiter writes your order on a ticket (a command object), which the kitchen can execute immediately, execute later, or cancel entirely. The waiter doesn't cook; the kitchen doesn't deal with customers. <strong>State</strong>: a traffic light — the same object (the light controller) behaves completely differently depending on its current state (red: stop, green: go, yellow: prepare to stop). Changing the state changes all future behaviour.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="observer">Observer</h3>
+
+<p>The Observer pattern defines a one-to-many dependency: when one object changes, all its dependants are notified. iOS implements this at multiple layers:</p>
+
+<table>
+<tr><td>Mechanism</td><td>Scope</td><td>Thread-safe</td><td>Typed</td></tr>
+<tr><td><code>NotificationCenter</code></td><td>Process-wide</td><td>Yes (posting)</td><td>No (userInfo dict)</td></tr>
+<tr><td><code>KVO</code> (<code>addObserver(forKeyPath:)</code>)</td><td>Any object</td><td>Yes</td><td>No</td></tr>
+<tr><td><code>Combine</code> / <code>@Published</code></td><td>Any publisher</td><td>Publisher-dependent</td><td>Yes</td></tr>
+<tr><td><code>NotificationCenter.publisher(for:)</code></td><td>Process-wide</td><td>Yes</td><td>No (AnyPublisher)</td></tr>
+<tr><td>SwiftUI <code>@Observable</code></td><td>View body</td><td>Main actor</td><td>Yes</td></tr>
+</table>
+
+<p>The GoF Observer maps directly to Combine: <code>Publisher</code> = Subject, <code>Subscriber</code>/<code>sink</code> = Observer, <code>AnyCancellable</code> = the subscription (disposable).</p>
+
+<h3 id="strategy">Strategy</h3>
+
+<p>The Strategy pattern defines a family of algorithms, encapsulates each one, and makes them interchangeable. The context delegates to the strategy:</p>
+
+<pre><code class="language-swift">protocol SortStrategy { func sort(_ items: inout [Item]) }
+
+final class QuickSort: SortStrategy { ... }
+final class MergeSort: SortStrategy { ... }
+
+final class ItemList {
+    var strategy: SortStrategy = QuickSort()
+    var items: [Item] = []
+
+    func sort() { strategy.sort(&amp;items) }
+}</code></pre>
+
+<p>iOS examples: <code>UICollectionViewLayout</code> (interchangeable layouts — flow, compositional), <code>URLSessionConfiguration</code> (ephemeral/default/background — different caching strategies).</p>
+
+<h3 id="command">Command</h3>
+
+<p>The Command pattern encapsulates a request (method + parameters + receiver) as an object. Enables:</p>
+<ul>
+<li><strong>Undo/redo</strong>: store executed commands; undo = reverse the last command.</li>
+<li><strong>Queuing</strong>: commands can be serialised and executed later.</li>
+<li><strong>Logging</strong>: log commands as they execute.</li>
+<li><strong>Macro recording</strong>: record a sequence of commands for replay.</li>
+</ul>
+
+<p>iOS example: <code>UICommand</code> (menu actions as command objects), <code>NSUndoManager</code> (CocoaTouch's built-in command-based undo).</p>
+
+<h3 id="state">State</h3>
+
+<p>The State pattern allows an object to change its behaviour when its internal state changes. Instead of a large <code>switch</code> or chains of <code>if/else</code> on an enum, the State pattern externalises each state as a separate object (or value) that handles events.</p>
+
+<p>iOS example: <code>AVPlayer</code>'s <code>status</code> (<code>unknown</code>, <code>readyToPlay</code>, <code>failed</code>) — the player's behaviour in each state is encapsulated. <code>URLSessionTask</code>'s <code>state</code> (<code>running</code>, <code>suspended</code>, <code>canceling</code>, <code>completed</code>).</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import Combine
+
+// ── Observer: Combine publisher ───────────────────────────────
+final class CartViewModel: ObservableObject {
+    @Published private(set) var items: [CartItem] = []
+    @Published private(set) var totalPrice: Decimal = 0
+
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    init() {
+        // Observer: totalPrice reacts to any change in items
+        $items
+            .map { $0.reduce(Decimal(0)) { $0 + $1.price } }
+            .assign(to: &amp;$totalPrice)
+    }
+
+    func add(_ item: CartItem) { items.append(item) }
+    func remove(at index: Int) { items.remove(at: index) }
+}
+
+struct CartItem { let name: String; let price: Decimal }
+
+// ── Strategy: Validation strategy ────────────────────────────
+protocol ValidationStrategy {
+    func validate(_ input: String) -&gt; String?   // returns error message, or nil if valid
+}
+
+struct EmailValidation: ValidationStrategy {
+    func validate(_ input: String) -&gt; String? {
+        let pattern = #"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$"#
+        let valid = input.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        return valid ? nil : "Please enter a valid email address"
+    }
+}
+
+struct PasswordValidation: ValidationStrategy {
+    func validate(_ input: String) -&gt; String? {
+        guard input.count &gt;= 8 else { return "Password must be at least 8 characters" }
+        guard input.contains(where: \.isNumber) else { return "Password must contain a number" }
+        return nil
+    }
+}
+
+struct NonEmptyValidation: ValidationStrategy {
+    func validate(_ input: String) -&gt; String? {
+        input.trimmingCharacters(in: .whitespaces).isEmpty ? "This field is required" : nil
+    }
+}
+
+// TextField that accepts any validation strategy at construction
+final class ValidatingTextField: UITextField {
+    var strategy: ValidationStrategy = NonEmptyValidation()
+    private(set) var errorMessage: String?
+
+    @discardableResult
+    func validate() -&gt; Bool {
+        errorMessage = strategy.validate(text ?? "")
+        // Update UI to show/hide error
+        return errorMessage == nil
+    }
+}
+
+// ── Command: Text editor with undo/redo ───────────────────────
+protocol TextCommand {
+    func execute(on text: inout String)
+    func undo(on text: inout String)
+}
+
+struct InsertTextCommand: TextCommand {
+    let index: String.Index
+    let insertion: String
+
+    func execute(on text: inout String) {
+        text.insert(contentsOf: insertion, at: index)
+    }
+    func undo(on text: inout String) {
+        let end = text.index(index, offsetBy: insertion.count)
+        text.removeSubrange(index..&lt;end)
+    }
+}
+
+struct DeleteTextCommand: TextCommand {
+    let range: Range&lt;String.Index&gt;
+    private let deletedText: String
+
+    init(range: Range&lt;String.Index&gt;, in text: String) {
+        self.range = range
+        self.deletedText = String(text[range])
+    }
+
+    func execute(on text: inout String) { text.removeSubrange(range) }
+    func undo(on text: inout String) { text.insert(contentsOf: deletedText, at: range.lowerBound) }
+}
+
+final class TextEditor {
+    private(set) var text: String = ""
+    private var undoStack: [TextCommand] = []
+    private var redoStack: [TextCommand] = []
+
+    func execute(_ command: TextCommand) {
+        command.execute(on: &amp;text)
+        undoStack.append(command)
+        redoStack.removeAll()   // new command invalidates redo history
+    }
+
+    func undo() {
+        guard let command = undoStack.popLast() else { return }
+        command.undo(on: &amp;text)
+        redoStack.append(command)
+    }
+
+    func redo() {
+        guard let command = redoStack.popLast() else { return }
+        command.execute(on: &amp;text)
+        undoStack.append(command)
+    }
+}
+
+// ── State: Media player state machine ─────────────────────────
+enum PlayerState {
+    case idle
+    case loading(url: URL)
+    case playing(duration: TimeInterval)
+    case paused(at: TimeInterval)
+    case error(Error)
+}
+
+@MainActor
+final class MediaPlayerViewModel: ObservableObject {
+    @Published private(set) var state: PlayerState = .idle
+    @Published private(set) var currentTime: TimeInterval = 0
+
+    func load(url: URL) {
+        guard case .idle = state else { return }
+        state = .loading(url: url)
+        // Start loading...
+    }
+
+    func playbackReady(duration: TimeInterval) {
+        guard case .loading = state else { return }
+        state = .playing(duration: duration)
+    }
+
+    func pause() {
+        guard case .playing(let duration) = state else { return }
+        state = .paused(at: currentTime)
+    }
+
+    func resume() {
+        guard case .paused(let position) = state else { return }
+        currentTime = position
+        if case .playing(let d) = state { _ = d }
+        // Approximate — in real code, carry duration through state transitions
+        state = .playing(duration: 0)
+    }
+
+    func error(_ error: Error) {
+        state = .error(error)
+    }
+
+    func reset() {
+        state = .idle
+        currentTime = 0
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between NotificationCenter (Observer) and delegation in iOS?</strong></p>
+
+<p>A: <code>NotificationCenter</code> implements <strong>one-to-many</strong> observation — any number of observers can subscribe to any notification, and the poster does not know who is listening. It is appropriate for app-wide events where the sender and receivers have no direct relationship (e.g., <code>UIApplication.didBecomeActiveNotification</code>, user settings changes). <strong>Delegation</strong> implements <strong>one-to-one</strong> communication — a single delegate object is assigned and the delegating object calls specific methods on it. It is appropriate for a child object to communicate back to its parent (e.g., <code>UITableViewDelegate</code>, <code>URLSessionDelegate</code>). The key differences: delegation is typed (protocol methods with parameters), notification userInfo is untyped; delegation is synchronous and direct, NotificationCenter is decoupled; with delegation, only one delegate handles an event, with NotificationCenter multiple observers can respond.</p>
+
+<p><strong>Q: What is the Strategy pattern and how does it differ from using a simple closure?</strong></p>
+
+<p>A: The Strategy pattern encapsulates an algorithm as an object conforming to a protocol, making the algorithm independently testable, reusable, and composable with other patterns. A closure also encapsulates behaviour, but: (1) A strategy object can have state (e.g., a caching strategy might hold a cache dictionary); closures must capture state explicitly. (2) A strategy can be identified by type (<code>type(of: strategy)</code>) for serialisation or debugging; closures are anonymous. (3) A strategy conforms to a protocol, making it mockable in tests (<code>MockValidationStrategy</code>); a closure-based approach requires a <code>(String) -&gt; String?</code> type alias and is harder to mock with call-count verification. (4) Multiple strategies can implement the same protocol with different logic — a <code>RegexValidation</code> and a <code>EmailValidation</code> can both be <code>ValidationStrategy</code>. Use closures for simple, stateless one-off behaviours; use Strategy when the algorithm is complex, stateful, or needs to be interchangeable at runtime.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How would you implement an undo/redo system for a drawing app using the Command pattern?</strong></p>
+
+<p>A: Four components: (1) <strong>Command protocol</strong>: <code>protocol DrawCommand { func execute(on canvas: inout Canvas); func undo(on canvas: inout Canvas) }</code>. The <code>undo</code> method reverses <code>execute</code> exactly. For drawing: <code>AddStrokeCommand</code> stores the added stroke; its <code>undo</code> removes the last stroke. <code>EraseCommand</code> stores both the erased region and the pixels that were there (snapshot); <code>undo</code> restores the snapshot. (2) <strong>Command history</strong>: <code>CommandHistory</code> holds an <code>undoStack: [DrawCommand]</code> and <code>redoStack: [DrawCommand]</code>. <code>execute</code> appends to undo stack and clears redo stack. <code>undo</code> pops from undo, calls <code>command.undo</code>, pushes to redo stack. (3) <strong>Composite commands</strong>: for batch operations (e.g., "select all + delete"), use a <code>CompositeDrawCommand([DrawCommand])</code> that executes/undoes each child in sequence (reverse order for undo). (4) <strong>Serialisation</strong>: commands are <code>Codable</code> — the undo history can be persisted across app launches. This is how professional drawing apps (Procreate, Pixelmator) implement multi-session undo.</p>
+
+<p><strong>Q: How does the State pattern prevent a tangle of boolean flags in a complex view controller?</strong></p>
+
+<p>A: Complex VCs often accumulate flags: <code>isLoading</code>, <code>hasError</code>, <code>isRefreshing</code>, <code>isEmpty</code>, <code>isShowingDetail</code>. These flags can be in mutually exclusive combinations (can't be <code>isLoading</code> AND <code>hasError</code> at the same time) but the code doesn't enforce this — illegal combinations cause bugs. The State pattern replaces N booleans with a single enum: <code>enum FeedState { case idle; case loading; case loaded([Post]); case empty; case failed(Error) }</code>. This enforces mutual exclusivity at the type level — you cannot be in both <code>.loading</code> and <code>.failed</code> simultaneously. Logic that was <code>if isLoading { ... } else if hasError { ... } else if isEmpty { ... }</code> becomes a <code>switch</code> over the state enum — exhaustive, unambiguous, and easy to extend with new states. Each state carries exactly the data it needs (<code>.failed(Error)</code> carries the error; <code>.loaded([Post])</code> carries the posts), avoiding optional properties that are only valid in certain states.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a request queuing system using the Command pattern that supports offline operation, retry, and ordering guarantees.</strong></p>
+
+<p>A: Four components: (1) <strong>Serialisable command</strong>: <code>protocol QueuedRequest: Codable { var id: UUID { get }; var priority: Int { get }; func execute() async throws }</code>. Each command is <code>Codable</code> so it can be persisted to disk. Concrete commands: <code>SyncPostCommand(postID:)</code>, <code>UpdateProfileCommand(fields:)</code>. (2) <strong>Persistent queue</strong>: an <code>actor RequestQueue</code> backed by a GRDB (SQLite) table with columns <code>(id, type, payload, priority, status, createdAt, attempts)</code>. Commands are inserted as rows; on execution, their status is updated. The actor serialises all queue mutations. (3) <strong>Queue processor</strong>: triggered on app foreground and on network reachability changes (using <code>NWPathMonitor</code>). Fetches all <code>pending</code> commands ordered by priority and <code>createdAt</code>. Executes each command; on success, marks it <code>completed</code>; on retryable failure (network error), increments <code>attempts</code> and schedules a back-off delay; on fatal failure (4xx, max attempts reached), marks it <code>failed</code>. (4) <strong>Deduplication</strong>: commands with the same logical identity (e.g., "update profile") upsert — a new <code>UpdateProfileCommand</code> replaces the pending one rather than appending, avoiding redundant operations. This architecture supports: offline queuing (rows persist across launches), retry with exponential back-off, priority ordering (analytics are lower priority than sync), and idempotency (commands can be re-executed safely).</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: State enum grows large with many cases and the switch statements become unmanageable.</strong></p>
+
+<p>Solution: If the state has more than 7–8 cases, consider hierarchical states: a top-level <code>enum UIState { case loading; case content(ContentState); case error(ErrorState) }</code> with nested enums. Or, if transitions between states are complex, use the full State Object pattern — each state is a class conforming to a <code>State</code> protocol with <code>enter()</code>, <code>exit()</code>, and event-handling methods. A <code>StateMachine&lt;State&gt;</code> manages the current state and valid transitions. Third-party libraries like <code>swift-state-machine</code> provide this infrastructure.</p>
+
+<p><em></em>Issue: Observer retains itself because a <code>NotificationCenter</code> observer closure captures <code>self</code> strongly.<em></em></p>
+
+<p>Solution: Use <code>[weak self]</code> in the closure: <code>NotificationCenter.default.addObserver(forName:object:queue:using: { [weak self] notification in self?.handleNotification(notification) })</code>. Also store the returned token and call <code>NotificationCenter.default.removeObserver(token)</code> in <code>deinit</code>. The <code>addObserver(forName:object:queue:using:)</code> method returns a token object — failing to remove it keeps the observer alive indefinitely (a classic memory leak).</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="creational-patterns.md">Creational Patterns</a> — factories for command and strategy objects</li>
+<li><a href="structural-patterns.md">Structural Patterns</a> — composite for combining commands</li>
+<li><a href="ios-patterns.md">iOS-Specific Patterns</a> — Delegate as a typed, one-to-one observer</li>
+<li><a href="../03-concurrency/combine-publishers.md">Concurrency — Combine</a> — Observer pattern implementation</li>
+<li><a href="../08-data-persistence/data-sync.md">Data Synchronization</a> — command queue for offline sync</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

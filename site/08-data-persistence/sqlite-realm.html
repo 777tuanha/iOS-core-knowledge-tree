@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQLite & Realm — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../08-data-persistence/index.html">Data Persistence</a></span>
+    <span>Sqlite Realm</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html" class="active">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="sqlite--realm">SQLite &amp; Realm</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>While Core Data is Apple's official persistence framework, two alternatives see wide use in production iOS apps: <strong>SQLite</strong> (via the GRDB.swift library) and <strong>Realm</strong>. Raw SQLite is a C library embedded in iOS that provides an ACID-compliant relational database — the most widely deployed database engine in the world. GRDB.swift wraps it with a Swift-friendly API while preserving full SQL expressiveness. Realm is a mobile-first object database with a distinct architecture: objects are live, accessed in-place from memory-mapped files, and queries return live-updating result sets. Both are valid alternatives to Core Data with distinct tradeoffs in API ergonomics, query power, migration story, and reactive capabilities.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p><strong>SQLite</strong> is a perfect filing cabinet built into your house — it stores everything in organised drawers (tables), lets you search with precise queries, and never loses data. GRDB is the expert assistant who translates your Swift requests into the cabinet's language (SQL). <strong>Realm</strong> is a different kind of storage: instead of drawers, objects are live objects in memory that automatically reflect the database state — change one copy and all observers see it instantly, like a shared whiteboard rather than individual paper copies.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="sqlite--core-characteristics">SQLite — Core Characteristics</h3>
+
+<ul>
+<li><strong>Embedded</strong>: the SQLite engine is compiled into iOS and your app — no server process.</li>
+<li><strong>ACID</strong>: Atomicity, Consistency, Isolation, Durability — transactions are reliable.</li>
+<li><strong>WAL mode</strong>: Write-Ahead Logging allows concurrent reads during a write, improving throughput.</li>
+<li><strong>Single file</strong>: the database is a single <code>.sqlite</code> file, trivially copyable and inspectable.</li>
+<li><strong>Full SQL</strong>: supports complex joins, subqueries, window functions, CTEs, and triggers.</li>
+</ul>
+
+<h3 id="grdbswift--swift-wrapper-for-sqlite">GRDB.swift — Swift Wrapper for SQLite</h3>
+
+<p>GRDB is the community-standard Swift interface to SQLite. Key concepts:</p>
+
+<table>
+<tr><td>Concept</td><td>Description</td></tr>
+<tr><td><code>DatabaseQueue</code></td><td>Serial access (read + write on one queue) — simplest</td></tr>
+<tr><td><code>DatabasePool</code></td><td>Concurrent reads + serialised writes (WAL mode) — recommended for production</td></tr>
+<tr><td><code>Record</code></td><td>Protocol for <code>Codable</code>-based row mapping; generates SQL automatically</td></tr>
+<tr><td><code>DatabaseRegionObservation</code></td><td>Reactive observation of query results</td></tr>
+<tr><td><code>ValueObservation</code></td><td>Observes a value query, notifies on change (Combine / async-await)</td></tr>
+</table>
+
+<p><strong>DatabaseMigrator</strong>: GRDB's built-in migration system applies numbered schema migrations in sequence, tracking which have been applied.</p>
+
+<h3 id="grdb--readwrite-patterns">GRDB — Read/Write Patterns</h3>
+
+<pre><code>DatabasePool
+  ├── write { db in ... }         ← serialised writer queue
+  └── read { db in ... }          ← concurrent reader queues (WAL snapshot)</code></pre>
+
+<h3 id="realm--core-characteristics">Realm — Core Characteristics</h3>
+
+<ul>
+<li><strong>Object database</strong>: you work with Swift objects directly; no SQL, no mapping layer.</li>
+<li><strong>Live objects</strong>: <code>Results&lt;T&gt;</code> is a live view — it updates automatically when data changes.</li>
+<li><strong>Memory-mapped</strong>: Realm reads/writes directly from a memory-mapped file — zero-copy for reads.</li>
+<li><strong>Reactive</strong>: <code>Results</code> can be observed via Combine publishers or async-await <code>AsyncStream</code>.</li>
+<li><strong>Realm Schema</strong>: defined by your Swift classes (<code>Object</code> subclasses with <code>@Persisted</code> properties).</li>
+<li><strong>Realm Studio</strong>: a GUI tool for inspecting <code>.realm</code> files.</li>
+</ul>
+
+<h3 id="realm-threading-model">Realm Threading Model</h3>
+
+<p>Like Core Data, Realm objects cannot be passed between threads. Use <code>ThreadSafeReference</code> to pass objects between queues:</p>
+
+<pre><code class="language-swift">let ref = ThreadSafeReference(to: object)
+DispatchQueue.global().async {
+    let realm = try! Realm()
+    let resolved = realm.resolve(ref)!
+    // use resolved safely on this thread
+}</code></pre>
+
+<p>In modern Realm (v10+), <code>@MainActor</code> actors and async/await are the preferred approach — obtain a <code>Realm()</code> on the actor's executor.</p>
+
+<h3 id="core-data-vs-grdb-vs-realm">Core Data vs GRDB vs Realm</h3>
+
+<table>
+<tr><td>Dimension</td><td>Core Data</td><td>GRDB (SQLite)</td><td>Realm</td></tr>
+<tr><td>Query language</td><td>NSPredicate</td><td>Full SQL</td><td>Realm Query Language</td></tr>
+<tr><td>Schema definition</td><td>Xcode data model editor</td><td>Code (migrations)</td><td>Swift class definition</td></tr>
+<tr><td>Reactive observation</td><td>NSFetchedResultsController</td><td>ValueObservation</td><td>Live Results + Combine</td></tr>
+<tr><td>Threading model</td><td>Context-per-thread</td><td>Connection pool</td><td>Thread-confined / actors</td></tr>
+<tr><td>CloudKit sync</td><td>Built-in (NSPersistentCloudKitContainer)</td><td>Manual</td><td>Realm Atlas Device Sync</td></tr>
+<tr><td>Migration</td><td>Lightweight / heavyweight</td><td>DatabaseMigrator</td><td>Incremental schema versioning</td></tr>
+<tr><td>Learning curve</td><td>High (NSManagedObject, faulting)</td><td>Medium (SQL knowledge)</td><td>Low (plain Swift objects)</td></tr>
+<tr><td>Performance (reads)</td><td>Good (faulting)</td><td>Excellent (WAL pool)</td><td>Excellent (memory-mapped)</td></tr>
+<tr><td>Dependency</td><td>System framework</td><td>SPM dependency</td><td>SPM dependency</td></tr>
+</table>
+
+<h3 id="when-to-choose-each">When to Choose Each</h3>
+
+<p><strong>Core Data</strong>: team already familiar; need CloudKit sync; building a document-based app; Apple-only supply chain preferred.</p>
+
+<p><strong>GRDB</strong>: need complex SQL queries; full control over schema; existing SQL expertise; want a lightweight but powerful solution without the Core Data complexity.</p>
+
+<p><strong>Realm</strong>: need reactive live queries; cross-platform (iOS + Android); rapid prototyping with a low-boilerplate API; willing to add a large dependency.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import GRDB
+
+// ── GRDB setup ────────────────────────────────────────────────
+struct AppDatabase {
+    static let shared = try! makeDatabase()
+
+    static func makeDatabase(path: String = /* Application Support URL */.path) throws -&gt; DatabasePool {
+        let pool = try DatabasePool(path: path)
+        try migrator.migrate(pool)
+        return pool
+    }
+
+    // ── Migrations ───────────────────────────────────────────
+    static var migrator: DatabaseMigrator = {
+        var migrator = DatabaseMigrator()
+
+        migrator.registerMigration("v1_create_posts") { db in
+            try db.create(table: "post") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("title", .text).notNull()
+                t.column("body", .text).notNull()
+                t.column("authorId", .integer).notNull()
+                t.column("publishedAt", .datetime)
+                t.column("isFeatured", .boolean).notNull().defaults(to: false)
+            }
+        }
+
+        migrator.registerMigration("v2_add_tags") { db in
+            try db.alter(table: "post") { t in
+                t.add(column: "tags", .text).defaults(to: "[]")   // JSON array as text
+            }
+        }
+
+        return migrator
+    }()
+}
+
+// ── GRDB Record (Codable + FetchableRecord + PersistableRecord) ─
+struct Post: Codable, FetchableRecord, MutablePersistableRecord {
+    var id: Int64?
+    var title: String
+    var body: String
+    var authorId: Int64
+    var publishedAt: Date?
+    var isFeatured: Bool
+
+    static let databaseTableName = "post"
+
+    // Called after insert to capture auto-incremented id
+    mutating func didInsert(_ inserted: InsertionSuccess) {
+        id = inserted.rowID
+    }
+}
+
+// ── GRDB Repository ───────────────────────────────────────────
+actor PostRepository {
+    private let db: DatabasePool
+
+    init(db: DatabasePool = AppDatabase.shared) { self.db = db }
+
+    func fetchAll() throws -&gt; [Post] {
+        try db.read { db in
+            try Post.fetchAll(db)                        // SELECT * FROM post
+        }
+    }
+
+    func fetchFeatured() throws -&gt; [Post] {
+        try db.read { db in
+            try Post
+                .filter(Column("isFeatured") == true)   // WHERE isFeatured = 1
+                .order(Column("publishedAt").desc)       // ORDER BY publishedAt DESC
+                .fetchAll(db)
+        }
+    }
+
+    func fetchByAuthor(_ authorId: Int64, limit: Int = 20) throws -&gt; [Post] {
+        try db.read { db in
+            try Post
+                .filter(Column("authorId") == authorId)
+                .order(Column("publishedAt").desc)
+                .limit(limit)
+                .fetchAll(db)
+        }
+    }
+
+    func insert(_ post: inout Post) throws {
+        try db.write { db in try post.insert(db) }      // INSERT; sets post.id
+    }
+
+    func update(_ post: Post) throws {
+        try db.write { db in try post.update(db) }      // UPDATE SET ...
+    }
+
+    func delete(id: Int64) throws {
+        try db.write { db in
+            try Post.deleteOne(db, key: id)             // DELETE WHERE id = ?
+        }
+    }
+
+    // ── Complex SQL query ────────────────────────────────────
+    func fetchPostsWithAuthorName() throws -&gt; [(Post, String)] {
+        try db.read { db in
+            let sql = """
+                SELECT post.*, user.name AS authorName
+                FROM post
+                JOIN user ON post.authorId = user.id
+                WHERE post.publishedAt IS NOT NULL
+                ORDER BY post.publishedAt DESC
+                LIMIT 50
+            """
+            return try Row.fetchAll(db, sql: sql).map { row in
+                let post = Post(row: row)
+                let name = row["authorName"] as String
+                return (post, name)
+            }
+        }
+    }
+}
+
+// ── GRDB ValueObservation (reactive) ─────────────────────────
+import Combine
+
+func observeFeaturedPosts(db: DatabasePool) -&gt; AnyPublisher&lt;[Post], Error&gt; {
+    ValueObservation
+        .tracking { db in try Post.filter(Column("isFeatured") == true).fetchAll(db) }
+        .publisher(in: db, scheduling: .immediate)     // emit current value immediately
+        .eraseToAnyPublisher()
+}
+
+// ── Realm setup and usage ─────────────────────────────────────
+import RealmSwift
+
+// Schema — plain Swift class
+class RealmPost: Object {
+    @Persisted(primaryKey: true) var id: ObjectId
+    @Persisted var title: String
+    @Persisted var body: String
+    @Persisted var authorId: String
+    @Persisted var publishedAt: Date?
+    @Persisted var isFeatured: Bool
+}
+
+// ── Realm write ───────────────────────────────────────────────
+func createPost(title: String, body: String) throws {
+    let realm = try Realm()
+    let post = RealmPost()
+    post.id = ObjectId.generate()
+    post.title = title
+    post.body = body
+    post.publishedAt = Date()
+    try realm.write { realm.add(post) }
+}
+
+// ── Realm live query ──────────────────────────────────────────
+func observeFeaturedRealmPosts() -&gt; RealmPublishers.Value&lt;Results&lt;RealmPost&gt;&gt; {
+    let realm = try! Realm()
+    return realm.objects(RealmPost.self)
+        .filter("isFeatured == true")
+        .collectionPublisher                           // live Results publisher
+        .freeze()                                      // make thread-safe for publisher chain
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is WAL mode in SQLite and why does GRDB use DatabasePool instead of DatabaseQueue?</strong></p>
+
+<p>A: WAL (Write-Ahead Logging) is a SQLite journalling mode that allows concurrent reads while a write transaction is in progress. In WAL mode, readers access a consistent snapshot of the database at the point their transaction started, while the writer appends changes to a separate log file that is later checkpointed back to the main database. <code>DatabaseQueue</code> uses a single serial queue for both reads and writes — simple but readers block writers and vice versa. <code>DatabasePool</code> exploits WAL by maintaining a pool of read connections (which can run concurrently on multiple threads) plus one serial writer connection. For production apps with a UI performing reads while background imports run, <code>DatabasePool</code> delivers significantly better throughput and prevents UI hitches caused by write locks.</p>
+
+<p><strong>Q: What is the key architectural difference between Realm and Core Data / SQLite?</strong></p>
+
+<p>A: Core Data and SQLite are row-based stores: data lives in tables, and Swift objects are copies of rows fetched into memory. Changing an object in memory doesn't affect the store until you explicitly save. Realm uses a <strong>memory-mapped object store</strong>: Realm objects are live views into the memory-mapped file. There are no copies — the <code>RealmPost</code> object IS the database row, accessed via memory mapping. This means: reads are zero-copy; changes are made inside write transactions and are immediately visible to all live <code>Results</code> in the same Realm; no <code>save()</code> or <code>fetch()</code> cycle is needed. The tradeoff is that objects are thread-confined (you need <code>ThreadSafeReference</code> or freeze/thaw for cross-thread use) and the in-place mutation model differs from typical value-type Swift idioms.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How does GRDB's <code>ValueObservation</code> work and how do you integrate it with SwiftUI?<em></em></p>
+
+<p>A: <code>ValueObservation</code> tracks a database region — the set of tables and rows that a fetch request reads — and automatically re-executes the fetch when that region changes. It uses SQLite's update hook internally to detect changes. The observation starts with <code>observation.start(in: db, scheduling: .mainQueue, onChange: ...)</code> or via the Combine publisher <code>.publisher(in: db, scheduling: .immediate)</code>. In SwiftUI, wrap it in an <code>@Observable</code> class or <code>ObservableObject</code> with a <code>@Published</code> property updated in the <code>onChange</code> handler, or use <code>AsyncValueObservation</code> via <code>.values(in: db)</code> and consume it in a <code>.task { }</code> modifier. The scheduling <code>.immediate</code> emits the current value synchronously on first subscription (no blank state), then subsequent updates asynchronously.</p>
+
+<p><strong>Q: Compare GRDB migrations with Core Data lightweight migrations. Which gives more control?</strong></p>
+
+<p>A: GRDB's <code>DatabaseMigrator</code> is explicit and code-driven: each migration is a named closure that runs raw SQL (<code>CREATE TABLE</code>, <code>ALTER TABLE</code>, etc.). Migrations are applied in registration order; the migrator tracks applied migrations in a <code>grdb_migrations</code> table. This gives complete control — any SQL is valid, including backfilling data, creating indexes, or restructuring tables via a temp-table-copy pattern. Core Data's lightweight migration is automatic and model-driven: the system infers the mapping model from the old and new <code>.xcdatamodeld</code> versions, which works for simple additive changes but fails for complex transformations. Core Data's heavyweight migration requires <code>NSMappingModel</code> and <code>NSEntityMigrationPolicy</code> — more powerful but significantly more complex. GRDB gives more predictable, auditable migrations; Core Data's lightweight migration is more convenient for simple cases.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you migrate from Core Data to GRDB in a shipping app without data loss?</strong></p>
+
+<p>A: A live migration requires: (1) <strong>Read</strong> all existing Core Data records using the old stack on first launch after update. (2) <strong>Write</strong> them into the new GRDB database in a migration transaction. (3) <strong>Verify</strong> record counts match between old and new stores. (4) <strong>Mark migration complete</strong> (a flag in UserDefaults). (5) <strong>Delete</strong> the Core Data store after a grace period (one or two releases, giving users time to update). Critical details: run the migration on a background thread; show a migration progress UI if the dataset is large; make it idempotent (if the app is killed mid-migration, restart from the beginning using a <code>grdb_migrations</code> entry that only marks completion when the full migration succeeds); test on the oldest supported iOS version; and keep the Core Data stack in the binary for at least two releases so users who skip versions still get their data migrated.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: GRDB <code>DatabasePool</code> throws "database is locked" during writes.<em></em></p>
+
+<p>Solution: All writes must go through <code>db.write { }</code> — the pool serialises write access. If you're calling multiple <code>db.write</code> blocks from different concurrent tasks and seeing locks, check for nested writes. <code>DatabasePool.write</code> is non-reentrant — a write closure that calls <code>db.write</code> again will deadlock. Refactor to a single write transaction.</p>
+
+<p><strong>Issue: Realm crashes with "Realm accessed from incorrect thread".</strong></p>
+
+<p>Solution: Each <code>Realm()</code> instance is thread-confined. Create a fresh <code>Realm()</code> instance on each thread/actor, or use <code>realm.freeze()</code> to create a thread-safe immutable copy of objects/results for cross-thread passing. In async contexts, use <code>@MainActor</code> to confine Realm access to the main actor, or use the async-aware Realm API: <code>await realm.asyncWrite { ... }</code>.</p>
+
+<p><em></em>Issue: GRDB record insert does not set the auto-incremented <code>id</code> back on the struct.<em></em></p>
+
+<p>Solution: Implement <code>mutating func didInsert(_ inserted: InsertionSuccess)</code> on your <code>MutablePersistableRecord</code> type and assign <code>id = inserted.rowID</code>. Without this, the <code>id</code> remains <code>nil</code> after insert. Note the method requires the record to be <code>mutating</code> — declare it as <code>var</code>, not <code>let</code>, at the call site.</p>
+
+<p><em></em>Issue: Realm live <code>Results</code> causes excessive UI updates when many objects change.<em></em></p>
+
+<p>Solution: Use <code>.freeze()</code> on the <code>Results</code> before passing to a Combine pipeline, then apply <code>removeDuplicates()</code> or debounce. Alternatively, observe only the specific keyPaths you care about using <code>observe(keyPaths:)</code> to limit notification scope. For table views, use <code>RealmSwift.AnyRealmCollection</code>'s change notifications which provide fine-grained insertions/deletions/modifications rather than full reloads.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="core-data.md">Core Data</a> — Apple's official persistence framework; comparison baseline</li>
+<li><a href="file-system.md">File System</a> — SQLite and Realm files live in <code>Library/Application Support/</code></li>
+<li><a href="data-sync.md">Data Synchronization</a> — migration strategies and offline-first patterns</li>
+<li><a href="../03-concurrency/actors.md">Actors</a> — actor wrappers enforce database threading rules</li>
+<li><a href="../05-reactive-programming/combine-networking.md">Combine Networking</a> — GRDB ValueObservation integrates with Combine pipelines</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

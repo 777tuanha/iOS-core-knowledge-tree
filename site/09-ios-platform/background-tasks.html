@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Background Tasks — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../09-ios-platform/index.html">Ios Platform</a></span>
+    <span>Background Tasks</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html" class="active">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="background-tasks">Background Tasks</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>iOS aggressively suspends apps when they move to the background to preserve battery and CPU resources. The Background Tasks framework (<code>BGTaskScheduler</code>) provides two controlled execution windows: <code>BGAppRefreshTask</code> (short periodic refreshes — fetching headlines, updating widgets) and <code>BGProcessingTask</code> (longer CPU-intensive work on charging — database compaction, ML model training, image processing). Beyond these, background execution is available through specialised channels: background <code>URLSession</code> (network transfers that continue without the app), VoIP push (PushKit), and location updates. Understanding the execution budget, scheduling rules, and the simulator testing tools is essential for reliable background behaviour.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>The OS is a strict building manager who cuts power to empty offices (suspended apps) to save electricity. The Background Tasks framework is the scheduling desk where you book a maintenance slot in advance: "Please give me 30 seconds around midnight to check for new mail" (<code>BGAppRefreshTask</code>) or "Please give me 10 minutes when the building is plugged in to reorganise the filing room" (<code>BGProcessingTask</code>). The OS decides the exact timing based on usage patterns, battery level, and device load — you can only set the earliest possible start time. If you don't reschedule before your slot ends, you won't get another one.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="bgtaskscheduler-overview">BGTaskScheduler Overview</h3>
+
+<p><code>BGTaskScheduler</code> is the central API for scheduling background execution. Tasks must be registered at launch and submitted with a request.</p>
+
+<p><strong>Registration flow</strong>:</p>
+<ol>
+<li>Declare task identifiers in <code>Info.plist</code> under <code>BGTaskSchedulerPermittedIdentifiers</code>.</li>
+<li>Call <code>BGTaskScheduler.shared.register(forTaskWithIdentifier:using:launchHandler:)</code> in <code>AppDelegate.application(_:didFinishLaunchingWithOptions:)</code> — before the app finishes launching.</li>
+<li>Submit a <code>BGTaskRequest</code> from <code>sceneDidEnterBackground</code> (or any foreground moment).</li>
+</ol>
+
+<h3 id="task-types">Task Types</h3>
+
+<table>
+<tr><td>Class</td><td>Max runtime</td><td>Requires charging</td><td>Use case</td></tr>
+<tr><td><code>BGAppRefreshTaskRequest</code></td><td>~30 seconds</td><td>No</td><td>Feed refresh, widget update, badge count</td></tr>
+<tr><td><code>BGProcessingTaskRequest</code></td><td>Minutes</td><td>Yes (configurable)</td><td>DB maintenance, ML inference, media processing</td></tr>
+</table>
+
+<p><strong>BGAppRefreshTask</strong>: The OS honours the request based on usage patterns — it learns when the user typically opens the app and pre-fetches before that time. The actual execution window may be shorter than 30 seconds if the system is under load. The task has an <code>expirationHandler</code> closure that fires shortly before the budget ends.</p>
+
+<p><strong>BGProcessingTask</strong>: Requires <code>requiresExternalPower = true</code> (recommended; set <code>false</code> only for lightweight tasks). Can request <code>requiresNetworkConnectivity = true</code>. Runs for several minutes — exact duration is OS-determined.</p>
+
+<h3 id="registering-and-scheduling">Registering and Scheduling</h3>
+
+<pre><code class="language-swift">// In AppDelegate.didFinishLaunchingWithOptions:
+BGTaskScheduler.shared.register(
+    forTaskWithIdentifier: "com.app.refresh",
+    using: nil  // nil = main queue
+) { task in
+    handleRefreshTask(task as! BGAppRefreshTask)
+}
+
+// Schedule from sceneDidEnterBackground:
+func scheduleRefresh() {
+    let request = BGAppRefreshTaskRequest(identifier: "com.app.refresh")
+    request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)   // no earlier than 15 min
+    try? BGTaskScheduler.shared.submit(request)
+}</code></pre>
+
+<h3 id="task-handler-pattern">Task Handler Pattern</h3>
+
+<pre><code class="language-swift">func handleRefreshTask(_ task: BGAppRefreshTask) {
+    // Schedule the next refresh BEFORE doing work (system may kill after expiration)
+    scheduleRefresh()
+
+    let operation = FeedRefreshOperation()
+
+    // Called when the OS decides the task must end
+    task.expirationHandler = {
+        operation.cancel()
+    }
+
+    operation.completionBlock = {
+        task.setTaskCompleted(success: !operation.isCancelled)
+    }
+
+    OperationQueue.main.addOperation(operation)
+}</code></pre>
+
+<p><strong>Key rules</strong>:</p>
+<ul>
+<li>Call <code>task.setTaskCompleted(success:)</code> exactly once — the OS uses this to track success rate and adjusts scheduling priority.</li>
+<li>Reschedule the next request at the start of the handler, not the end — the handler may be killed before it finishes.</li>
+<li>Complete quickly within the budget; defer large work to <code>BGProcessingTask</code>.</li>
+</ul>
+
+<h3 id="background-urlsession">Background URLSession</h3>
+
+<p>Background URL sessions continue network transfers after the app is suspended or killed. The OS manages the transfer in a separate process.</p>
+
+<p>When the transfer completes, the OS relaunches the app (or wakes it if suspended) and calls:</p>
+<pre><code class="language-swift">func application(_ application: UIApplication,
+                 handleEventsForBackgroundURLSession identifier: String,
+                 completionHandler: @escaping () -&gt; Void) {
+    backgroundCompletionHandler = completionHandler
+    // Recreate URLSession with matching identifier to receive delegate callbacks
+}</code></pre>
+
+<p>Full details in <a href="../07-networking/urlsession.md">URLSession</a>.</p>
+
+<h3 id="silent-push-notifications">Silent Push Notifications</h3>
+
+<p>A silent push (<code>content-available: 1</code>, no <code>alert</code>/<code>sound</code>/<code>badge</code>) wakes a suspended app for ~30 seconds to fetch new content. The app must have <strong>Background App Refresh</strong> capability enabled.</p>
+
+<pre><code class="language-swift">func application(_ application: UIApplication,
+                 didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                 fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -&gt; Void) {
+    // Fetch new content, then call:
+    completionHandler(.newData)   // or .noData, .failed
+}</code></pre>
+
+<p>Call the <code>completionHandler</code> within ~30 seconds or the OS terminates the process. The OS tracks your completion result to learn whether silent pushes for your app are productive.</p>
+
+<h3 id="legacy-background-modes">Legacy Background Modes</h3>
+
+<p>Some apps declare background execution modes in <code>Info.plist</code> (<code>UIBackgroundModes</code>):</p>
+
+<table>
+<tr><td>Mode</td><td>Use case</td></tr>
+<tr><td><code>audio</code></td><td>Continuous audio playback (music, podcast)</td></tr>
+<tr><td><code>location</code></td><td>Continuous GPS tracking (navigation)</td></tr>
+<tr><td><code>voip</code></td><td>VoIP (use PushKit instead)</td></tr>
+<tr><td><code>remote-notification</code></td><td>Silent push handling</td></tr>
+<tr><td><code>fetch</code></td><td>Legacy background fetch (replaced by BGAppRefreshTask)</td></tr>
+<tr><td><code>processing</code></td><td>Required for BGProcessingTask</td></tr>
+</table>
+
+<h3 id="testing-background-tasks-in-simulator">Testing Background Tasks in Simulator</h3>
+
+<p>Use the LLDB debugger command to simulate task launch:</p>
+<pre><code>e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.app.refresh"]</code></pre>
+<p>Or use Xcode's Background Tasks debug gauge. Pause at a breakpoint in <code>sceneDidEnterBackground</code>, then run the command in the LLDB console.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import BackgroundTasks
+import UIKit
+
+// ── Info.plist — BGTaskSchedulerPermittedIdentifiers ──────────
+// Add both identifiers to the array
+
+// ── AppDelegate ───────────────────────────────────────────────
+class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -&gt; Bool {
+        registerBackgroundTasks()
+        return true
+    }
+
+    private func registerBackgroundTasks() {
+        // App Refresh Task
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: "com.app.feed-refresh",
+            using: nil
+        ) { task in
+            FeedRefreshManager.shared.handleRefreshTask(task as! BGAppRefreshTask)
+        }
+
+        // Processing Task
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: "com.app.db-maintenance",
+            using: nil
+        ) { task in
+            DatabaseMaintenanceManager.shared.handleProcessingTask(task as! BGProcessingTask)
+        }
+    }
+}
+
+// ── Feed Refresh Manager ──────────────────────────────────────
+class FeedRefreshManager {
+    static let shared = FeedRefreshManager()
+    private let refreshIdentifier = "com.app.feed-refresh"
+
+    func scheduleRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: refreshIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)  // earliest: 15 minutes
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch BGTaskScheduler.Error.unavailable {
+            // Background App Refresh disabled by user in Settings
+        } catch {
+            print("Failed to schedule refresh: \(error)")
+        }
+    }
+
+    func handleRefreshTask(_ task: BGAppRefreshTask) {
+        scheduleRefresh()      // ← reschedule FIRST
+
+        let task_local = task  // capture for expiration handler
+
+        Task {
+            do {
+                try await FeedService.shared.fetchLatest()
+                task_local.setTaskCompleted(success: true)
+            } catch {
+                task_local.setTaskCompleted(success: false)
+            }
+        }
+
+        task.expirationHandler = {
+            // OS is ending our time — cancel work and mark incomplete
+            task_local.setTaskCompleted(success: false)
+        }
+    }
+}
+
+// ── Database Maintenance Manager ──────────────────────────────
+class DatabaseMaintenanceManager {
+    static let shared = DatabaseMaintenanceManager()
+    private let processingIdentifier = "com.app.db-maintenance"
+
+    func scheduleMaintenance() {
+        let request = BGProcessingTaskRequest(identifier: processingIdentifier)
+        request.requiresExternalPower = true        // only when charging
+        request.requiresNetworkConnectivity = false // no network needed
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 60)  // earliest: 1 hour
+
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    func handleProcessingTask(_ task: BGProcessingTask) {
+        scheduleMaintenance()   // reschedule
+
+        let taskRef = task
+        Task.detached(priority: .background) {
+            do {
+                try await DatabaseMaintenance.vacuum()
+                try await DatabaseMaintenance.rebuildIndexes()
+                try await DatabaseMaintenance.deleteExpiredRecords()
+                taskRef.setTaskCompleted(success: true)
+            } catch {
+                taskRef.setTaskCompleted(success: false)
+            }
+        }
+
+        task.expirationHandler = {
+            taskRef.setTaskCompleted(success: false)
+        }
+    }
+}
+
+// ── Silent push handler ───────────────────────────────────────
+extension AppDelegate {
+    func application(_ application: UIApplication,
+                     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -&gt; Void) {
+        guard let type = userInfo["type"] as? String else {
+            completionHandler(.noData); return
+        }
+
+        Task {
+            do {
+                switch type {
+                case "new_message":
+                    let count = try await MessageService.shared.fetchUnread()
+                    completionHandler(count &gt; 0 ? .newData : .noData)
+                default:
+                    completionHandler(.noData)
+                }
+            } catch {
+                completionHandler(.failed)
+            }
+        }
+    }
+}
+
+// ── Schedule on background ────────────────────────────────────
+// Called from SceneDelegate.sceneDidEnterBackground:
+func applicationDidEnterBackground() {
+    FeedRefreshManager.shared.scheduleRefresh()
+    DatabaseMaintenanceManager.shared.scheduleMaintenance()
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>BGAppRefreshTask</code> and <code>BGProcessingTask</code>?<em></em></p>
+
+<p>A: <code>BGAppRefreshTask</code> is designed for short periodic work — typically fetching new data (news feed, weather, badge count). It runs for approximately 30 seconds, does not require charging, and the OS schedules it based on the user's usage patterns (it learns to run just before the user typically opens the app). <code>BGProcessingTask</code> is for longer, potentially CPU-intensive work like database maintenance, downloading large files, or running ML inference. It typically requires the device to be charging (<code>requiresExternalPower = true</code>) and can run for several minutes. The OS decides the exact timing for both — you only set the earliest possible start time. Both must be registered at app launch and must be declared in <code>Info.plist</code> under <code>BGTaskSchedulerPermittedIdentifiers</code>.</p>
+
+<p><strong>Q: Why must you reschedule the next background task at the start of the handler, not the end?</strong></p>
+
+<p>A: The OS may kill the task before the handler completes — due to expiration, system memory pressure, or user force-quitting. If you schedule the next request at the end of the handler and the handler is killed, no future task is ever scheduled. By rescheduling at the start, the next task is guaranteed to be submitted regardless of whether the current run completes. This is the standard pattern: schedule next, do work, call <code>setTaskCompleted(success:)</code>.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does the OS decide when to run a BGAppRefreshTask, and what affects scheduling priority?</strong></p>
+
+<p>A: The OS uses <strong>machine learning</strong> to predict when the user will next open the app, then schedules the refresh just before that time to maximise freshness. Factors that influence scheduling: (1) <strong>Usage patterns</strong> — an app opened every morning at 7 AM gets scheduled around 6:45 AM. (2) <strong>Task success rate</strong> — consistently calling <code>setTaskCompleted(success: true)</code> improves priority; <code>false</code> degrades it. (3) <strong>Battery level</strong> — tasks are deferred or skipped on low battery. (4) <strong>User setting</strong> — Background App Refresh can be disabled per-app in Settings, completely preventing execution. (5) <strong>earliestBeginDate</strong> — a later date tells the OS not to start before that time (a floor, not a target). The OS may defer tasks significantly beyond <code>earliestBeginDate</code> if conditions aren't favorable — this is why you can't rely on precise timing for background work.</p>
+
+<p><strong>Q: How do silent push notifications compare to BGAppRefreshTask for triggering background work?</strong></p>
+
+<p>A: Both wake a suspended app for ~30 seconds of background execution. Key differences: <strong>Silent push</strong> is externally triggered — your server decides when to send it, providing precise control. It requires an APNs payload with <code>content-available: 1</code> and the <code>remote-notification</code> background mode. The OS may throttle delivery if your app sends too many silent pushes or if the device is in low-power mode (Low Power Mode and Do Not Disturb can suppress them). <strong>BGAppRefreshTask</strong> is proactively scheduled by the app and scheduled by the OS at system-determined times based on usage patterns — the server has no involvement. Silent push is better when the server has new data that needs immediate delivery (new message, score update). BGAppRefreshTask is better for periodic polling that doesn't need server coordination.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a background sync architecture that reliably updates content while respecting iOS background execution limits.</strong></p>
+
+<p>A: A robust architecture layers multiple mechanisms: (1) <strong>BGAppRefreshTask</strong> as the primary periodic refresh — schedule on every <code>sceneDidEnterBackground</code>, handle with incremental fetching (only deltas since last sync), reschedule immediately. Budget: 30 seconds. (2) <strong>Silent push</strong> for server-triggered urgency — when new content arrives on the server, push a silent notification to wake the app immediately. Fallback for when BGAppRefreshTask is delayed. (3) <strong>Background URLSession</strong> for large downloads (audio, video, documents) — the actual bytes transfer even when the app is killed; the app is woken only on completion. (4) <strong>BGProcessingTask</strong> for heavy post-processing — once data is downloaded, run extraction/indexing/compression when charging. Combine all with: NWPathMonitor connectivity observation (sync when network becomes available in foreground), persistent request queue for mutations (in case sync is interrupted), and incremental sync tokens (server change tokens or timestamps) so each execution picks up exactly where the last one stopped. The key invariant: every execution path calls <code>setTaskCompleted</code> and reschedules, so the system always has accurate success statistics to maintain scheduling priority.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: BGAppRefreshTask handler is never called.</strong></p>
+
+<p>Solution: Check that (1) the identifier matches exactly between <code>Info.plist</code>, <code>register(forTaskWithIdentifier:)</code>, and the submitted request; (2) the task is registered in <code>AppDelegate.didFinishLaunchingWithOptions</code> — registration after launch is ignored; (3) Background App Refresh is enabled in Settings → General → Background App Refresh for your app; (4) use the LLDB simulator command to force the task and verify the handler fires.</p>
+
+<p><em></em>Issue: <code>BGTaskScheduler.shared.submit</code> throws <code>BGTaskScheduler.Error.unavailable</code>.<em></em></p>
+
+<p>Solution: Background App Refresh is disabled by the user in Settings, or the device is in Low Power Mode. This is expected and should be handled gracefully — catch the error and skip scheduling rather than crashing. Do not present UI from this error; it's a normal user choice.</p>
+
+<p><em></em>Issue: <code>setTaskCompleted</code> is never called, causing the OS to not schedule future tasks.<em></em></p>
+
+<p>Solution: Every code path in the task handler must call <code>setTaskCompleted(success:)</code> — including the <code>expirationHandler</code>. Wrap the handler body in a <code>do/catch</code> with <code>setTaskCompleted(success: false)</code> in the <code>catch</code>. Use a <code>defer</code> block or a completion-tracking flag to ensure it's called exactly once.</p>
+
+<p><strong>Issue: Background processing finishes in the simulator but never runs on device.</strong></p>
+
+<p>Solution: On device, the OS controls scheduling and may defer tasks by hours. Use the Xcode Background Tasks debug feature (Debug → Simulate Background Fetch) for integration testing. For production validation, check Console.app for <code>backgroundtaskd</code> logs that show whether your task was scheduled and launched.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="app-lifecycle.md">App Lifecycle</a> — schedule background tasks from <code>sceneDidEnterBackground</code></li>
+<li><a href="push-notifications.md">Push Notifications</a> — silent push for server-triggered background wakeup</li>
+<li><a href="../07-networking/urlsession.md">URLSession</a> — background URLSession for transfers during suspension</li>
+<li><a href="../07-networking/advanced-networking.md">Advanced Networking</a> — offline request queue combined with background refresh</li>
+<li><a href="../08-data-persistence/data-sync.md">Data Synchronization</a> — background sync architecture</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

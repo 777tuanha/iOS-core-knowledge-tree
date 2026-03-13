@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UserDefaults — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../08-data-persistence/index.html">Data Persistence</a></span>
+    <span>Userdefaults</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html" class="active">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="userdefaults">UserDefaults</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p><code>UserDefaults</code> is Apple's key-value store for persisting small amounts of data — user preferences, feature flags, onboarding state, and lightweight scalars. It stores data as a property list (plist) file in the app sandbox's <code>Library/Preferences/</code> directory and keeps a synchronised in-memory cache so reads are fast. <code>UserDefaults</code> is not a database: it loads the entire domain into memory at launch and flushes the whole plist atomically on write. This makes it unsuitable for large or frequently-mutating data. For iOS 14+ and SwiftUI, <code>@AppStorage</code> provides a property-wrapper layer over <code>UserDefaults</code> with automatic view invalidation.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of <code>UserDefaults</code> as a sticky-note board in your kitchen. You write short reminders ("dark mode: on", "last login: Jan 15") on individual sticky notes. When you need to check a preference, you glance at the board — it's always visible in the room (in memory). The entire board is saved to a single paper (plist file) whenever you make changes. Because the whole board is one piece of paper, it would be impractical to write a novel on sticky notes — they're for quick, small reminders, not detailed records.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="storage-mechanism">Storage Mechanism</h3>
+
+<p><code>UserDefaults</code> serialises values to a plist dictionary keyed by <code>String</code>. The plist is stored in <code>&lt;App Sandbox&gt;/Library/Preferences/&lt;bundle-id&gt;.plist</code>. At launch, the system reads the plist into an in-memory cache (<code>UserDefaults</code> object). Reads are served from memory; writes go to memory immediately and are flushed to disk on a background thread (or when the app moves to the background).</p>
+
+<p><strong>Supported value types</strong> (plist-compatible): <code>Bool</code>, <code>Int</code>, <code>Float</code>, <code>Double</code>, <code>String</code>, <code>Data</code>, <code>Date</code>, <code>URL</code>, <code>Array</code>, <code>Dictionary</code>, and <code>NSNumber</code>. Custom types must be encoded to <code>Data</code> first.</p>
+
+<h3 id="standard-vs-suite">Standard vs Suite</h3>
+
+<table>
+<tr><td>Type</td><td>Usage</td><td>File location</td></tr>
+<tr><td><code>UserDefaults.standard</code></td><td>App-specific preferences</td><td><code>&lt;bundle-id&gt;.plist</code></td></tr>
+<tr><td><code>UserDefaults(suiteName:)</code></td><td>Shared between app and extensions (App Group)</td><td><code>&lt;suite-name&gt;.plist</code> in group container</td></tr>
+</table>
+
+<p>App Groups require an entitlement (<code>com.apple.security.application-groups</code>) and the same suite name in both the app and its extensions (widget, share extension, etc.).</p>
+
+<h3 id="appstorage-swiftui">@AppStorage (SwiftUI)</h3>
+
+<p><code>@AppStorage</code> is a property wrapper that reads from and writes to <code>UserDefaults</code> and triggers SwiftUI view updates on change:</p>
+
+<pre><code class="language-swift">@AppStorage("is_dark_mode") var isDarkMode: Bool = false
+@AppStorage("selected_tab", store: UserDefaults(suiteName: "group.com.app"))
+var selectedTab: Int = 0</code></pre>
+
+<p>Supported types: <code>Bool</code>, <code>Int</code>, <code>Double</code>, <code>String</code>, <code>URL</code>, <code>Data</code>, and <code>RawRepresentable</code> where <code>RawValue</code> is one of these.</p>
+
+<h3 id="observable-and-userdefaults">@Observable and UserDefaults</h3>
+
+<p>With the <code>@Observable</code> macro (iOS 17+), persist observable properties with the <code>@ObservationIgnored</code> + <code>UserDefaults</code> pattern, or use a dedicated <code>UserDefaultsBacked</code> property wrapper.</p>
+
+<h3 id="thread-safety">Thread Safety</h3>
+
+<p><code>UserDefaults</code> is <strong>thread-safe for reads and writes</strong> from any thread. The in-memory cache is protected by an internal lock. However, you should not rely on writes being immediately durable — they are flushed asynchronously. Call <code>synchronize()</code> only if you need immediate disk flush (e.g., before a crash in a CLI tool). In a typical iOS app, <code>synchronize()</code> is unnecessary and deprecated in spirit.</p>
+
+<h3 id="key-naming-and-organisation">Key Naming and Organisation</h3>
+
+<p>Use reverse-DNS style keys to avoid collisions:</p>
+<pre><code>"com.myapp.onboarding.hasSeenWelcome"
+"com.myapp.user.preferredLanguage"</code></pre>
+
+<p>Group related keys in an extension or enum to prevent key string duplication:</p>
+
+<pre><code class="language-swift">extension UserDefaults {
+    enum Key {
+        static let hasSeenOnboarding = "com.myapp.hasSeenOnboarding"
+        static let preferredTheme    = "com.myapp.preferredTheme"
+        static let badgeCount        = "com.myapp.badgeCount"
+    }
+}</code></pre>
+
+<h3 id="storing-custom-codable-types">Storing Custom Codable Types</h3>
+
+<p><code>UserDefaults</code> cannot store arbitrary types directly. Encode them to <code>Data</code>:</p>
+
+<pre><code class="language-swift">extension UserDefaults {
+    func setCodable&lt;T: Encodable&gt;(_ value: T, forKey key: String) {
+        let data = try? JSONEncoder().encode(value)
+        set(data, forKey: key)
+    }
+
+    func codable&lt;T: Decodable&gt;(_ type: T.Type, forKey key: String) -&gt; T? {
+        guard let data = data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+}</code></pre>
+
+<h3 id="what-not-to-store-in-userdefaults">What NOT to Store in UserDefaults</h3>
+
+<ul>
+<li><strong>Sensitive data</strong> (passwords, tokens, keys) — the plist is not encrypted; use Keychain instead.</li>
+<li><strong>Large data</strong> (images, documents) — the entire plist loads into memory; use the file system.</li>
+<li><strong>Frequently-mutating counters</strong> at high frequency — every write triggers a disk flush; use an in-memory counter and persist periodically.</li>
+<li><strong>Complex relational data</strong> — use Core Data or SQLite.</li>
+</ul>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import SwiftUI
+
+// ── Key namespace to avoid string duplication ──────────────────
+extension UserDefaults {
+    enum Key: String {
+        case hasSeenOnboarding   = "com.app.hasSeenOnboarding"
+        case preferredTheme      = "com.app.preferredTheme"
+        case lastSyncDate        = "com.app.lastSyncDate"
+        case userId              = "com.app.userId"
+        case notificationBadge   = "com.app.notificationBadge"
+    }
+
+    // Typed accessors
+    var hasSeenOnboarding: Bool {
+        get { bool(forKey: Key.hasSeenOnboarding.rawValue) }
+        set { set(newValue, forKey: Key.hasSeenOnboarding.rawValue) }
+    }
+
+    var lastSyncDate: Date? {
+        get { object(forKey: Key.lastSyncDate.rawValue) as? Date }
+        set { set(newValue, forKey: Key.lastSyncDate.rawValue) }
+    }
+}
+
+// ── @AppStorage in SwiftUI ────────────────────────────────────
+enum AppTheme: String, CaseIterable {
+    case system, light, dark
+}
+
+struct SettingsView: View {
+    @AppStorage("com.app.preferredTheme") private var theme: String = AppTheme.system.rawValue
+    @AppStorage("com.app.notificationBadge") private var badgeCount: Int = 0
+
+    var body: some View {
+        Form {
+            Picker("Theme", selection: $theme) {
+                ForEach(AppTheme.allCases, id: \.rawValue) { t in
+                    Text(t.rawValue.capitalized).tag(t.rawValue)
+                }
+            }
+            Text("Badge count: \(badgeCount)")
+            Button("Reset badge") { badgeCount = 0 }
+        }
+    }
+}
+
+// ── App Group Suite (shared with widget extension) ────────────
+extension UserDefaults {
+    static let appGroup = UserDefaults(suiteName: "group.com.myapp")!
+}
+
+// Widget reads the same value the app writes:
+UserDefaults.appGroup.set(42, forKey: "widgetData")
+let widgetValue = UserDefaults.appGroup.integer(forKey: "widgetData")
+
+// ── Storing Codable types ──────────────────────────────────────
+struct UserProfile: Codable {
+    let id: String
+    let displayName: String
+    let avatarURL: URL?
+}
+
+extension UserDefaults {
+    var cachedProfile: UserProfile? {
+        get { codable(UserProfile.self, forKey: "com.app.cachedProfile") }
+        set { setCodable(newValue, forKey: "com.app.cachedProfile") }
+    }
+
+    func setCodable&lt;T: Encodable&gt;(_ value: T?, forKey key: String) {
+        guard let value else { removeObject(forKey: key); return }
+        set(try? JSONEncoder().encode(value), forKey: key)
+    }
+
+    func codable&lt;T: Decodable&gt;(_ type: T.Type, forKey key: String) -&gt; T? {
+        guard let data = data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+}
+
+// ── Observing changes with Combine ───────────────────────────
+import Combine
+
+class PreferenceObserver: ObservableObject {
+    @Published var hasSeenOnboarding: Bool
+
+    private var cancellable: AnyCancellable?
+
+    init(defaults: UserDefaults = .standard) {
+        hasSeenOnboarding = defaults.bool(forKey: UserDefaults.Key.hasSeenOnboarding.rawValue)
+
+        // KVO publisher on UserDefaults
+        cancellable = NotificationCenter.default
+            .publisher(for: UserDefaults.didChangeNotification)
+            .map { _ in defaults.bool(forKey: UserDefaults.Key.hasSeenOnboarding.rawValue) }
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.hasSeenOnboarding, on: self)
+    }
+}
+
+// ── Resetting to defaults (useful in testing / logout) ────────
+func resetUserDefaults() {
+    let domain = Bundle.main.bundleIdentifier!
+    UserDefaults.standard.removePersistentDomain(forName: domain)
+    UserDefaults.standard.synchronize()
+}
+
+// ── Feature flags backed by UserDefaults ──────────────────────
+@propertyWrapper
+struct UserDefault&lt;T&gt; {
+    let key: String
+    let defaultValue: T
+    let store: UserDefaults
+
+    init(_ key: String, defaultValue: T, store: UserDefaults = .standard) {
+        self.key = key
+        self.defaultValue = defaultValue
+        self.store = store
+    }
+
+    var wrappedValue: T {
+        get { store.object(forKey: key) as? T ?? defaultValue }
+        set { store.set(newValue, forKey: key) }
+    }
+}
+
+enum FeatureFlags {
+    @UserDefault("ff.newFeedLayout", defaultValue: false)
+    static var newFeedLayout: Bool
+
+    @UserDefault("ff.videoAutoplay", defaultValue: true)
+    static var videoAutoplay: Bool
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is UserDefaults and what types of data should you store in it?</strong></p>
+
+<p>A: <code>UserDefaults</code> is a key-value store backed by a plist file in the app's <code>Library/Preferences/</code> directory. It keeps an in-memory cache for fast reads and flushes changes to disk asynchronously. You should store: user preferences (theme, language), feature flags, onboarding completion flags, and small scalar values like last-used tab index or badge counts. The data must be plist-compatible: <code>Bool</code>, <code>Int</code>, <code>Double</code>, <code>String</code>, <code>Data</code>, <code>Date</code>, <code>URL</code>, <code>Array</code>, or <code>Dictionary</code>. For custom types, encode them to <code>Data</code> with <code>JSONEncoder</code> first. You should NOT store sensitive data (use Keychain), large binary data (use the file system), or structured relational data (use Core Data / SQLite).</p>
+
+<p><strong>Q: How do you share UserDefaults data between an iOS app and a widget extension?</strong></p>
+
+<p>A: Create a <code>UserDefaults</code> with a shared App Group suite name: <code>UserDefaults(suiteName: "group.com.myapp")</code>. Both the app target and the extension target must have the App Group entitlement configured with the same identifier in Xcode's Signing &amp; Capabilities. Reads and writes on the suite-named instance go to the shared group container (<code>Library/Preferences/&lt;suite-name&gt;.plist</code>) rather than the app's private container, making the data visible to both processes. In SwiftUI, pass the suite to <code>@AppStorage</code>: <code>@AppStorage("key", store: UserDefaults(suiteName: "group.com.myapp"))</code>.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: Why is storing large objects in UserDefaults a performance problem?</strong></p>
+
+<p>A: <code>UserDefaults</code> loads the entire plist domain into memory at app launch and keeps it there. Every read is an in-memory dictionary lookup — fast. But every write atomically serialises the entire domain back to disk as a single plist file. If the plist is large (hundreds of KB), this means: (1) Slower launch — the OS must deserialise the plist into memory. (2) Larger write amplification — changing one boolean re-writes the entire file. (3) Memory waste — the full content stays resident for the app's lifetime. The plist format itself is also inefficient for large binary payloads. For anything larger than a few KB, store a reference (file path or record ID) in UserDefaults and keep the actual data in the file system or a database.</p>
+
+<p><em></em>Q: What is the difference between <code>UserDefaults.standard</code> and a suite-named instance?<em></em></p>
+
+<p>A: <code>UserDefaults.standard</code> stores data in the app's private <code>Library/Preferences/&lt;bundle-id&gt;.plist</code>, inaccessible to other processes. A suite-named instance (<code>UserDefaults(suiteName: "group.com.myapp")</code>) stores data in the App Group's shared container, accessible to the app and all extensions in the same group. The suite-named instance also reads from multiple domains in order: the provided suite, then <code>.standard</code>, then system defaults — so it can be used to override standard defaults for testing or multi-tenancy. One important detail: if <code>suiteName</code> is the app's own bundle ID, the call returns <code>nil</code> and <code>standard</code> is used instead.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you design a type-safe, testable abstraction over UserDefaults?</strong></p>
+
+<p>A: Define a protocol that mirrors the necessary operations (get/set for each key type), create a concrete implementation backed by <code>UserDefaults</code>, and a mock implementation backed by an in-memory dictionary for tests. Key design decisions: (1) Use an enum for key names to prevent string duplication and enable exhaustive handling. (2) Expose typed properties via computed vars on the protocol rather than raw <code>Any</code> accessors. (3) Inject the dependency into view models and services rather than accessing <code>UserDefaults.standard</code> directly — this makes tests deterministic since the mock starts empty. (4) For <code>@AppStorage</code> in SwiftUI views, accept that <code>@AppStorage</code> cannot be easily mocked; move preference-dependent logic into the ViewModel which uses the injectable protocol. This way SwiftUI views remain thin (just display the ViewModel's <code>@Published</code> state) and all logic is testable.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Data written in the app is not visible in the widget extension.</strong></p>
+
+<p>Solution: The app and extension are using separate <code>UserDefaults</code> domains. Switch both to <code>UserDefaults(suiteName: "group.com.myapp")</code> and verify the App Group entitlement is active on both targets in Xcode.</p>
+
+<p><em></em>Issue: <code>@AppStorage</code> value is not updating the SwiftUI view when changed from code.<em></em></p>
+
+<p>Solution: <code>@AppStorage</code> observes the <code>UserDefaults</code> key via KVO. Ensure the value is set on the <em></em>same <code>UserDefaults</code> instance and store<em></em> as the <code>@AppStorage</code> declaration. If you write via <code>UserDefaults.standard.set(...)</code> but <code>@AppStorage</code> uses a custom store, they won't sync.</p>
+
+<p><strong>Issue: Sensitive token accidentally stored in UserDefaults is readable from the file system.</strong></p>
+
+<p>Solution: Move it to the Keychain immediately. The plist file in <code>Library/Preferences/</code> is not encrypted (only protected by the sandbox and file system permissions). The Keychain uses hardware-backed AES encryption and is the correct location for all credentials, tokens, and cryptographic keys.</p>
+
+<p><strong>Issue: UserDefaults changes are lost after the app is force-quit.</strong></p>
+
+<p>Solution: This is rare but can occur if the app is killed before the background flush completes. For critical state that must survive force-quit, call <code>UserDefaults.standard.synchronize()</code> immediately after writing. In modern iOS, <code>synchronize()</code> is mostly a no-op as the OS manages flush timing — the real fix is to not store critical transactional state in UserDefaults; use Core Data or a database with WAL mode for durability guarantees.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="keychain.md">Keychain</a> — secure alternative for sensitive values</li>
+<li><a href="file-system.md">File System</a> — for binary data and documents too large for UserDefaults</li>
+<li><a href="core-data.md">Core Data</a> — for structured relational data</li>
+<li><a href="data-sync.md">Data Synchronization</a> — syncing UserDefaults-backed state via iCloud Key-Value Store</li>
+<li><a href="../04-ui-frameworks/swiftui-state-management.md">SwiftUI State Management</a> — <code>@AppStorage</code> in context of SwiftUI state wrappers</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

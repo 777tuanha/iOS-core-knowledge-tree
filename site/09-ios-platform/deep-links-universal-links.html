@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deep Links & Universal Links — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../09-ios-platform/index.html">Ios Platform</a></span>
+    <span>Deep Links Universal Links</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html" class="active">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="deep-links--universal-links">Deep Links &amp; Universal Links</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Deep links allow external sources — other apps, websites, emails, QR codes, and push notifications — to open your app at a specific screen. iOS supports two mechanisms: <strong>custom URL schemes</strong> (e.g., <code>myapp://profile/42</code>) and <strong>Universal Links</strong> (standard HTTPS URLs like <code>https://myapp.com/profile/42</code> that open your app instead of the browser). Universal Links are strongly preferred in production: they work even if the app is not installed (falling back to the website), are phishing-resistant (require proof of domain ownership), and integrate cleanly with Handoff and Spotlight. <code>NSUserActivity</code> powers Handoff and Spotlight indexing. SwiftUI handles links via <code>.onOpenURL</code>.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Custom URL schemes are like a private phone extension — <code>myapp://</code> only works if the recipient (the app) is installed; anyone can claim to be <code>myapp://</code>. Universal Links are like a verified business address — <code>https://myapp.com/profile/42</code> is a real HTTPS URL that Apple verifies you own (via a JSON file on your server), so only your app can handle it. If the app isn't installed, the URL opens as a normal website. The <code>NSUserActivity</code> system is the handoff note — you write your current location ("viewing profile 42") on a note, and any other device with the app can pick up where you left off.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="custom-url-schemes">Custom URL Schemes</h3>
+
+<p>Registered in <code>Info.plist</code> under <code>CFBundleURLTypes</code>. Any app can open your URL scheme — there is no security verification.</p>
+
+<pre><code class="language-xml">&lt;key&gt;CFBundleURLTypes&lt;/key&gt;
+&lt;array&gt;
+    &lt;dict&gt;
+        &lt;key&gt;CFBundleURLSchemes&lt;/key&gt;
+        &lt;array&gt;&lt;string&gt;myapp&lt;/string&gt;&lt;/array&gt;
+        &lt;key&gt;CFBundleURLName&lt;/key&gt;
+        &lt;string&gt;com.myapp.urlscheme&lt;/string&gt;
+    &lt;/dict&gt;
+&lt;/array&gt;</code></pre>
+
+<p><strong>Security risk</strong>: Other apps can register the same scheme and intercept links. Never pass sensitive tokens through URL scheme parameters.</p>
+
+<h3 id="universal-links">Universal Links</h3>
+
+<p>Universal Links are standard HTTPS URLs your app claims ownership of. Setup requires two steps:</p>
+
+<p><strong>Step 1 — AASA file (Apple App Site Association)</strong></p>
+
+<p>Host a JSON file at <code>https://yourdomain.com/.well-known/apple-app-site-association</code> (no <code>.json</code> extension). Must be served over HTTPS with a valid certificate:</p>
+
+<pre><code class="language-json">{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.myapp"],
+        "components": [
+          { "/": "/profile/*", "comment": "Profile pages" },
+          { "/": "/post/*" },
+          { "/": "/invite/*" },
+          { "?": { "ref": "?*" }, "comment": "Referral links" }
+        ]
+      }
+    ]
+  }
+}</code></pre>
+
+<p><strong>Step 2 — Associated Domains entitlement</strong></p>
+
+<p>In Xcode → Signing &amp; Capabilities → Associated Domains, add:</p>
+<pre><code>applinks:yourdomain.com</code></pre>
+
+<p>The OS downloads and caches the AASA file during app installation (and periodically refreshes it). When the user taps <code>https://yourdomain.com/profile/42</code>, iOS checks the AASA cache and opens your app instead of Safari.</p>
+
+<h3 id="handling-universal-links-in-uikit">Handling Universal Links in UIKit</h3>
+
+<pre><code class="language-swift">// In SceneDelegate:
+func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+          let url = userActivity.webpageURL else { return }
+    DeepLinkRouter.shared.route(url)
+}
+
+// Also handle on cold launch in willConnectTo:
+func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
+           options connectionOptions: UIScene.ConnectionOptions) {
+    // ...window setup...
+    if let activity = connectionOptions.userActivities.first(where: { $0.activityType == NSUserActivityTypeBrowsingWeb }),
+       let url = activity.webpageURL {
+        DeepLinkRouter.shared.route(url)
+    }
+}</code></pre>
+
+<h3 id="handling-deep-links-in-swiftui">Handling Deep Links in SwiftUI</h3>
+
+<pre><code class="language-swift">@main
+struct MyApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .onOpenURL { url in
+                    DeepLinkRouter.shared.route(url)
+                }
+        }
+    }
+}</code></pre>
+
+<p><code>.onOpenURL</code> handles both custom URL schemes and Universal Links (delivered as <code>NSUserActivity</code>).</p>
+
+<h3 id="nsuseractivity--handoff-and-spotlight">NSUserActivity — Handoff and Spotlight</h3>
+
+<p><code>NSUserActivity</code> encodes the user's current context (screen, data, scroll position). It powers:</p>
+<ul>
+<li><strong>Handoff</strong>: continue on another device.</li>
+<li><strong>Spotlight</strong>: index app content for system search.</li>
+<li><strong>State restoration</strong>: <code>SceneDelegate.stateRestorationActivity</code>.</li>
+</ul>
+
+<pre><code class="language-swift">// Advertise current activity from a view controller:
+let activity = NSUserActivity(activityType: "com.myapp.viewProfile")
+activity.title = "Alice's Profile"
+activity.userInfo = ["user_id": "user_42"]
+activity.webpageURL = URL(string: "https://myapp.com/profile/42")
+activity.isEligibleForHandoff = true
+activity.isEligibleForSearch = true
+activity.isEligibleForPublicIndexing = false
+userActivity = activity   // assign to UIViewController.userActivity
+activity.becomeCurrent()</code></pre>
+
+<h3 id="home-screen-quick-actions">Home Screen Quick Actions</h3>
+
+<p>Static (in <code>Info.plist</code>) and dynamic (<code>UIApplicationShortcutItem</code>) shortcuts appear on 3D Touch / long-press of the app icon:</p>
+
+<pre><code class="language-swift">// Create dynamic shortcut:
+let shortcut = UIApplicationShortcutItem(
+    type: "com.app.newPost",
+    localizedTitle: "New Post",
+    localizedSubtitle: nil,
+    icon: UIApplicationShortcutIcon(systemImageName: "plus"),
+    userInfo: nil
+)
+UIApplication.shared.shortcutItems = [shortcut]
+
+// Handle in SceneDelegate:
+func windowScene(_ windowScene: UIWindowScene,
+                 performActionFor shortcutItem: UIApplicationShortcutItem,
+                 completionHandler: @escaping (Bool) -&gt; Void) {
+    DeepLinkRouter.shared.route(shortcutItem: shortcutItem)
+    completionHandler(true)
+}</code></pre>
+
+<h3 id="deep-link-router">Deep Link Router</h3>
+
+<p>Centralise all deep link handling in a single router to avoid scattered <code>if url.host == "..."</code> checks throughout the codebase:</p>
+
+<pre><code class="language-swift">enum DeepLink {
+    case profile(userID: String)
+    case post(postID: String)
+    case invite(code: String)
+    case unknown
+
+    init(url: URL) {
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let path = url.path
+        let params = Dictionary(
+            uniqueKeysWithValues: components?.queryItems?.compactMap { ($0.name, $0.value ?? "") } ?? []
+        )
+
+        switch url.host {
+        case "myapp.com", nil:
+            if path.hasPrefix("/profile/") {
+                let id = String(path.dropFirst("/profile/".count))
+                self = id.isEmpty ? .unknown : .profile(userID: id)
+            } else if path.hasPrefix("/post/") {
+                let id = String(path.dropFirst("/post/".count))
+                self = id.isEmpty ? .unknown : .post(postID: id)
+            } else if path.hasPrefix("/invite/") {
+                let code = String(path.dropFirst("/invite/".count))
+                self = .invite(code: code)
+            } else { self = .unknown }
+        default: self = .unknown
+        }
+    }
+}</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+import SwiftUI
+
+// ── Centralised Deep Link Router ──────────────────────────────
+@MainActor
+class DeepLinkRouter {
+    static let shared = DeepLinkRouter()
+    weak var coordinator: AppCoordinator?
+
+    func route(_ url: URL) {
+        let link = DeepLink(url: url)
+        route(link)
+    }
+
+    func route(_ link: DeepLink) {
+        switch link {
+        case .profile(let userID):
+            coordinator?.showProfile(userID: userID)
+        case .post(let postID):
+            coordinator?.showPost(postID: postID)
+        case .invite(let code):
+            coordinator?.handleInvite(code: code)
+        case .unknown:
+            break   // ignore unrecognised links
+        }
+    }
+}
+
+// ── SceneDelegate — all entry points funnel to router ────────
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+    var coordinator: AppCoordinator?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
+               options connectionOptions: UIScene.ConnectionOptions) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        let window = UIWindow(windowScene: windowScene)
+        coordinator = AppCoordinator(window: window)
+        coordinator?.start()
+        self.window = window
+        DeepLinkRouter.shared.coordinator = coordinator
+
+        // URL scheme link on cold launch
+        if let urlContext = connectionOptions.urlContexts.first {
+            DeepLinkRouter.shared.route(urlContext.url)
+        }
+        // Universal Link on cold launch
+        connectionOptions.userActivities
+            .first { $0.activityType == NSUserActivityTypeBrowsingWeb }
+            .flatMap { $0.webpageURL }
+            .map { DeepLinkRouter.shared.route($0) }
+    }
+
+    // Universal Link while running
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        guard let url = userActivity.webpageURL else { return }
+        DeepLinkRouter.shared.route(url)
+    }
+
+    // URL scheme while running
+    func scene(_ scene: UIScene, openURLContexts contexts: Set&lt;UIOpenURLContext&gt;) {
+        contexts.first.map { DeepLinkRouter.shared.route($0.url) }
+    }
+
+    // Home screen quick action
+    func windowScene(_ windowScene: UIWindowScene,
+                     performActionFor shortcutItem: UIApplicationShortcutItem,
+                     completionHandler: @escaping (Bool) -&gt; Void) {
+        if shortcutItem.type == "com.app.newPost" {
+            coordinator?.presentNewPost()
+            completionHandler(true)
+        } else {
+            completionHandler(false)
+        }
+    }
+}
+
+// ── SwiftUI — NavigationPath-based deep link handling ─────────
+@MainActor
+class NavigationState: ObservableObject {
+    @Published var path = NavigationPath()
+
+    func navigate(to link: DeepLink) {
+        switch link {
+        case .profile(let id): path.append(ProfileRoute(userID: id))
+        case .post(let id):    path.append(PostRoute(postID: id))
+        default: break
+        }
+    }
+}
+
+struct RootView: View {
+    @StateObject private var nav = NavigationState()
+
+    var body: some View {
+        NavigationStack(path: $nav.path) {
+            FeedView()
+                .navigationDestination(for: ProfileRoute.self) { route in
+                    ProfileView(userID: route.userID)
+                }
+                .navigationDestination(for: PostRoute.self) { route in
+                    PostDetailView(postID: route.postID)
+                }
+        }
+        .onOpenURL { url in
+            nav.navigate(to: DeepLink(url: url))
+        }
+        .environmentObject(nav)
+    }
+}
+
+// ── NSUserActivity for Handoff ────────────────────────────────
+class ArticleViewController: UIViewController {
+    var articleID: String = ""
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        advertiseActivity()
+    }
+
+    private func advertiseActivity() {
+        let activity = NSUserActivity(activityType: "com.myapp.readArticle")
+        activity.title = navigationItem.title
+        activity.userInfo = ["article_id": articleID]
+        activity.webpageURL = URL(string: "https://myapp.com/article/\(articleID)")
+        activity.isEligibleForHandoff = true
+        activity.isEligibleForSearch = true
+        userActivity = activity
+        activity.becomeCurrent()
+    }
+
+    override func updateUserActivityState(_ activity: NSUserActivity) {
+        activity.addUserInfoEntries(from: ["article_id": articleID])
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between a custom URL scheme and a Universal Link?</strong></p>
+
+<p>A: A <strong>custom URL scheme</strong> (e.g., <code>myapp://profile/42</code>) is a string prefix registered in <code>Info.plist</code>. Any app can register the same scheme — there is no ownership verification. If the app is not installed, opening the URL fails silently or shows an error. <strong>Universal Links</strong> use standard HTTPS URLs (e.g., <code>https://myapp.com/profile/42</code>). Ownership is verified by Apple at install time via an AASA (Apple App Site Association) JSON file hosted on the domain. Only the app whose Team ID and bundle ID match the AASA file can handle the URL. If the app is not installed, the URL opens in Safari as a normal web page. Universal Links are strongly preferred for production because they are phishing-resistant, handle the not-installed case gracefully, and work seamlessly with Handoff.</p>
+
+<p><strong>Q: What is the AASA file and where must it be hosted?</strong></p>
+
+<p>A: The AASA (Apple App Site Association) file is a JSON document that declares which URL paths on your domain your app is entitled to handle. It must be hosted at <code>https://yourdomain.com/.well-known/apple-app-site-association</code> with no file extension, served over HTTPS with a valid CA-signed certificate. The file maps your Team ID + bundle ID to URL path patterns. iOS downloads and caches the AASA during app installation (and refreshes it periodically via Apple's CDN). If the AASA is malformed, missing, or served with an invalid certificate, Universal Links silently fall through to Safari — a common debugging frustration.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does Universal Link routing work when the app is not yet launched vs already running?</strong></p>
+
+<p>A: <strong>Not running (cold launch)</strong>: iOS launches the app; <code>scene(_:willConnectTo:options:)</code> is called with <code>connectionOptions.userActivities</code> containing the <code>NSUserActivity</code> with <code>activityType == NSUserActivityTypeBrowsingWeb</code>. Extract <code>webpageURL</code> and route before the UI is visible — but defer actual navigation until after the window and root view controller are fully set up. <strong>Already running (warm)</strong>: <code>scene(_:continue:)</code> is called on the <code>UIWindowSceneDelegate</code> with the <code>NSUserActivity</code>. Route immediately. <strong>Cold launch via custom URL scheme</strong>: <code>connectionOptions.urlContexts</code> instead of <code>userActivities</code>. In SwiftUI, <code>.onOpenURL</code> fires in both cases, hiding the distinction. The router must handle both paths identically — the common mistake is handling only the warm path and missing cold-launch links.</p>
+
+<p><strong>Q: Why should you never pass authentication tokens through deep link URL parameters?</strong></p>
+
+<p>A: URL scheme parameters are visible in the URL string, which: (1) may be logged by the OS, analytics SDKs, or crash reporters; (2) can be intercepted by a malicious app that registers the same custom URL scheme; (3) appear in the device's clipboard if the user copies the link. For OAuth callbacks, use Universal Links rather than custom schemes (so no other app can intercept the callback), and exchange the code for a token server-side over HTTPS immediately. If you must use a custom scheme for OAuth (e.g., some older SDKs), use PKCE (Proof Key for Code Exchange) so a stolen code cannot be exchanged without the code verifier.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you design a deep link routing system that handles all entry points (cold launch, warm launch, push notification tap, Spotlight, Handoff) in a unified way?</strong></p>
+
+<p>A: A unified router has three components: (1) <em></em><code>DeepLink</code> value type<em></em> that parses any URL or <code>NSUserActivity</code> into a typed enum (<code>case profile(userID:)</code>, <code>case post(postID:)</code>, etc.) with a failable initialiser. (2) <em></em><code>DeepLinkRouter</code><em></em> — a <code>@MainActor</code> singleton that receives any <code>DeepLink</code> and dispatches it to the current coordinator. It must tolerate being called before the coordinator is ready (queue the link and flush when the coordinator is set). (3) <strong>Entry point adapters</strong> in <code>SceneDelegate</code> (or SwiftUI <code>.onOpenURL</code> + <code>.onContinueUserActivity</code>) that all parse their input into a <code>DeepLink</code> and call the router. This ensures: consistent handling regardless of entry point; testability (pass a <code>DeepLink</code> directly to the router in unit tests); and correct behaviour on cold launch (link is queued, then applied once the window is ready). For NavigationStack-based SwiftUI apps, the coordinator maintains a <code>NavigationPath</code> that the router appends to — enabling multi-level deep navigation without knowing the current screen state.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Universal Links open in Safari instead of the app.</strong></p>
+
+<p>Solution: Most commonly: (1) AASA file is not being served — check the URL, certificate, and content type. Use Apple's AASA Validator tool. (2) The URL path doesn't match any component in the AASA. (3) The Associated Domains entitlement is missing or has a typo. (4) The app was installed before the AASA was set up — reinstall the app so iOS re-fetches the AASA. (5) The user has opened the link in Safari and pressed "Open in Safari" — they've opted out; they must go to Settings → your app → Open Links to re-enable.</p>
+
+<p><strong>Issue: Deep link fires but navigation doesn't happen — the wrong screen is shown.</strong></p>
+
+<p>Solution: The deep link is processed before the root view controller's view hierarchy is ready. Use a small <code>DispatchQueue.main.async</code> delay or check <code>window?.rootViewController != nil</code> before navigating. For coordinator patterns, queue the pending link and apply it in <code>viewDidAppear</code> of the root view controller.</p>
+
+<p><em></em>Issue: <code>scene(_:continue:)</code> is not called for Universal Links.<em></em></p>
+
+<p>Solution: The delegate must be set as the scene's delegate in <code>Info.plist</code> (<code>UISceneSessionRoleApplication</code> → <code>UISceneDelegateClassName</code>). Also ensure the app has the Associated Domains entitlement (<code>applinks:yourdomain.com</code>) and the AASA file is correct. Test by opening the link with <code>open https://yourdomain.com/path</code> in Terminal while the Simulator is running.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="app-lifecycle.md">App Lifecycle</a> — scene connection options deliver links on cold launch</li>
+<li><a href="push-notifications.md">Push Notifications</a> — routing from notification tap to deep link</li>
+<li><a href="../04-ui-frameworks/mvvm-coordinator.md">MVVM &amp; Coordinator</a> — Coordinator pattern for deep link navigation</li>
+<li><a href="../04-ui-frameworks/swiftui-state-management.md">SwiftUI State Management</a> — NavigationPath for programmatic deep navigation</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

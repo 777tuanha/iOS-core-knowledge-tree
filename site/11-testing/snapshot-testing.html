@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snapshot Testing — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../11-testing/index.html">Testing</a></span>
+    <span>Snapshot Testing</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="snapshot-testing">Snapshot Testing</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Snapshot testing captures the rendered output of a UI component — as an image, an HTML string, or a text description — and compares it against a stored reference snapshot on subsequent runs. Any visual difference fails the test. The primary Swift library for this is <strong>swift-snapshot-testing</strong> by Point-Free, which supports UIView, UIViewController, SwiftUI views, CALayer, and even arbitrary <code>Encodable</code> types (as JSON snapshots). Snapshot tests are fast (no app launch, no network, no database), catch unintended visual regressions that unit tests miss, and document the intended appearance of components. The tradeoff: they require a record/assert workflow, must be regenerated on intentional design changes, and can be flaky if rendering depends on the device screen scale or OS version.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>A snapshot test is like a security photo system for your UI. The first time a test runs in "record" mode, it takes a photo of the component (the reference snapshot). Every subsequent run compares the current rendering to that photo pixel-by-pixel. If someone accidentally changes the button colour or shifts a label, the photo doesn't match and the test fails — showing you a diff image of exactly what changed. When a designer intentionally changes the look, you re-run in record mode to update the reference photos.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="swift-snapshot-testing">swift-snapshot-testing</h3>
+
+<p><em></em>Point-Free's <code>swift-snapshot-testing</code><em></em> is the standard library. Add via SPM:</p>
+<pre><code class="language-swift">.package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.15.0")</code></pre>
+
+<p>Core API:</p>
+<pre><code class="language-swift">import SnapshotTesting
+
+// Assert snapshot (compare to stored reference)
+assertSnapshot(of: view, as: .image)
+
+// Record new reference (first run, or after intentional change)
+assertSnapshot(of: view, as: .image, record: true)
+
+// Or set globally in setUp:
+isRecording = true</code></pre>
+
+<h3 id="snapshot-strategies">Snapshot Strategies</h3>
+
+<p><code>swift-snapshot-testing</code> uses typed strategies (<code>Snapshotting&lt;Value, Format&gt;</code>):</p>
+
+<table>
+<tr><td>Strategy</td><td>What it captures</td></tr>
+<tr><td><code>.image</code></td><td>Pixel-accurate PNG of the view</td></tr>
+<tr><td><code>.image(precision: 0.99)</code></td><td>Allow 1% pixel difference (anti-aliasing tolerance)</td></tr>
+<tr><td><code>.image(size: CGSize)</code></td><td>Render at specific size</td></tr>
+<tr><td><code>.image(traits:)</code></td><td>Specific trait collection (dark mode, dynamic type)</td></tr>
+<tr><td><code>.recursiveDescription</code></td><td>Accessibility tree as text (stable across platforms)</td></tr>
+<tr><td><code>.dump</code></td><td>Text dump of a value (struct/class)</td></tr>
+<tr><td><code>.json</code></td><td>JSON representation of Encodable</td></tr>
+</table>
+
+<h3 id="file-storage">File Storage</h3>
+
+<p>Reference snapshots are stored as <code>__Snapshots__/TestClassName/testMethodName.1.png</code> relative to the test source file. Commit them to source control — they are part of the test specification.</p>
+
+<h3 id="dark-mode-and-dynamic-type-variants">Dark Mode and Dynamic Type Variants</h3>
+
+<p>Test multiple appearances with different trait collections:</p>
+
+<pre><code class="language-swift">assertSnapshot(of: vc,
+               as: .image(on: .iPhone13Pro),
+               named: "light")
+
+assertSnapshot(of: vc,
+               as: .image(on: .iPhone13Pro(.portrait),
+                          traits: .init(userInterfaceStyle: .dark)),
+               named: "dark")
+
+assertSnapshot(of: vc,
+               as: .image(on: .iPhone13Pro,
+                          traits: .init(preferredContentSizeCategory: .accessibilityExtraLarge)),
+               named: "largeText")</code></pre>
+
+<h3 id="swiftui-snapshots">SwiftUI Snapshots</h3>
+
+<p>SwiftUI views need to be wrapped for snapshotting:</p>
+
+<pre><code class="language-swift">let view = FeedCardView(post: Post.stub)
+    .environment(\.colorScheme, .dark)
+
+assertSnapshot(of: view, as: .image(layout: .device(config: .iPhone13Pro)))</code></pre>
+
+<p><code>layout</code> options:</p>
+<ul>
+<li><code>.fixed(width:height:)</code> — explicit size</li>
+<li><code>.sizeThatFits</code> — intrinsic size</li>
+<li><code>.device(config:)</code> — simulated device frame</li>
+</ul>
+
+<h3 id="inline-snapshots">Inline Snapshots</h3>
+
+<p><code>swift-snapshot-testing</code> 1.15+ supports inline snapshots — the snapshot string is written directly into the source file:</p>
+
+<pre><code class="language-swift">assertInlineSnapshot(of: model, as: .json) {
+    """
+    {
+      "id" : "42",
+      "name" : "Alice"
+    }
+    """
+}</code></pre>
+
+<p>On first run (or with <code>isRecording = true</code>), the framework writes the snapshot string into the source code. This keeps snapshots next to the tests — useful for <code>Codable</code> model serialisation tests.</p>
+
+<h3 id="ci-considerations">CI Considerations</h3>
+
+<ul>
+<li><strong>Device screen scale</strong>: a snapshot taken on a 3× device differs from a 1× device. Fix the scale in the test: <code>UITraitCollection(displayScale: 2)</code>, or always run tests on the same simulator configuration.</li>
+<li><strong>Font rendering</strong>: system fonts render slightly differently across OS versions. Use <code>precision: 0.98</code> to allow minor differences, or use <code>.recursiveDescription</code> (text-based) for font-sensitive components.</li>
+<li><strong>Regenerating on intentional changes</strong>: run tests with <code>isRecording = true</code> (or set <code>record: true</code>), commit the updated snapshots, then revert the recording flag.</li>
+<li><strong>CI environment</strong>: run snapshot tests only on a pinned simulator (e.g., "iPhone 15 Pro, iOS 17.4") — different simulators produce different renderings.</li>
+</ul>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import XCTest
+import SnapshotTesting
+@testable import DesignSystem
+
+// ── UIView snapshot ───────────────────────────────────────────
+final class PostCardViewSnapshotTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        // Uncomment to regenerate all snapshots:
+        // isRecording = true
+    }
+
+    func test_postCard_defaultState() {
+        let view = PostCardView()
+        view.configure(with: .stub)
+        view.frame = CGRect(x: 0, y: 0, width: 375, height: 120)
+
+        assertSnapshot(of: view, as: .image)
+    }
+
+    func test_postCard_withLongTitle_wrapsCorrectly() {
+        let post = Post.stub(title: "This is a very long title that should wrap to multiple lines in the card view")
+        let view = PostCardView()
+        view.configure(with: post)
+        view.frame = CGRect(x: 0, y: 0, width: 375, height: 160)
+
+        assertSnapshot(of: view, as: .image)
+    }
+
+    func test_postCard_darkMode() {
+        let view = PostCardView()
+        view.configure(with: .stub)
+        view.frame = CGRect(x: 0, y: 0, width: 375, height: 120)
+        view.overrideUserInterfaceStyle = .dark
+
+        assertSnapshot(of: view,
+                       as: .image(traits: .init(userInterfaceStyle: .dark)),
+                       named: "darkMode")
+    }
+}
+
+// ── UIViewController snapshot ─────────────────────────────────
+final class LoginViewControllerSnapshotTests: XCTestCase {
+
+    func test_loginScreen_initialState() {
+        let vc = LoginViewController()
+        _ = vc.view   // trigger viewDidLoad
+
+        assertSnapshot(of: vc, as: .image(on: .iPhone13Pro))
+    }
+
+    func test_loginScreen_withError() {
+        let vc = LoginViewController()
+        _ = vc.view
+        vc.showError("Invalid email or password")
+
+        assertSnapshot(of: vc,
+                       as: .image(on: .iPhone13Pro),
+                       named: "withError")
+    }
+}
+
+// ── SwiftUI View snapshot ─────────────────────────────────────
+import SwiftUI
+
+final class FeedViewSnapshotTests: XCTestCase {
+
+    func test_feedRow_lightMode() {
+        let view = FeedRowView(post: .stub)
+
+        assertSnapshot(of: view,
+                       as: .image(layout: .device(config: .iPhone13Pro)))
+    }
+
+    func test_feedRow_darkMode() {
+        let view = FeedRowView(post: .stub)
+            .environment(\.colorScheme, .dark)
+
+        assertSnapshot(of: view,
+                       as: .image(layout: .device(config: .iPhone13Pro)),
+                       named: "dark")
+    }
+
+    func test_feedRow_accessibilityLargeText() {
+        let view = FeedRowView(post: .stub)
+            .environment(\.sizeCategory, .accessibilityLarge)
+
+        assertSnapshot(of: view,
+                       as: .image(layout: .sizeThatFits),
+                       named: "largeText")
+    }
+}
+
+// ── Codable JSON inline snapshot ──────────────────────────────
+final class PostJSONSnapshotTests: XCTestCase {
+
+    func test_post_encodesCorrectly() throws {
+        let post = Post(id: "42", title: "Hello", authorName: "Alice",
+                        publishedAt: Date(timeIntervalSince1970: 0))
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+
+        assertInlineSnapshot(of: post, as: .json(encoder)) {
+            """
+            {
+              "author_name" : "Alice",
+              "id" : "42",
+              "published_at" : "1970-01-01T00:00:00Z",
+              "title" : "Hello"
+            }
+            """
+        }
+    }
+}
+
+// ── Test stubs ────────────────────────────────────────────────
+extension Post {
+    static var stub: Post {
+        Post(id: "1", title: "Sample Post Title", authorName: "Alice",
+             publishedAt: Date(timeIntervalSince1970: 1_700_000_000))
+    }
+
+    static func stub(title: String) -&gt; Post {
+        Post(id: "1", title: title, authorName: "Alice",
+             publishedAt: Date(timeIntervalSince1970: 1_700_000_000))
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is snapshot testing and what types of bugs does it catch that unit tests miss?</strong></p>
+
+<p>A: Snapshot testing captures the rendered output of a UI component and compares it to a stored reference on subsequent runs. It catches visual regressions that are invisible to unit tests: a colour that changed from <code>systemBlue</code> to <code>systemIndigo</code> due to an accidental constant change, a label that was clipped because a constraint was weakened, a layout that broke under Dynamic Type large text, or a dark mode style that wasn't applied to a new subview. Unit tests verify logic (the model is correct, the ViewModel produces the right data) but are blind to rendering. Snapshot tests provide a safety net for the visual layer at the cost of requiring maintenance when designs change intentionally.</p>
+
+<p><em></em>Q: What does the <code>record</code> flag do in <code>assertSnapshot</code> and when should you use it?<em></em></p>
+
+<p>A: When <code>record: true</code> (or <code>isRecording = true</code>), <code>assertSnapshot</code> writes the current rendering to disk as the reference snapshot and <strong>always passes</strong>. Use it when: (1) Adding a snapshot test for the first time — the reference doesn't exist yet. (2) A design change was intentional — you need to update the reference to match the new look. After recording, inspect the written <code>.png</code> files to confirm they look correct, then commit them and remove the <code>record: true</code> flag. Never leave <code>record: true</code> in committed code — every run would overwrite references and the test would never fail.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: Snapshot tests fail on CI but pass locally. What are the likely causes and how do you fix them?</strong></p>
+
+<p>A: Four common causes: (1) <strong>Different screen scale</strong> — the local machine renders at 3× (Retina) while CI uses a 1× or 2× simulator. Fix: pin both environments to the same simulator model and OS version. Use <code>UITraitCollection(displayScale: 2.0)</code> to force a consistent scale in tests. (2) <strong>Font rendering differences</strong> — SF Pro renders slightly differently across OS versions. Use <code>precision: 0.98</code> or <code>0.99</code> to allow minor pixel differences, or use <code>.recursiveDescription</code> for font-sensitive tests. (3) <strong>Date/time-dependent content</strong> — any view displaying <code>Date.now</code> produces different snapshots each run. Replace live dates with fixed <code>Date(timeIntervalSince1970:)</code> stubs in test data. (4) <em></em>Missing <code>isRecording = false</code><em></em> — someone accidentally left <code>record: true</code> in a commit; references on CI are overwritten each run and tests always pass locally (where the fresh snapshot matches itself). Audit snapshots in CI artifacts.</p>
+
+<p><strong>Q: How do you test a SwiftUI component that displays different content based on an environment value (e.g., colour scheme or size category)?</strong></p>
+
+<p>A: Use <code>swift-snapshot-testing</code>'s <code>image(layout:)</code> strategy combined with <code>.environment(_:_:)</code> modifiers on the view. Create named snapshots for each variant so they're stored separately: <code>assertSnapshot(of: view.environment(\.colorScheme, .dark), as: .image(layout: .device(config: .iPhone13Pro)), named: "dark")</code>. Group the variants in a single test function or split into separate functions depending on whether you want granular failure messages. For a design system component, snapshot all relevant variants systematically: light/dark, all Dynamic Type sizes, RTL layout (<code>environment(\.layoutDirection, .rightToLeft)</code>). Run these as part of a <code>DesignSystem</code> test target that's isolated from feature code — it rebuilds quickly when only the design system changes.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a snapshot testing strategy for a component library that must be verified across iOS 16, iOS 17, iOS 18, light/dark mode, and five Dynamic Type sizes.</strong></p>
+
+<p>A: Structure as a matrix test: (1) <strong>Parameterised helper</strong>: write a <code>snapshotAllVariants(of:name:)</code> helper that calls <code>assertSnapshot</code> for each combination — 3 OS versions × 2 colour schemes × 5 type sizes = 30 snapshots per component. Use <code>named:</code> parameter to give each combination a unique name (e.g., <code>"ios17-dark-xxxl"</code>). (2) <strong>CI matrix</strong>: run snapshot tests on three pinned simulators (one per OS version) in parallel. Each simulator set produces its own snapshot artifacts. References are stored in subdirectories by OS version: <code>__Snapshots__/ios16/</code>, <code>__Snapshots__/ios17/</code>. (3) <strong>Reference management</strong>: snapshots are committed to source control. Use a script that automatically opens a diff viewer (<code>ksdiff</code>, <code>Beyond Compare</code>) when tests fail, showing the expected vs actual image side by side. (4) <strong>Precision tuning</strong>: use <code>.image(precision: 0.98)</code> globally for the design system to tolerate sub-pixel font rendering differences. For exact colour verification (brand colour compliance), write separate unit tests asserting on <code>UIColor</code> values rather than pixels. (5) <strong>Inline snapshots for models</strong>: use inline JSON snapshots for Codable responses — these are OS-independent and avoid the per-OS snapshot matrix for data layer tests.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Snapshot test fails with "No reference was found" on first run.</strong></p>
+
+<p>Solution: Run once with <code>isRecording = true</code> (or <code>record: true</code>) to generate the reference. The framework writes the file to <code>__Snapshots__/</code> relative to the test source file. Inspect the generated image, commit it, then remove the recording flag.</p>
+
+<p><em></em>Issue: Snapshot test fails for a view containing <code>Text(Date.now, style: .relative)</code>.<em></em></p>
+
+<p>Solution: The rendered text changes every second. Replace live dates with deterministic fixed dates in test stubs. For components that must display "time ago" text, inject a <code>Clock</code> or <code>Date</code> dependency into the view, and in tests pass <code>Date(timeIntervalSince1970: 1_700_000_000)</code>.</p>
+
+<p><em></em>Issue: Committed snapshots are 5 MB and slow down <code>git clone</code>.<em></em></p>
+
+<p>Solution: Store reference snapshots in Git LFS (Large File Storage) — <code>git lfs track "**/__Snapshots__/**/*.png"</code>. This keeps the repository clone fast while snapshots remain version-controlled. Alternatively, generate snapshot images in CI only and compare them in a separate artifact step rather than storing them in Git.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="unit-testing.md">Unit Testing</a> — snapshot tests complement unit tests for the visual layer</li>
+<li><a href="ui-testing.md">UI Testing</a> — XCUITest tests behaviour; snapshot tests test appearance</li>
+<li><a href="../04-ui-frameworks/swiftui-state-management.md">SwiftUI State Management</a> — snapshot each state transition of a SwiftUI view</li>
+<li><a href="../04-ui-frameworks/uiview-lifecycle.md">UIView Lifecycle</a> — <code>layoutIfNeeded()</code> before snapshotting to ensure correct layout</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

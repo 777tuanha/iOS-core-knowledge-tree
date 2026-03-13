@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Main Thread Optimization — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../12-performance/index.html">Performance</a></span>
+    <span>Main Thread Optimization</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html" class="active">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="main-thread-optimization">Main Thread Optimization</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>The main thread in iOS is the only thread that drives UIKit rendering and event handling. The display system calls the app at 60 fps (16.67 ms per frame) or 120 fps on ProMotion displays (8.33 ms per frame). Any work that keeps the main thread busy longer than one frame budget produces a <strong>hitch</strong> — a dropped frame that users see as jank. Work on the main thread must be limited to: updating data sources, triggering layout/rendering, and processing user input. All other work — networking, JSON decoding, database queries, image decoding, cryptography, file I/O — belongs on background threads or async Swift concurrency tasks. The tools for diagnosis are Instruments' Time Profiler (main thread flame graph), Xcode's <code>Main Thread Checker</code> (catches UIKit-on-background-thread violations), and <code>MetricKit</code>'s hitch rate metric in production. The Swift concurrency tools for offloading work are <code>async/await</code>, <code>Task { }</code>, <code>actor</code>, and <code>Task.detached { }</code>.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>The main thread is a single cashier at a supermarket checkout. Every 16.67 ms a new customer (a display frame) arrives. If the cashier is in the back room doing stocktaking (decoding JSON, querying a database), every customer arriving during that time waits. The longer the backroom job, the longer the queue — customers (frames) pile up and the whole checkout looks frozen. The fix is to hire backroom staff (background threads/actors) and have the cashier only do cashier work: scanning items (updating UI), accepting payment (handling taps), and printing receipts (committing layout). The backroom staff hand the cashier only the finished result.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="what-causes-main-thread-jank">What Causes Main Thread Jank</h3>
+
+<table>
+<tr><td>Category</td><td>Examples</td></tr>
+<tr><td>Network I/O</td><td><code>URLSession</code> synchronous calls (never do this)</td></tr>
+<tr><td>Disk I/O</td><td><code>Data(contentsOf:)</code>, <code>FileManager</code>, SQLite queries</td></tr>
+<tr><td>JSON decoding</td><td><code>JSONDecoder().decode()</code> on a large payload</td></tr>
+<tr><td>Image decoding</td><td><code>UIImage(data:)</code> — the PNG/JPEG decode happens on first draw</td></tr>
+<tr><td>Cryptography</td><td>Hashing, encryption of large data</td></tr>
+<tr><td>Core Data</td><td><code>NSFetchRequest</code> on <code>viewContext</code> for large result sets</td></tr>
+<tr><td>Layout calculation</td><td>Complex Auto Layout with O(n²) ambiguous constraints</td></tr>
+<tr><td>Synchronous closures</td><td><code>DispatchQueue.main.sync</code> from background thread (deadlock risk too)</td></tr>
+</table>
+
+<h3 id="time-profiler-reading-the-main-thread">Time Profiler: Reading the Main Thread</h3>
+
+<p>In Time Profiler, select the main thread lane. The flame graph shows the call stack. A wide block = long duration. The hottest frame functions are listed in the Call Tree sorted by self-time. Key signs of main-thread trouble:</p>
+<ul>
+<li><code>UIApplication.sendEvent</code> taking &gt; 5 ms → input handling jank.</li>
+<li><code>CALayer.display</code> or <code>CA::Layer::display_</code> → expensive draw pass.</li>
+<li>Your own symbol with high self-time → CPU work you can offload.</li>
+</ul>
+
+<h3 id="the-main-thread-checker">The Main Thread Checker</h3>
+
+<p>Enable in scheme: Edit Scheme → Run → Diagnostics → <strong>Main Thread Checker</strong>. It crashes the app (in Debug builds) when UIKit or AppKit APIs are called off the main thread — catching threading mistakes at development time rather than in production.</p>
+
+<h3 id="offloading-with-asyncawait">Offloading with async/await</h3>
+
+<p>The canonical pattern: mark the async function with <code>nonisolated</code> or place it in an actor, do the work there, then update <code>@MainActor</code>-bound state.</p>
+
+<pre><code class="language-swift">@MainActor
+final class FeedViewModel: ObservableObject {
+    @Published var posts: [Post] = []
+    @Published var isLoading = false
+
+    func loadFeed() async {
+        isLoading = true
+        // Jump off main thread to decode + transform
+        let decoded = await Task.detached(priority: .userInitiated) {
+            let data = try? Data(contentsOf: Bundle.main.url(forResource: "feed", withExtension: "json")!)
+            return (try? JSONDecoder().decode([Post].self, from: data ?? Data())) ?? []
+        }.value
+        // Back on @MainActor — safe to write @Published
+        posts = decoded
+        isLoading = false
+    }
+}</code></pre>
+
+<h3 id="actor-isolation">Actor Isolation</h3>
+
+<p>A <code>nonisolated</code> free function or a non-<code>@MainActor</code> <code>actor</code> runs on the cooperative thread pool, not the main thread. Use actors to encapsulate background work with safe state:</p>
+
+<pre><code class="language-swift">actor ImageProcessor {
+    func decode(_ data: Data) -&gt; UIImage? {
+        UIImage(data: data)   // runs on cooperative pool, not main thread
+    }
+}</code></pre>
+
+<p>Calling <code>await imageProcessor.decode(data)</code> from a <code>@MainActor</code> function:</p>
+<ol>
+<li>Suspends the main thread (not blocks — no frame is dropped).</li>
+<li>Schedules <code>decode</code> on the cooperative pool.</li>
+<li>Resumes on the main thread with the result.</li>
+</ol>
+
+<h3 id="grand-central-dispatch-pre-swift-concurrency">Grand Central Dispatch (pre-Swift-Concurrency)</h3>
+
+<p>For legacy code or when integrating with callback-based APIs:</p>
+
+<pre><code class="language-swift">DispatchQueue.global(qos: .userInitiated).async {
+    let result = expensiveComputation()
+    DispatchQueue.main.async {
+        self.label.text = result   // must update UI on main thread
+    }
+}</code></pre>
+
+<p>Avoid <code>DispatchQueue.global().sync</code> on the main thread — it blocks the main thread for the duration, causing jank.</p>
+
+<h3 id="identifying-layout-bottlenecks">Identifying Layout Bottlenecks</h3>
+
+<p>Auto Layout's constraint solver is O(n) for most layouts but can degrade to O(n²) for ambiguous or conflicting constraints. Profile with the <strong>Time Profiler</strong> + filter for <code>UIView.layoutSubviews</code> and <code>NSISEngine</code>. If layout takes &gt; 2 ms per frame, consider:</p>
+<ul>
+<li>Replacing <code>UIStackView</code> with manual frame-based layout for cells (especially in UITableView with 1000+ rows).</li>
+<li>Reducing constraint count per cell (10–20 constraints is fine; 50+ may cause layout pass spikes).</li>
+<li>Using <code>UIView.invalidateIntrinsicContentSize()</code> instead of adding/removing constraints dynamically.</li>
+</ul>
+
+<h3 id="hitch-rate-metrickit">Hitch Rate (MetricKit)</h3>
+
+<p>A <strong>hitch</strong> is any frame that takes longer than its display deadline. MetricKit's <code>MXAnimationMetric</code> reports the <strong>hitch time ratio</strong> — total hitch time divided by total animation time. Industry benchmark:</p>
+<ul>
+<li>&lt; 1 ms/s: excellent (imperceptible)</li>
+<li>1–5 ms/s: good</li>
+<li>5–10 ms/s: noticeable</li>
+<li>&gt; 10 ms/s: poor (users will complain)</li>
+</ul>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+import SwiftUI
+
+// ── Pattern 1: Decode JSON off main thread ─────────────────────
+@MainActor
+final class ArticleListViewModel: ObservableObject {
+    @Published var articles: [Article] = []
+
+    private let decoder = JSONDecoder()
+
+    func loadArticles(data: Data) async {
+        // Task.detached escapes the current actor (main) to the pool
+        let result = await Task.detached(priority: .userInitiated) { [decoder] in
+            try? decoder.decode([Article].self, from: data)
+        }.value
+        articles = result ?? []   // @MainActor — safe
+    }
+}
+
+// ── Pattern 2: Async image decoding actor ─────────────────────
+actor ImageDecoder {
+    private var cache: [URL: UIImage] = [:]
+
+    func decode(from url: URL) async -&gt; UIImage? {
+        if let cached = cache[url] { return cached }
+
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let image = UIImage(data: data)   // decode runs on cooperative thread pool
+        cache[url] = image
+        return image
+    }
+}
+
+// Usage in a @MainActor view model:
+// let image = await imageDecoder.decode(from: url)
+// self.thumbnail = image    // safe — back on main actor
+
+// ── Pattern 3: Background Core Data fetch ─────────────────────
+// Use a background NSManagedObjectContext — never fetch on viewContext
+// with a large result set from the main thread
+final class PostRepository {
+    private let container: NSPersistentContainer
+
+    init(container: NSPersistentContainer) {
+        self.container = container
+    }
+
+    func fetchAll() async throws -&gt; [Post] {
+        try await withCheckedThrowingContinuation { continuation in
+            // newBackgroundContext() is off main thread
+            let context = container.newBackgroundContext()
+            context.perform {
+                do {
+                    let request = PostMO.fetchRequest()
+                    request.fetchBatchSize = 50
+                    let results = try context.fetch(request)
+                    let posts = results.map { Post(from: $0) }   // map to value types
+                    continuation.resume(returning: posts)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+}
+
+// ── Pattern 4: Serialised background work with an actor ───────
+actor DataProcessor {
+    private var buffer: [String] = []
+
+    // All calls to append/flush are serialised by actor isolation
+    func append(_ item: String) {
+        buffer.append(item)
+    }
+
+    func flush() -&gt; [String] {
+        defer { buffer.removeAll(keepingCapacity: true) }
+        return buffer
+    }
+}
+
+// ── Pattern 5: Avoid blocking main thread with large string ops
+extension String {
+    /// Expensive regex matching — never call on main thread for large strings
+    func matches(pattern: String) async -&gt; Bool {
+        await Task.detached(priority: .utility) {
+            (try? NSRegularExpression(pattern: pattern))
+                .map { $0.firstMatch(in: self, range: NSRange(self.startIndex..., in: self)) != nil }
+                ?? false
+        }.value
+    }
+}
+
+// ── Pattern 6: Throttle expensive main-thread callbacks ───────
+final class SearchViewController: UIViewController {
+    private var searchTask: Task&lt;Void, Never&gt;?
+
+    func searchTextChanged(_ query: String) {
+        searchTask?.cancel()   // cancel previous search
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)   // 300ms debounce
+            guard !Task.isCancelled else { return }
+            let results = await performSearch(query: query)
+            await MainActor.run { self.displayResults(results) }
+        }
+    }
+
+    private func performSearch(query: String) async -&gt; [SearchResult] {
+        await Task.detached(priority: .userInitiated) {
+            // heavy search logic off main thread
+            return []
+        }.value
+    }
+
+    private func displayResults(_ results: [SearchResult]) {
+        // Update UI — on main thread
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the 16 ms rule and why does violating it cause visible jank?</strong></p>
+
+<p>A: At 60 fps, the display hardware expects a new rendered frame every 16.67 ms. The display system's CA (Core Animation) commit phase runs at the end of the run loop iteration on the main thread. If the main thread is busy with non-UI work and can't commit the frame within 16.67 ms, the previous frame is displayed again — a duplicated frame, visible as a momentary freeze (jank or stutter). On ProMotion (120 Hz) displays, the budget is halved to 8.33 ms. Violating it even by 1 ms causes a hitch. The Instruments Time Profiler shows this as the main thread flame graph exceeding the 16 ms horizontal marker in the timeline.</p>
+
+<p><em></em>Q: What is the difference between <code>Task.detached</code> and <code>Task { }</code> regarding thread affinity?<em></em></p>
+
+<p>A: <code>Task { }</code> inherits the actor context of its enclosing scope. If called from a <code>@MainActor</code> function, the task runs on the main actor (main thread). This is usually what you want for updating UI — but it means CPU-heavy work inside a <code>Task { }</code> called from <code>@MainActor</code> still runs on the main thread. <code>Task.detached { }</code> explicitly breaks actor inheritance — it runs on the Swift cooperative thread pool with no actor context. Use <code>Task.detached</code> when you want to guarantee that heavy computation runs off the main thread, regardless of where it was started. The tradeoff: <code>Task.detached</code> captures nothing implicitly, so you must explicitly capture <code>[weak self]</code> or copy value parameters.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you offload image decoding from the main thread in a UICollectionView that displays hundreds of photos?</strong></p>
+
+<p>A: UIImage decoding (decompressing JPEG/PNG bytes to a bitmap) is deferred by default — it happens on the main thread during the first draw pass of the <code>UIImageView</code>. This causes jank when cells appear on screen. The solution: decode images on a background thread before they reach the cell. Pattern: (1) In <code>prefetchItemsAt indexPaths</code>, start a <code>Task.detached</code> for each upcoming cell's image URL that decodes the <code>UIImage</code> off-thread using <code>UIGraphicsImageRenderer</code> or <code>CGImageSourceCreateThumbnailAtIndex</code>. (2) Cache the decoded <code>UIImage</code> in <code>NSCache</code>. (3) In <code>cellForItemAt</code>, check the cache — if available, set directly; if not, set a placeholder and start a decode task. (4) In <code>prepareForReuse</code>, cancel the in-flight decode task using <code>task.cancel()</code>. With this pattern, visible cells get pre-decoded images from cache and the main thread never blocks for decode. Apple's recommendation: use <code>UIImage.prepareThumbnail(of:completionHandler:)</code> (iOS 15+) which does this automatically.</p>
+
+<p><strong>Q: How do you detect that a specific async function is accidentally running on the main thread?</strong></p>
+
+<p>A: Three techniques: (1) <em></em><code>MainActor.assertIsolated()</code><strong> (Swift 5.9+): call this inside any function that must NOT run on the main actor — it traps if it's unexpectedly isolated to the main actor. (2) </strong><code>Thread.isMainThread</code> assertion<em></em>: <code>assert(!Thread.isMainThread, "Must not run on main thread")</code> — fires in Debug builds. (3) <strong>Time Profiler</strong>: capture a trace, filter the main thread's call tree, and look for your function symbol. If it appears there, it's running on the main thread. For structured concurrency, use <code>nonisolated</code> on functions that should not inherit actor isolation, and place heavy-computation functions in a <code>nonisolated actor</code> or <code>Task.detached</code>.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a strategy for ensuring a feature that aggregates data from three APIs and one database query renders without dropping frames on a 120Hz ProMotion display.</strong></p>
+
+<p>A: An 8.33 ms budget requires everything except the final UI update to be off the main thread. Strategy: (1) <strong>Concurrent fetching</strong>: launch the three API calls and the database query as concurrent <code>async let</code> expressions inside a <code>Task.detached</code>, so all four run in parallel on the cooperative pool. (2) <strong>Result aggregation off-thread</strong>: still inside the detached task, merge and transform the four results into the final view model struct (a value type). JSON decoding and data transformation stay off-thread. (3) <strong>Single main-thread commit</strong>: after the detached task resolves, <code>await MainActor.run { viewModel = result }</code> — a single, cheap assignment. This triggers at most one <code>objectWillChange</code> and one body re-evaluation in SwiftUI. (4) <strong>Pre-computed layout</strong>: if the view requires complex layout measurement (e.g., variable-height cells), compute heights as part of the background transformation step and include them in the view model struct. Layout pass on the main thread then becomes a direct frame assignment — O(1). (5) <em></em><code>CATransaction.disableActions</code><em></em> for batch updates: wrap the final UI update in <code>CATransaction.begin()</code> / <code>disableActions = true</code> / <code>CATransaction.commit()</code> to suppress implicit animations on the batch, preventing multiple animation frames from being scheduled at once.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>UIImage</code> loading causes visible stutter when cells appear.<em></em></p>
+
+<p>Solution: UIImage decoding is lazy — it happens on the first draw call on the main thread. Pre-decode images on a background thread: <code>UIImage.prepareThumbnail(of: targetSize) { image in DispatchQueue.main.async { cell.imageView.image = image } }</code> (iOS 15+). For older iOS: use <code>UIGraphicsImageRenderer</code> in a <code>Task.detached</code> to draw the image to a new context (forcing decode), then pass the resulting pre-decoded image to the cell.</p>
+
+<p><strong>Issue: App is responsive between scrolls but freezes when the user stops scrolling.</strong></p>
+
+<p>Solution: This is often a batch database write or JSON serialisation that fires when the user stops — triggered by an <code>NSFetchedResultsController</code> delegate callback or a <code>UserDefaults.synchronize()</code> call. Profile with Time Profiler while reproducing the freeze: filter for the main thread and look for disk I/O or SQLite symbols. Move all persistence writes to a background context or <code>actor</code>.</p>
+
+<p><em></em>Issue: <code>@MainActor</code> annotation isn't preventing background-thread UIKit calls.<em></em></p>
+
+<p>Solution: <code>@MainActor</code> enforces isolation at the Swift type-system level — calling non-<code>@MainActor</code> legacy code (Objective-C delegates, completion handlers that arrive on arbitrary threads) bypasses it. Audit every completion handler and delegate method: wrap the UI-updating code in <code>Task { @MainActor in ... }</code> or <code>DispatchQueue.main.async</code>. Enable the <strong>Main Thread Checker</strong> in scheme diagnostics to catch violations at runtime during development.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="instruments-profiling.md">Instruments &amp; Profiling</a> — Time Profiler to identify main-thread bottlenecks</li>
+<li><a href="../03-concurrency/async-await.md">async/await</a> — Task, Task.detached, MainActor</li>
+<li><a href="../03-concurrency/actors.md">Actors</a> — actor isolation and the cooperative thread pool</li>
+<li><a href="../13-app-startup/index.md">App Startup &amp; Runtime — RunLoop</a> — RunLoop mechanics and main thread scheduling</li>
+<li><a href="../04-ui-frameworks/uitableview-uicollectionview.md">UITableView &amp; UICollectionView</a> — prefetching and cell configuration</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App Lifecycle — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../09-ios-platform/index.html">Ios Platform</a></span>
+    <span>App Lifecycle</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html" class="active">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="app-lifecycle">App Lifecycle</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>The iOS app lifecycle describes the sequence of states an app passes through from launch to termination, and the system callbacks that fire at each transition. Understanding the lifecycle is foundational: it determines when to start and stop work, when to save state, when the UI is visible, and when the app may be silently killed. Pre-iOS 13, a single <code>UIApplicationDelegate</code> handled all lifecycle events. iOS 13 introduced <code>UISceneDelegate</code>, splitting process-level events (handled by <code>AppDelegate</code>) from scene/window-level events (handled by <code>SceneDelegate</code>), enabling multiple simultaneous windows on iPad. SwiftUI apps use the <code>App</code> protocol, which maps to both delegates internally.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>The app lifecycle is like a stage performance. The <strong>AppDelegate</strong> is the theatre manager — it handles the building opening (process launch), the fire alarm (push notifications, background tasks), and the building closing (process termination). The <strong>SceneDelegate</strong> is the stage manager for each individual stage (window/scene) — raising the curtain (scene becoming active), dimming the lights (scene going to background), and lowering the curtain (scene disconnection). The audience (user) interacts with the stage, not the building. Modern iOS supports multiple stages (multi-window on iPad), which is why they were separated.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="uiapplication-states">UIApplication States</h3>
+
+<table>
+<tr><td>State</td><td>Description</td><td>Callbacks</td></tr>
+<tr><td><strong>Not Running</strong></td><td>Process not started or terminated</td><td>—</td></tr>
+<tr><td><strong>Foreground Inactive</strong></td><td>On screen but not receiving touch events (during transition, call overlay)</td><td><code>sceneWillResignActive</code></td></tr>
+<tr><td><strong>Foreground Active</strong></td><td>On screen, receiving events</td><td><code>sceneDidBecomeActive</code></td></tr>
+<tr><td><strong>Background</strong></td><td>Off screen; limited CPU time (~30s)</td><td><code>sceneDidEnterBackground</code></td></tr>
+<tr><td><strong>Suspended</strong></td><td>Process exists in memory; no CPU; killed without notice by OS</td><td>—</td></tr>
+</table>
+
+<p><strong>Key distinction</strong>: Suspended apps are not running — they cannot execute code. The OS may kill a suspended app at any time without calling any callback. State that must survive must be persisted before entering background.</p>
+
+<h3 id="appdelegate-responsibilities-ios-13">AppDelegate Responsibilities (iOS 13+)</h3>
+
+<p>With scene support, <code>UIApplicationDelegate</code> handles <strong>process-level</strong> events only:</p>
+
+<pre><code class="language-swift">@UIApplicationMain
+class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    // ── Process launch ─────────────────────────────────────
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -&gt; Bool {
+        // Register services, configure 3rd-party SDKs, set up logging
+        // Do NOT access the window here — scenes haven't been created yet
+        return true
+    }
+
+    // ── Push notification token ────────────────────────────
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) { }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) { }
+
+    // ── Background URL session ─────────────────────────────
+    func application(_ application: UIApplication,
+                     handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -&gt; Void) { }
+
+    // ── Scene configuration (iOS 13+) ─────────────────────
+    func application(_ application: UIApplication,
+                     configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -&gt; UISceneConfiguration {
+        UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    }
+
+    func application(_ application: UIApplication,
+                     didDiscardSceneSessions sceneSessions: Set&lt;UISceneSession&gt;) { }
+}</code></pre>
+
+<h3 id="scenedelegate-responsibilities">SceneDelegate Responsibilities</h3>
+
+<p><code>UIWindowSceneDelegate</code> handles <strong>window/scene-level</strong> events — everything related to a specific window:</p>
+
+<table>
+<tr><td>Method</td><td>Fires when</td></tr>
+<tr><td><code>scene(_:willConnectTo:options:)</code></td><td>Scene created; set up window and root VC</td></tr>
+<tr><td><code>sceneDidBecomeActive(_:)</code></td><td>Scene enters foreground active state</td></tr>
+<tr><td><code>sceneWillResignActive(_:)</code></td><td>Interruption begins (incoming call, system alert)</td></tr>
+<tr><td><code>sceneDidEnterBackground(_:)</code></td><td>Scene fully backgrounded; last chance to persist state</td></tr>
+<tr><td><code>sceneWillEnterForeground(_:)</code></td><td>Scene about to return to foreground</td></tr>
+<tr><td><code>sceneDidDisconnect(_:)</code></td><td>Scene session released from memory (not process termination)</td></tr>
+</table>
+
+<h3 id="scene-lifecycle-vs-process-lifecycle">Scene Lifecycle vs Process Lifecycle</h3>
+
+<p>On iPad with multi-window, a user can have two instances of the same app open simultaneously — two separate <code>UIScene</code> objects, each with its own <code>SceneDelegate</code>. The <code>AppDelegate</code> fires once per process; <code>SceneDelegate</code> fires once per scene.</p>
+
+<p><code>sceneDidDisconnect</code> does NOT mean the app is terminating — the scene is released from memory while the process may keep running. Persist scene-specific state in <code>NSUserActivity</code> for state restoration.</p>
+
+<h3 id="state-restoration">State Restoration</h3>
+
+<p>Save scene state so the app can restore it when the user returns (even after a process kill):</p>
+
+<pre><code class="language-swift">// In SceneDelegate
+func stateRestorationActivity(for scene: UIScene) -&gt; NSUserActivity? {
+    return view.userActivity   // the current NSUserActivity set on the root view controller
+}
+
+func scene(_ scene: UIScene, restoreInteractionStateWith stateRestorationActivity: NSUserActivity) {
+    // Restore navigation state, selected tab, scroll position, etc.
+}</code></pre>
+
+<h3 id="swiftui-app-protocol">SwiftUI App Protocol</h3>
+
+<p>SwiftUI apps use <code>@main</code> + <code>App</code> instead of AppDelegate/SceneDelegate directly:</p>
+
+<pre><code class="language-swift">@main
+struct MyApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}</code></pre>
+
+<p><code>@UIApplicationDelegateAdaptor</code> lets you keep an <code>AppDelegate</code> for push registration and background session handling while using the SwiftUI App protocol.</p>
+
+<h3 id="launch-options">Launch Options</h3>
+
+<p><code>launchOptions</code> dictionary in <code>didFinishLaunchingWithOptions</code> contains the reason the app was launched:</p>
+
+<table>
+<tr><td>Key</td><td>Meaning</td></tr>
+<tr><td><code>.remoteNotification</code></td><td>Launched by tapping a push notification</td></tr>
+<tr><td><code>.url</code></td><td>Launched by a deep link URL</td></tr>
+<tr><td><code>.shortcutItem</code></td><td>Launched from a home screen quick action</td></tr>
+<tr><td><code>.bluetoothCentrals</code> / <code>.bluetoothPeripherals</code></td><td>Relaunched for Bluetooth state restoration</td></tr>
+<tr><td><code>.location</code></td><td>Relaunched for significant location change</td></tr>
+</table>
+
+<h3 id="applicationwillterminate">applicationWillTerminate</h3>
+
+<p>Called <strong>only</strong> when the app is in the <strong>foreground</strong> when terminated (e.g., user force-quits). If the app is in the background and the OS kills it, this method is NOT called. Treat it as a best-effort, not a guarantee.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+
+// ── AppDelegate — minimal modern setup ────────────────────────
+class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -&gt; Bool {
+        configureAppearance()
+        registerForPushNotifications(application)
+        return true
+    }
+
+    private func configureAppearance() {
+        UINavigationBar.appearance().tintColor = .systemBlue
+    }
+
+    private func registerForPushNotifications(_ application: UIApplication) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            guard granted else { return }
+            DispatchQueue.main.async { application.registerForRemoteNotifications() }
+        }
+    }
+
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        // Send token to your server
+        print("Device token: \(token)")
+    }
+
+    // Scene configuration
+    func application(_ application: UIApplication,
+                     configurationForConnecting session: UISceneSession,
+                     options: UIScene.ConnectionOptions) -&gt; UISceneConfiguration {
+        UISceneConfiguration(name: "Default Configuration", sessionRole: session.role)
+    }
+}
+
+// ── SceneDelegate — window setup + lifecycle ──────────────────
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
+               options connectionOptions: UIScene.ConnectionOptions) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+
+        let window = UIWindow(windowScene: windowScene)
+        window.rootViewController = MainTabBarController()
+        window.makeKeyAndVisible()
+        self.window = window
+
+        // Handle deep link delivered at launch
+        if let urlContext = connectionOptions.urlContexts.first {
+            handle(url: urlContext.url)
+        }
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        // Resume timers, refresh UI, start animations
+        UIApplication.shared.applicationIconBadgeNumber = 0  // clear badge
+    }
+
+    func sceneWillResignActive(_ scene: UIScene) {
+        // Pause timers, pause game, save in-progress work
+    }
+
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        // ← Most important: persist data here
+        try? CoreDataStack.shared.viewContext.save()
+        scheduleBackgroundRefresh()
+    }
+
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        // Undo background UI changes (hide sensitive content, restore)
+    }
+
+    // State restoration
+    func stateRestorationActivity(for scene: UIScene) -&gt; NSUserActivity? {
+        return (window?.rootViewController as? StateRestorable)?.currentActivity
+    }
+
+    func scene(_ scene: UIScene, restoreInteractionStateWith activity: NSUserActivity) {
+        (window?.rootViewController as? StateRestorable)?.restore(from: activity)
+    }
+
+    // Deep link while app is running
+    func scene(_ scene: UIScene, openURLContexts urlContexts: Set&lt;UIOpenURLContext&gt;) {
+        guard let url = urlContexts.first?.url else { return }
+        handle(url: url)
+    }
+
+    private func handle(url: URL) {
+        DeepLinkRouter.shared.route(url)
+    }
+
+    private func scheduleBackgroundRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: "com.app.refresh")
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+}
+
+// ── SwiftUI entry point with AppDelegate adapter ──────────────
+import SwiftUI
+
+@main
+struct MyApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @Environment(\.scenePhase) private var phase
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+        .onChange(of: phase) { newPhase in
+            switch newPhase {
+            case .active:     break               // resumed
+            case .inactive:   break               // interrupted
+            case .background:
+                try? CoreDataStack.shared.viewContext.save()
+            @unknown default: break
+            }
+        }
+    }
+}
+
+// ── Reading app state programmatically ────────────────────────
+extension UIApplication {
+    var isInForeground: Bool {
+        applicationState != .background
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between AppDelegate and SceneDelegate, and why were scenes introduced?</strong></p>
+
+<p>A: Pre-iOS 13, <code>UIApplicationDelegate</code> handled both process-level events (launch, push token, background URL sessions) and the app's single window. iOS 13 introduced <code>UISceneDelegate</code> to support multiple simultaneous windows on iPad — each window is an independent <code>UIWindowScene</code> with its own lifecycle. <code>AppDelegate</code> now handles only process-level events that happen once per process (launch, push registration, background URL session completion), while <code>SceneDelegate</code> handles window-level events that can happen independently per scene (window creation, becoming active/inactive, backgrounding, state restoration). An iPad app with two windows has one <code>AppDelegate</code> firing process events but two independent <code>SceneDelegate</code> instances firing scene events.</p>
+
+<p><em></em>Q: What is the difference between <code>sceneDidEnterBackground</code> and <code>applicationWillTerminate</code>?<em></em></p>
+
+<p>A: <code>sceneDidEnterBackground</code> fires reliably every time the scene moves off screen — this is where you must persist state, because the OS may kill the suspended process at any time without calling any further methods. <code>applicationWillTerminate</code> fires only when the app is terminated while it is still <strong>in the foreground</strong> — for example, when the user force-quits from the app switcher while the app is visible. If the OS kills a background-suspended app due to memory pressure, <code>applicationWillTerminate</code> is NOT called. This is why you cannot rely on <code>applicationWillTerminate</code> for critical saves; <code>sceneDidEnterBackground</code> is the correct hook.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How does <code>sceneDidDisconnect</code> differ from app termination, and what does it mean for state persistence?<em></em></p>
+
+<p>A: <code>sceneDidDisconnect</code> fires when the system releases a scene session from memory — typically when the user swipes the scene away in the app switcher, or when the OS decides to free memory. Critically, this does <strong>not</strong> terminate the app process — the process continues running and other scenes remain active. The scene can be reconnected later (e.g., the user re-opens the app), at which point <code>scene(_:willConnectTo:options:)</code> fires again. State that should survive a reconnect must be stored in <code>NSUserActivity</code> via <code>stateRestorationActivity(for:)</code> so the SceneDelegate can restore it in <code>scene(_:restoreInteractionStateWith:)</code>. Heavy in-memory state (caches, loaded data) can be rebuilt from the persistent store on reconnect — the scene doesn't need to hold it across disconnects.</p>
+
+<p><strong>Q: How should you handle a deep link URL when the app is launched cold via that URL vs when it's already running?</strong></p>
+
+<p>A: Two separate entry points: (1) <strong>Cold launch</strong>: the URL arrives in <code>UIScene.ConnectionOptions.urlContexts</code> passed to <code>scene(_:willConnectTo:options:)</code>. Handle it after setting up the window and root view controller. (2) <strong>Already running</strong>: the URL arrives in <code>scene(_:openURLContexts:)</code>. Both paths should route to the same handler function. In SwiftUI, use <code>.onOpenURL { url in ... }</code> on the <code>WindowGroup</code> — this fires in both cases. In both UIKit and SwiftUI, avoid performing deep navigation before the window is ready; post navigation to the next run loop tick if needed to ensure the view hierarchy is fully built.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Describe the exact sequence of lifecycle callbacks when a user switches from App A to App B and back.</strong></p>
+
+<p>A: <strong>App A → background</strong>: (1) <code>sceneWillResignActive</code> — becoming inactive (brief transition state). (2) <code>sceneDidEnterBackground</code> — fully backgrounded; OS takes snapshot of UI. App A process moves to suspended state (no CPU). <strong>App B launch</strong> (if not running): (3) <code>AppDelegate.application(_:didFinishLaunchingWithOptions:)</code>. (4) <code>scene(_:willConnectTo:options:)</code>. (5) <code>sceneWillEnterForeground</code>. (6) <code>sceneDidBecomeActive</code>. <strong>User returns to App A</strong>: (7) <code>sceneWillEnterForeground</code> fires in App A — app is about to become visible. (8) <code>sceneDidBecomeActive</code> — App A is interactive again. App B receives: (9) <code>sceneWillResignActive</code> → (10) <code>sceneDidEnterBackground</code>. The OS snapshot taken at step 2 is what's shown in the app switcher — this is why you should hide sensitive information (bank balance, passwords) in <code>sceneWillResignActive</code> and restore it in <code>sceneDidBecomeActive</code>.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>UIApplication.shared.windows.first</code> returns <code>nil</code> or the wrong window.<em></em></p>
+
+<p>Solution: On iOS 15+ with scene support, use <code>UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }.first { $0.isKeyWindow }</code>. Accessing <code>UIApplication.shared.windows</code> is deprecated and returns all windows unfiltered.</p>
+
+<p><strong>Issue: State restoration is not working — the app always starts fresh.</strong></p>
+
+<p>Solution: Ensure <code>stateRestorationActivity(for:)</code> returns a non-nil <code>NSUserActivity</code> with a <code>activityType</code> string. The activity must be registered in <code>NSUserActivityTypes</code> in <code>Info.plist</code>. Also confirm <code>scene(_:restoreInteractionStateWith:)</code> is implemented and actually applies the state before the view appears.</p>
+
+<p><em></em>Issue: <code>applicationWillTerminate</code> is used to save Core Data — data is occasionally lost.<em></em></p>
+
+<p>Solution: Move saves to <code>sceneDidEnterBackground</code> — this fires reliably before the app is suspended. <code>applicationWillTerminate</code> is not called on background termination (the most common kind). Save incrementally after each mutation rather than in a single termination hook.</p>
+
+<p><strong>Issue: Deep link opens the app but navigation doesn't occur.</strong></p>
+
+<p>Solution: The navigation is attempted before the root view controller's view hierarchy is loaded. Defer the deep link handling to the next run loop cycle: <code>DispatchQueue.main.async { DeepLinkRouter.shared.route(url) }</code> — this ensures <code>viewDidLoad</code> has fired on the root VC before navigation commands are issued.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="background-tasks.md">Background Tasks</a> — scheduling BGAppRefreshTask from <code>sceneDidEnterBackground</code></li>
+<li><a href="push-notifications.md">Push Notifications</a> — device token registration in AppDelegate</li>
+<li><a href="deep-links-universal-links.md">Deep Links &amp; Universal Links</a> — handling URLs in scene(_:openURLContexts:)</li>
+<li><a href="../04-ui-frameworks/uiviewcontroller-lifecycle.md">UIViewController Lifecycle</a> — VC lifecycle within the app lifecycle</li>
+<li><a href="../08-data-persistence/core-data.md">Core Data</a> — saving context in <code>sceneDidEnterBackground</code></li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

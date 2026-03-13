@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Push Notifications — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../09-ios-platform/index.html">Ios Platform</a></span>
+    <span>Push Notifications</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html" class="active">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="push-notifications">Push Notifications</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Push notifications allow a server to deliver timely information to a device even when the app is not running. Apple's infrastructure for this is APNs (Apple Push Notification service) — a persistent, encrypted connection between Apple's servers and every iPhone. The iOS framework for creating, scheduling, and responding to notifications is <code>UserNotifications</code> (UNUserNotificationCenter). Modern push architecture supports alert notifications (user-visible banners, sounds, badges), silent pushes (invisible; wake app for background fetch), rich notifications (images, video via Notification Service Extension), and custom notification UIs (Notification Content Extension). Understanding APNs token management, notification categories and actions, and the extension points is essential for production push implementations.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Push notifications are like a postal service between your server and the user's device. Your server writes a letter (payload), hands it to the post office (APNs), which delivers it to the exact device (via the device token — a postal address). iOS decides whether to show the letter (based on user permission), rings a bell or shows a banner, and optionally wakes your app to process it. You can attach photos to the letter (rich notifications via a Notification Service Extension) or design a custom envelope (Notification Content Extension for a custom UI).</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="apns-architecture">APNs Architecture</h3>
+
+<pre><code>Your Server
+    │  JSON payload + device token
+    ▼  (HTTP/2 + mutual TLS or token auth)
+APNs Servers  ──────────────────────────────────► Device
+                                                     │
+                                                     ▼
+                                               iOS delivers
+                                               notification</code></pre>
+
+<p><strong>Device token</strong>: a unique, APNs-assigned identifier for the (app, device) pair. Tokens can change — after app reinstall, device restore, or OS update. Always upload the latest token to your server.</p>
+
+<p><strong>Authentication</strong>: APNs supports two authentication methods:</p>
+<ul>
+<li><strong>Token-based (JWT)</strong>: one p8 key file per team; no expiry; recommended.</li>
+<li><strong>Certificate-based</strong>: per-app .p12 certificate; expires annually; legacy.</li>
+</ul>
+
+<h3 id="payload-structure">Payload Structure</h3>
+
+<pre><code class="language-json">{
+  "aps": {
+    "alert": {
+      "title": "New Message",
+      "body": "Alice: Hey, are you free tonight?"
+    },
+    "badge": 3,
+    "sound": "default",
+    "content-available": 1,
+    "mutable-content": 1,
+    "category": "MESSAGE_CATEGORY",
+    "thread-id": "conversation-42",
+    "interruption-level": "active"
+  },
+  "message_id": "msg_789",
+  "sender_id": "user_42"
+}</code></pre>
+
+<p>Key fields:</p>
+<ul>
+<li><code>content-available: 1</code> — silent push; wakes app in background.</li>
+<li><code>mutable-content: 1</code> — triggers Notification Service Extension to modify the notification before display.</li>
+<li><code>category</code> — links to a <code>UNNotificationCategory</code> defining action buttons.</li>
+<li><code>thread-id</code> — groups notifications in Notification Center.</li>
+<li><code>interruption-level</code> — <code>passive</code>, <code>active</code>, <code>time-sensitive</code>, <code>critical</code> (requires entitlement).</li>
+</ul>
+
+<h3 id="requesting-permission">Requesting Permission</h3>
+
+<pre><code class="language-swift">UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+    guard granted else { return }
+    DispatchQueue.main.async {
+        UIApplication.shared.registerForRemoteNotifications()
+    }
+}</code></pre>
+
+<p>Permission is requested once. If the user denies, subsequent calls don't show the dialog — use <code>UNUserNotificationCenter.current().getNotificationSettings</code> to check current status before requesting.</p>
+
+<h3 id="notification-categories-and-actions">Notification Categories and Actions</h3>
+
+<p>Categories define the set of action buttons shown on a notification:</p>
+
+<pre><code class="language-swift">let replyAction = UNTextInputNotificationAction(
+    identifier: "REPLY_ACTION",
+    title: "Reply",
+    options: [],
+    textInputButtonTitle: "Send",
+    textInputPlaceholder: "Type a reply..."
+)
+
+let markReadAction = UNNotificationAction(
+    identifier: "MARK_READ",
+    title: "Mark as Read",
+    options: [.authenticationRequired]  // requires device unlock
+)
+
+let messageCategory = UNNotificationCategory(
+    identifier: "MESSAGE_CATEGORY",
+    actions: [replyAction, markReadAction],
+    intentIdentifiers: [],
+    options: .customDismissAction
+)
+
+UNUserNotificationCenter.current().setNotificationCategories([messageCategory])</code></pre>
+
+<h3 id="unusernotificationcenterdelegate">UNUserNotificationCenterDelegate</h3>
+
+<pre><code class="language-swift">class NotificationHandler: NSObject, UNUserNotificationCenterDelegate {
+
+    // Called when a notification is delivered while app is in foreground
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                 willPresent notification: UNNotification,
+                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -&gt; Void) {
+        completionHandler([.banner, .sound, .badge])   // show even in foreground
+    }
+
+    // Called when user taps notification or action button
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                 didReceive response: UNNotificationResponse,
+                                 withCompletionHandler completionHandler: @escaping () -&gt; Void) {
+        defer { completionHandler() }
+        let userInfo = response.notification.request.content.userInfo
+
+        switch response.actionIdentifier {
+        case UNNotificationDefaultActionIdentifier:
+            // User tapped the notification body
+            handleDeepLink(from: userInfo)
+        case "REPLY_ACTION":
+            let textResponse = response as? UNTextInputNotificationResponse
+            sendReply(text: textResponse?.userText ?? "", userInfo: userInfo)
+        case "MARK_READ":
+            markAsRead(userInfo: userInfo)
+        default: break
+        }
+    }
+}</code></pre>
+
+<h3 id="notification-service-extension">Notification Service Extension</h3>
+
+<p>A <code>UNNotificationServiceExtension</code> intercepts notifications with <code>mutable-content: 1</code> before display. Uses: decrypt end-to-end encrypted content, download and attach media, modify title/body.</p>
+
+<pre><code class="language-swift">class NotificationService: UNNotificationServiceExtension {
+    var contentHandler: ((UNNotificationContent) -&gt; Void)?
+    var bestAttemptContent: UNMutableNotificationContent?
+
+    override func didReceive(_ request: UNNotificationRequest,
+                             withContentHandler contentHandler: @escaping (UNNotificationContent) -&gt; Void) {
+        self.contentHandler = contentHandler
+        bestAttemptContent = request.content.mutableCopy() as? UNMutableNotificationContent
+
+        // Download media attachment
+        guard let urlString = request.content.userInfo["image_url"] as? String,
+              let url = URL(string: urlString) else {
+            contentHandler(request.content); return
+        }
+
+        downloadAttachment(url: url) { [weak self] attachment in
+            if let attachment { self?.bestAttemptContent?.attachments = [attachment] }
+            contentHandler(self?.bestAttemptContent ?? request.content)
+        }
+    }
+
+    override func serviceExtensionTimeWillExpire() {
+        // Called if the extension runs out of time (~30s budget)
+        contentHandler?(bestAttemptContent ?? UNNotificationContent())
+    }
+}</code></pre>
+
+<h3 id="notification-content-extension">Notification Content Extension</h3>
+
+<p>A <code>UNNotificationContentExtension</code> provides a completely custom SwiftUI/UIKit view displayed when the user long-presses or force-touches a notification. Declared in <code>Info.plist</code> with <code>UNNotificationExtensionCategory</code>.</p>
+
+<h3 id="local-notifications">Local Notifications</h3>
+
+<p>Schedule notifications from the device without a server:</p>
+
+<pre><code class="language-swift">let content = UNMutableNotificationContent()
+content.title = "Water your plant"
+content.body = "Fern needs water today"
+content.sound = .default
+
+// Time interval trigger
+let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 3600, repeats: false)
+// Calendar trigger
+let components = DateComponents(hour: 9, minute: 0)
+let calTrigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+// Location trigger
+let region = CLCircularRegion(center: homeCoordinate, radius: 100, identifier: "home")
+let locTrigger = UNLocationNotificationTrigger(region: region, repeats: false)
+
+let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
+try await UNUserNotificationCenter.current().add(request)</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UserNotifications
+import UIKit
+
+// ── Push notification manager ─────────────────────────────────
+class PushNotificationManager: NSObject {
+    static let shared = PushNotificationManager()
+
+    func setup() {
+        UNUserNotificationCenter.current().delegate = self
+        registerCategories()
+    }
+
+    func requestPermission(completion: @escaping (Bool) -&gt; Void) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional:
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                    completion(true)
+                }
+            case .notDetermined:
+                UNUserNotificationCenter.current()
+                    .requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+                        DispatchQueue.main.async {
+                            if granted { UIApplication.shared.registerForRemoteNotifications() }
+                            completion(granted)
+                        }
+                    }
+            case .denied, .ephemeral:
+                completion(false)
+            @unknown default:
+                completion(false)
+            }
+        }
+    }
+
+    func registerDeviceToken(_ tokenData: Data) {
+        let token = tokenData.map { String(format: "%02.2hhx", $0) }.joined()
+        Task { try? await APIClient.shared.registerPushToken(token) }
+    }
+
+    private func registerCategories() {
+        // Message category with reply + mark-read
+        let reply = UNTextInputNotificationAction(
+            identifier: "REPLY",
+            title: "Reply",
+            options: [],
+            textInputButtonTitle: "Send",
+            textInputPlaceholder: "Message..."
+        )
+        let markRead = UNNotificationAction(identifier: "MARK_READ", title: "Mark Read", options: [])
+        let messageCategory = UNNotificationCategory(
+            identifier: "MESSAGE",
+            actions: [reply, markRead],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        // Post like category
+        let viewPost = UNNotificationAction(identifier: "VIEW_POST", title: "View Post", options: [.foreground])
+        let likeCategory = UNNotificationCategory(
+            identifier: "LIKE",
+            actions: [viewPost],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        UNUserNotificationCenter.current().setNotificationCategories([messageCategory, likeCategory])
+    }
+}
+
+// ── UNUserNotificationCenterDelegate ─────────────────────────
+extension PushNotificationManager: UNUserNotificationCenterDelegate {
+
+    // Foreground presentation
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                 willPresent notification: UNNotification,
+                                 withCompletionHandler handler: @escaping (UNNotificationPresentationOptions) -&gt; Void) {
+        handler([.banner, .sound, .badge])
+    }
+
+    // Response handling
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                 didReceive response: UNNotificationResponse,
+                                 withCompletionHandler handler: @escaping () -&gt; Void) {
+        defer { handler() }
+        let info = response.notification.request.content.userInfo
+
+        switch response.actionIdentifier {
+        case UNNotificationDefaultActionIdentifier:
+            if let type = info["type"] as? String {
+                DeepLinkRouter.shared.route(type: type, payload: info)
+            }
+        case "REPLY":
+            let text = (response as? UNTextInputNotificationResponse)?.userText ?? ""
+            guard let conversationId = info["conversation_id"] as? String else { break }
+            Task { try? await MessageService.shared.sendReply(text: text, to: conversationId) }
+        case "MARK_READ":
+            guard let messageId = info["message_id"] as? String else { break }
+            Task { try? await MessageService.shared.markRead(messageId: messageId) }
+        default: break
+        }
+    }
+}
+
+// ── Notification Service Extension (separate target) ─────────
+class NotificationService: UNNotificationServiceExtension {
+    var contentHandler: ((UNNotificationContent) -&gt; Void)?
+    var bestAttemptContent: UNMutableNotificationContent?
+
+    override func didReceive(_ request: UNNotificationRequest,
+                             withContentHandler handler: @escaping (UNNotificationContent) -&gt; Void) {
+        contentHandler = handler
+        guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
+            handler(request.content); return
+        }
+        bestAttemptContent = content
+
+        // Decrypt E2E message body
+        if let encrypted = content.userInfo["encrypted_body"] as? String {
+            content.body = E2EDecryption.decrypt(encrypted) ?? content.body
+        }
+
+        // Download thumbnail attachment
+        guard let urlString = content.userInfo["thumbnail_url"] as? String,
+              let url = URL(string: urlString) else {
+            handler(content); return
+        }
+
+        URLSession.shared.downloadTask(with: url) { localURL, _, _ in
+            if let localURL,
+               let attachment = try? UNNotificationAttachment(identifier: "thumbnail", url: localURL) {
+                content.attachments = [attachment]
+            }
+            handler(content)
+        }.resume()
+    }
+
+    override func serviceExtensionTimeWillExpire() {
+        contentHandler?(bestAttemptContent ?? UNNotificationContent())
+    }
+}
+
+// ── Managing pending / delivered notifications ────────────────
+extension PushNotificationManager {
+    // Remove delivered notifications for a specific conversation
+    func clearNotifications(for conversationId: String) {
+        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
+            let toRemove = notifications
+                .filter { ($0.request.content.userInfo["conversation_id"] as? String) == conversationId }
+                .map { $0.request.identifier }
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: toRemove)
+        }
+    }
+
+    // Update badge count
+    func updateBadge(to count: Int) {
+        UNUserNotificationCenter.current().setBadgeCount(count)
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the APNs device token and why might it change?</strong></p>
+
+<p>A: The APNs device token is a unique identifier assigned by Apple that represents the (app, device) combination. Your server uses it to address push notifications to a specific device. The token can change when: the app is uninstalled and reinstalled, the device is restored from backup, the app is transferred to a different Apple Developer account, or (rarely) after a major iOS update. Your app must register for remote notifications at every launch (<code>UIApplication.shared.registerForRemoteNotifications()</code>) and upload the latest token to your server in <code>application(_:didRegisterForRemoteNotificationsWithDeviceToken:)</code>. If your server sends a push to an old, invalid token, APNs returns a <code>BadDeviceToken</code> error — your server should remove the stale token.</p>
+
+<p><em></em>Q: What is <code>mutable-content</code> and when would you use a Notification Service Extension?<em></em></p>
+
+<p>A: Setting <code>mutable-content: 1</code> in the APNs payload tells iOS to invoke a Notification Service Extension before displaying the notification. The extension has ~30 seconds to modify the <code>UNMutableNotificationContent</code>. Use cases: (1) <strong>End-to-end encryption</strong> — the payload carries an encrypted body; the extension decrypts it using a locally stored key before display (this is how WhatsApp/Signal handle E2E push). (2) <strong>Rich media attachment</strong> — download an image or video and attach it to the notification. (3) <strong>Localisation</strong> — the server sends a key; the extension looks up the localised string. (4) <strong>Tracking</strong> — increment an unread count in the shared app group before the notification is displayed. Without <code>mutable-content: 1</code>, the extension is never invoked.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does notification delivery change based on the app's foreground/background state?</strong></p>
+
+<p>A: <strong>App not running / background / suspended</strong>: APNs delivers the notification; iOS displays it as a banner, sound, and/or badge without calling any app code. When the user taps, the app launches and <code>userNotificationCenter(_:didReceive:)</code> fires. <strong>App in background with silent push</strong> (<code>content-available: 1</code>): <code>application(_:didReceiveRemoteNotification:fetchCompletionHandler:)</code> fires, giving ~30 seconds of background execution. <strong>App in foreground</strong>: the notification is NOT shown automatically — iOS calls <code>userNotificationCenter(_:willPresent:withCompletionHandler:)</code> and your code decides the presentation options. Call <code>completionHandler([.banner, .sound])</code> to show it, or <code>completionHandler([])</code> to suppress it and handle the data silently. This delegate method fires only when the app is in the foreground.</p>
+
+<p><em></em>Q: What is notification grouping via <code>thread-id</code> and how do you remove notifications for a specific thread?<em></em></p>
+
+<p>A: <code>thread-id</code> is a string in the APNs payload that groups related notifications in Notification Center — e.g., all messages from the same conversation share a <code>thread-id</code> of the conversation ID. iOS stacks grouped notifications under a single header. To remove all displayed notifications for a thread (e.g., when the user reads the conversation): call <code>UNUserNotificationCenter.current().getDeliveredNotifications</code>, filter by your conversation ID in <code>userInfo</code>, collect their <code>request.identifier</code> values, and call <code>removeDeliveredNotifications(withIdentifiers:)</code>. For pending (scheduled but not yet delivered) notifications, use <code>removePendingNotificationRequests(withIdentifiers:)</code>.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a push notification architecture for a chat app that supports E2E encryption and message preview in the lock screen.</strong></p>
+
+<p>A: The challenge: the server cannot see message content (E2E), yet iOS must display a meaningful preview. Architecture: (1) <strong>Server payload</strong> contains the encrypted ciphertext, sender name (unencrypted metadata), and a hint like "New message from Alice" as the fallback body. <code>mutable-content: 1</code> is set. (2) <strong>Notification Service Extension</strong> receives the notification, retrieves the E2E decryption key from the Keychain (the extension shares the Keychain group with the main app), decrypts the ciphertext, and sets <code>content.body</code> to the plaintext. If decryption fails (key not available, device just restored), the fallback body "New message from Alice" is shown. (3) <strong>Key management</strong>: on every app launch, ensure the current device's private key is in the Keychain with <code>kSecAttrAccessibleAfterFirstUnlock</code> (so the extension can access it after first device unlock post-boot). (4) <strong>Extension budget</strong>: the extension has ~30 seconds. Decryption is synchronous and fast; no network calls needed. (5) <strong>Notification Content Extension</strong>: optional — shows the last N messages inline for quick reply without opening the app. The content extension reads from the shared App Group database.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Push notifications work in development but not production.</strong></p>
+
+<p>Solution: Ensure your server is using the Production APNs endpoint (<code>api.push.apple.com</code>) rather than the sandbox endpoint (<code>api.sandbox.push.apple.com</code>). Also verify the p8 key or certificate is the production one. App Store and TestFlight builds use the production APNs environment; debug builds use sandbox.</p>
+
+<p><em></em>Issue: <code>userNotificationCenter(_:didReceive:)</code> is never called when the app is in the foreground.<em></em></p>
+
+<p>Solution: Implement <code>userNotificationCenter(_:willPresent:)</code> and set <code>UNUserNotificationCenter.current().delegate</code> before the app finishes launching (in <code>AppDelegate</code> or in the <code>App</code> init). <code>didReceive</code> only fires after the user interacts with the notification — <code>willPresent</code> fires for delivery in the foreground.</p>
+
+<p><em></em>Issue: Device token is nil or <code>registerForRemoteNotifications</code> fails silently.<em></em></p>
+
+<p>Solution: Ensure the Push Notifications capability is enabled in Xcode's Signing &amp; Capabilities, and the provisioning profile includes the <code>aps-environment</code> entitlement. On Simulator, push notifications require iOS 16+ and specific Xcode tooling — test on a physical device for reliable registration.</p>
+
+<p><strong>Issue: Notification Service Extension never fires.</strong></p>
+
+<p>Solution: The payload must include <code>mutable-content: 1</code> (as an integer, not a string or boolean). The extension must be a separate target in the app, with its own bundle ID (typically <code>com.app.NotificationService</code>), and its <code>NSExtensionPrincipalClass</code> must point to your <code>UNNotificationServiceExtension</code> subclass in the extension's <code>Info.plist</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="app-lifecycle.md">App Lifecycle</a> — device token registration in AppDelegate; silent push handling</li>
+<li><a href="background-tasks.md">Background Tasks</a> — silent push vs BGAppRefreshTask for background wakeup</li>
+<li><a href="deep-links-universal-links.md">Deep Links &amp; Universal Links</a> — routing from notification tap to in-app screen</li>
+<li><a href="../08-data-persistence/keychain.md">Keychain</a> — storing E2E keys accessible to Notification Service Extension</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code Signing — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../19-app-distribution/index.html">App Distribution</a></span>
+    <span>Code Signing</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html" class="active">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="code-signing">Code Signing</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Code signing cryptographically binds an app binary to a developer or team identity, enabling iOS to verify who built the app and whether it has been tampered with since signing. The system has three components: <strong>certificates</strong> (X.509 public-key certificates stored in Keychain that identify a developer or team), <strong>provisioning profiles</strong> (plist files embedded in the app that bind an App ID, certificates, and device UDIDs to define where and how an app can run), and <strong>signing identities</strong> (a certificate paired with its private key in macOS Keychain — the private key signs the binary; the certificate allows iOS to verify the signature). Automatic signing in Xcode manages this for most teams; manual signing is needed for advanced configurations (multiple targets, custom entitlements per environment, CI machines without Keychain access).</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Code signing is like a notarised letter: the notary (Apple) gives a developer a stamp (certificate). When you write a letter (build an app), you stamp it. The recipient (iOS) can verify the stamp is genuine and the letter hasn't been altered. A provisioning profile is the permission slip that says "this stamp is allowed to be used at this address (App ID) and sent to these people (devices)." Without a matching permission slip, iOS refuses to run the app even if the stamp is valid.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="certificates">Certificates</h3>
+
+<p><strong>Types:</strong></p>
+<ul>
+<li><strong>Apple Development</strong>: signs debug builds for running on registered devices during development.</li>
+<li><strong>Apple Distribution</strong>: signs builds for TestFlight, App Store, and Enterprise — one per team (shared via private key export).</li>
+</ul>
+
+<p><strong>Lifecycle:</strong></p>
+<ol>
+<li>Generate a Certificate Signing Request (CSR) from Keychain Access → Certificate Assistant.</li>
+<li>Upload to developer.apple.com → Certificates, Identifiers &amp; Profiles.</li>
+<li>Apple signs it and returns the certificate.</li>
+<li>Install in macOS Keychain — paired with the private key from step 1.</li>
+</ol>
+
+<p><strong>Private key export</strong>: to share a distribution certificate across a team or CI machines, export the certificate + private key as a <code>.p12</code> file (password-protected) from Keychain Access. Import it on any machine that needs to sign.</p>
+
+<h3 id="provisioning-profiles">Provisioning Profiles</h3>
+
+<p>A provisioning profile is a signed plist containing:</p>
+<ul>
+<li><strong>App ID</strong>: the bundle identifier (explicit: <code>com.example.App</code> or wildcard: <code>com.example.*</code>).</li>
+<li><strong>Certificates</strong>: the list of developer certificates allowed to sign with this profile.</li>
+<li><strong>Devices</strong> (development and Ad Hoc only): UDID list of registered devices.</li>
+<li><strong>Entitlements</strong>: the capabilities the profile grants (push, iCloud, App Groups).</li>
+<li><strong>Expiry</strong>: profiles expire after 1 year; expired profiles prevent installation.</li>
+</ul>
+
+<p><strong>Profile types:</strong></p>
+
+<table>
+<tr><td>Type</td><td>Who can install</td><td>Use</td></tr>
+<tr><td>Development</td><td>Registered devices only</td><td>Debug builds</td></tr>
+<tr><td>Ad Hoc</td><td>Registered devices only (up to 100)</td><td>Beta testing without TestFlight</td></tr>
+<tr><td>App Store</td><td>Anyone (via App Store / TestFlight)</td><td>Production / TestFlight</td></tr>
+<tr><td>Enterprise</td><td>Anyone within the organisation</td><td>Internal apps (no App Review)</td></tr>
+</table>
+
+<h3 id="how-signing-works-at-build-time">How Signing Works at Build Time</h3>
+
+<ol>
+<li>Xcode compiles the app and generates the <code>.app</code> bundle.</li>
+<li>The codesign tool hashes every file in the bundle.</li>
+<li>The hash is signed with the private key from the signing identity.</li>
+<li>The signature is stored in <code>_CodeSignature/CodeResources</code> inside the bundle.</li>
+<li>The selected provisioning profile is copied into the bundle as <code>embedded.mobileprovision</code>.</li>
+<li>On device, iOS verifies the signature against the certificate in the profile and checks the device UDID is listed (for development/Ad Hoc profiles).</li>
+</ol>
+
+<h3 id="automatic-vs-manual-signing">Automatic vs Manual Signing</h3>
+
+<p><strong>Automatic signing</strong> (Xcode → Signing &amp; Capabilities → "Automatically manage signing"):</p>
+<ul>
+<li>Xcode creates/renews certificates and profiles via the Apple Developer Portal API.</li>
+<li>Recommended for most teams and local development.</li>
+<li>Limitations: doesn't work on CI machines without Apple ID credentials; can conflict with multiple targets.</li>
+</ul>
+
+<p><strong>Manual signing</strong>:</p>
+<ul>
+<li>Choose a specific signing identity and provisioning profile in Xcode build settings.</li>
+<li>Required for CI/CD (use <code>match</code> to sync profiles via a private Git repo or S3 — see <a href="fastlane-cicd.md">Fastlane &amp; CI/CD</a>).</li>
+<li>Required when distributing multiple flavours (dev/staging/prod) that use different App IDs or entitlements.</li>
+</ul>
+
+<h3 id="build-settings">Build Settings</h3>
+
+<pre><code>CODE_SIGN_IDENTITY = "Apple Distribution: Acme Corp (TEAM_ID)"
+PROVISIONING_PROFILE_SPECIFIER = "com.acme.App AppStore"
+DEVELOPMENT_TEAM = "XXXXXXXX"</code></pre>
+
+<p>Override per configuration:</p>
+
+<pre><code>// Xcode build settings via xcconfig:
+CODE_SIGN_IDENTITY[config=Debug] = Apple Development
+CODE_SIGN_IDENTITY[config=Release] = Apple Distribution
+PROVISIONING_PROFILE_SPECIFIER[config=Debug] = com.acme.App Development
+PROVISIONING_PROFILE_SPECIFIER[config=Release] = com.acme.App AppStore</code></pre>
+
+<h3 id="diagnosing-signing-failures">Diagnosing Signing Failures</h3>
+
+<p>Common errors:</p>
+
+<table>
+<tr><td>Error</td><td>Cause</td><td>Fix</td></tr>
+<tr><td>"No matching provisioning profile found"</td><td>Profile doesn't match App ID or is expired</td><td>Regenerate profile in portal; run <code>match</code> to sync</td></tr>
+<tr><td>"Code signing is required for product type"</td><td>Archive build lacks distribution certificate</td><td>Install <code>.p12</code> and correct provisioning profile</td></tr>
+<tr><td>"The identity used to sign the executable is no longer valid"</td><td>Certificate expired or revoked</td><td>Create new certificate via portal</td></tr>
+<tr><td>"Provisioning profile doesn't include the [X] entitlement"</td><td>Entitlement not enabled in App ID</td><td>Enable capability in App ID; regenerate profile</td></tr>
+</table>
+
+<pre><code class="language-bash"># Inspect an installed provisioning profile:
+security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/&lt;uuid&gt;.mobileprovision
+
+# List signing identities in Keychain:
+security find-identity -v -p codesigning
+
+# Verify a signed app:
+codesign -dv --verbose=4 /path/to/App.app</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// This is build configuration via xcconfig files — not Swift code.
+// xcconfig files are assigned to build configurations in Xcode target settings.
+
+// ── Debug.xcconfig ────────────────────────────────────────────
+// CODE_SIGN_IDENTITY = Apple Development
+// PROVISIONING_PROFILE_SPECIFIER = com.acme.App Development
+// DEVELOPMENT_TEAM = XXXXXXXX
+
+// ── Release.xcconfig ──────────────────────────────────────────
+// CODE_SIGN_IDENTITY = Apple Distribution
+// PROVISIONING_PROFILE_SPECIFIER = com.acme.App AppStore
+// DEVELOPMENT_TEAM = XXXXXXXX</code></pre>
+
+<pre><code class="language-bash"># ── Manual archive and export from the command line ───────────
+
+# 1. Archive
+xcodebuild archive \
+  -scheme MyApp \
+  -configuration Release \
+  -archivePath build/MyApp.xcarchive \
+  CODE_SIGN_STYLE=Manual \
+  PROVISIONING_PROFILE_SPECIFIER="com.acme.App AppStore"
+
+# 2. Export IPA (ExportOptions.plist specifies method and entitlements)
+xcodebuild -exportArchive \
+  -archivePath build/MyApp.xcarchive \
+  -exportOptionsPlist ExportOptions.plist \
+  -exportPath build/output/</code></pre>
+
+<pre><code class="language-xml">&lt;!-- ExportOptions.plist for App Store export --&gt;
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd"&gt;
+&lt;plist version="1.0"&gt;
+&lt;dict&gt;
+    &lt;key&gt;method&lt;/key&gt;
+    &lt;string&gt;app-store&lt;/string&gt;                  &lt;!-- app-store / ad-hoc / enterprise / development --&gt;
+    &lt;key&gt;teamID&lt;/key&gt;
+    &lt;string&gt;XXXXXXXXXX&lt;/string&gt;
+    &lt;key&gt;uploadBitcode&lt;/key&gt;
+    &lt;false/&gt;
+    &lt;key&gt;uploadSymbols&lt;/key&gt;
+    &lt;true/&gt;
+    &lt;key&gt;signingStyle&lt;/key&gt;
+    &lt;string&gt;manual&lt;/string&gt;
+    &lt;key&gt;provisioningProfiles&lt;/key&gt;
+    &lt;dict&gt;
+        &lt;key&gt;com.acme.App&lt;/key&gt;
+        &lt;string&gt;com.acme.App AppStore&lt;/string&gt;
+    &lt;/dict&gt;
+&lt;/dict&gt;
+&lt;/plist&gt;</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is a provisioning profile and why is it needed?</strong></p>
+
+<p>A: A provisioning profile is a signed file (produced by Apple's developer portal) that authorises an app to run in a specific context. It contains: the App ID (bundle identifier) the profile applies to, the list of developer certificates whose signatures it trusts, the UDIDs of registered devices (for development and Ad Hoc profiles), the entitlements the app is allowed to use, and an expiry date. iOS checks all four conditions at install time: the app's signature must be valid, the certificate must be in the profile, the device UDID must be listed (for dev/Ad Hoc), and the entitlements in the binary must not exceed those in the profile. Provisioning profiles exist because Apple needs a mechanism to control which apps can run on which devices — it's the enforcement layer between the developer portal permissions and the device.</p>
+
+<p><strong>Q: What is the difference between a development certificate and a distribution certificate?</strong></p>
+
+<p>A: A <strong>development certificate</strong> (Apple Development) is used to sign debug builds and allows the app to run on devices registered to your developer account. Multiple team members can each have their own development certificate. A <strong>distribution certificate</strong> (Apple Distribution) is used to sign builds intended for TestFlight, App Store, or Enterprise distribution. It's typically shared across the team (by exporting the <code>.p12</code> private key file) because only one distribution certificate per team is needed. Distribution-signed apps can be uploaded to App Store Connect or distributed via Enterprise MDM; they cannot be installed via Xcode.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does code signing prevent tampering with an app binary?</strong></p>
+
+<p>A: At build time, the <code>codesign</code> tool computes a cryptographic hash (SHA-256) of every file in the <code>.app</code> bundle — executables, frameworks, resources, Info.plist. These hashes are stored in <code>_CodeSignature/CodeResources</code>. The tool then signs a root hash with the developer's private key. The signature is tied to the public key in the certificate, which Apple itself has signed. At install and launch time, iOS: (1) verifies Apple's signature on the certificate (trust chain), (2) uses the certificate's public key to verify the developer's signature on the bundle, (3) rehashes each file and compares against the stored hashes. If any file has changed since signing — even a single byte — the hash comparison fails and iOS refuses to run the app. This makes it cryptographically infeasible to modify an app (inject malware, alter resources) without invalidating the signature.</p>
+
+<p><strong>Q: How do you manage certificates and provisioning profiles on a team with 10 developers and a CI/CD pipeline?</strong></p>
+
+<p>A: Use <em></em>Fastlane <code>match</code><em></em>: it stores all certificates and provisioning profiles in an encrypted Git repository (or S3 bucket). Each developer and the CI machine runs <code>fastlane match development</code> or <code>fastlane match appstore</code> to fetch and install the shared certificates. This ensures every machine uses the same signing identities. The workflow: (1) One team member creates the certificates and profiles via <code>fastlane match</code> on first run — they're encrypted with a passphrase and pushed to the private repo. (2) All other developers and CI runners decrypt and install them by running <code>match</code> with the passphrase (stored as a secret in CI). (3) When a profile expires or a new device is added, one developer runs <code>fastlane match --force_for_new_devices</code> to regenerate and re-push. No manual portal management, no email-sharing <code>.p12</code> files.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: A CI machine is signing with the correct certificate and provisioning profile but the build fails with "entitlement not supported." How do you diagnose and fix this?</strong></p>
+
+<p>A: Three-step diagnosis: (1) <strong>Extract the entitlements from the binary</strong>: <code>codesign -d --entitlements :- /path/to/App.app</code> — compare these to what's in the provisioning profile (<code>security cms -D -i embedded.mobileprovision | grep -A 20 Entitlements</code>). Any entitlement in the binary that's absent from the profile causes the error. (2) <strong>Check the App ID capabilities</strong> in developer.apple.com — the capability (e.g., Push Notifications, App Groups) must be enabled there before regenerating the profile. If the App ID uses a wildcard (<code>com.example.*</code>), some capabilities (Push Notifications, iCloud, Sign in with Apple) cannot be used and require switching to an explicit App ID. (3) <strong>Regenerate the provisioning profile</strong> after enabling the capability in the App ID. On a CI machine using <code>match</code>: run <code>fastlane match appstore --force</code> to regenerate and commit the updated profile to the match repo, then re-run the CI pipeline. Common root cause in CI: a developer enabled a capability locally (Xcode auto-signed and updated the profile on their machine) but the <code>match</code> repo was never updated — so CI uses the stale profile that lacks the new entitlement.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: "Your build settings specify a provisioning profile with the UUID '…', however, no such provisioning profile was found."</strong></p>
+
+<p>Solution: The profile exists in the portal but hasn't been downloaded to this machine. Run <code>fastlane match</code> to sync all profiles, or in Xcode: Preferences → Accounts → download manual profiles. If the profile is missing from the portal, it may have been deleted — regenerate it.</p>
+
+<p><strong>Issue: Archive succeeds on developer machine but fails on CI with "No identity found in keychain."</strong></p>
+
+<p>Solution: The CI machine's Keychain doesn't have the signing identity (certificate + private key). Using <code>match</code>: ensure the <code>MATCH_PASSWORD</code> secret is set in CI and <code>fastlane match appstore --readonly</code> runs as a pre-step. Without <code>match</code>: export the <code>.p12</code> from the developer machine, upload as a CI secret, and import with <code>security import certificate.p12 -k ~/Library/Keychains/login.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="entitlements.md">Entitlements</a> — capabilities enabled in the provisioning profile</li>
+<li><a href="fastlane-cicd.md">Fastlane &amp; CI/CD</a> — <code>match</code> for certificate and profile management</li>
+<li><a href="distribution.md">Distribution</a> — how signed archives are uploaded and distributed</li>
+<li><a href="../14-security/app-security.md">Security — App Security</a> — code signing as an integrity mechanism</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

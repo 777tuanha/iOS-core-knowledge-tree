@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memory Optimization — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../12-performance/index.html">Performance</a></span>
+    <span>Memory Optimization</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html" class="active">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="memory-optimization">Memory Optimization</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Memory optimization on iOS operates on two levels: reducing <strong>allocation volume</strong> (fewer objects, smaller objects, shorter lifetimes) and reducing <strong>peak resident memory</strong> (the amount of memory the OS considers "in use" at any moment). iOS uses a paged virtual memory system with no swap file on real devices — when physical memory is exhausted the OS sends memory pressure notifications, then terminates background apps (Jailbreak Level 1), and finally terminates the foreground app (Level 5, the most severe). The primary tools are choosing value types over reference types where appropriate, understanding ARC's retain/release traffic, using <code>weak</code>/<code>unowned</code> references correctly, responding to <code>UIApplicationDidReceiveMemoryWarningNotification</code>, and profiling with Instruments' Allocations and VM Tracker templates to find the actual source of growth.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Memory in iOS works like a hotel where each floor (memory page, 16 KB) is either occupied, reserved, or empty. When the hotel fills up, the manager (the OS) asks guests in their rooms (background apps) to leave first. If that's not enough, the manager asks the guest currently in the lobby (foreground app) to leave too — that's a crash from OOM (out of memory). Optimization means: (1) checking out guests who've already left (releasing objects promptly), (2) booking smaller rooms (using value types and compact data layouts), and (3) not booking rooms on spec (lazy loading, not pre-allocating large buffers). The hotel manager sends warnings — listen to them and clean up the minibar (purge image caches) before being evicted.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="value-types-vs-reference-types">Value Types vs Reference Types</h3>
+
+<p>Value types (<code>struct</code>, <code>enum</code>, <code>tuple</code>) are allocated on the <strong>stack</strong> (or inline in a containing struct) when they fit within 3 words. Stack allocation and deallocation is a single pointer decrement — no heap call, no ARC traffic, no lock.</p>
+
+<p>Reference types (<code>class</code>) are always allocated on the <strong>heap</strong>: <code>malloc</code> + ARC <code>retain</code>/<code>release</code>. Every assignment of a class reference triggers an atomic retain/release, which involves an atomic operation and is a significant cost in tight loops.</p>
+
+<p><strong>Guideline</strong>: prefer <code>struct</code> for data models, results, and intermediate computations. Use <code>class</code> only when you need reference semantics (shared identity, inheritance, or storage in <code>@Observable</code>/<code>ObservableObject</code>).</p>
+
+<pre><code>Value type:   [value inline in stack frame]  ← no heap, no ARC
+Reference type: [stack: pointer] → [heap: object + refcount]  ← malloc + atomic ops</code></pre>
+
+<h3 id="copy-on-write-cow">Copy-on-Write (CoW)</h3>
+
+<p>Swift standard library value types (<code>Array</code>, <code>Dictionary</code>, <code>String</code>, <code>Data</code>) use copy-on-write: they share the underlying storage buffer until one copy is mutated. Only the mutating copy triggers a heap allocation and buffer copy. This means passing large arrays into functions is cheap (shared buffer), and allocation only happens at mutation.</p>
+
+<pre><code class="language-swift">var a = [1, 2, 3, 4, 5]    // one heap buffer
+var b = a                   // still one buffer (shared)
+b.append(6)                 // CoW: b now has its own copy</code></pre>
+
+<h3 id="arc-traffic-reduction">ARC Traffic Reduction</h3>
+
+<p>Every <code>strong</code> assignment triggers an <code>objc_retain</code> + eventual <code>objc_release</code> — both are atomic operations. In tight inner loops this becomes measurable. Patterns that generate high ARC traffic:</p>
+
+<ul>
+<li>Passing <code>[AnyObject]</code> through many function calls.</li>
+<li>Using <code>as AnyObject</code> bridging.</li>
+<li>Storing class instances in an <code>Array</code> with high churn.</li>
+</ul>
+
+<p>Mitigation:</p>
+<ul>
+<li>Use <code>withUnsafeBufferPointer</code> for read-only array iteration in tight loops — avoids per-element retain.</li>
+<li>Use <code>nonisolated(unsafe)</code> or value types for hot-path data.</li>
+<li>Prefer <code>UnsafeRawBufferPointer</code> for binary data processing.</li>
+</ul>
+
+<h3 id="memory-pressure-notifications">Memory Pressure Notifications</h3>
+
+<p>iOS sends memory warnings at three escalating levels. Register and respond:</p>
+
+<pre><code class="language-swift">NotificationCenter.default.addObserver(
+    self,
+    selector: #selector(handleMemoryWarning),
+    name: UIApplication.didReceiveMemoryWarningNotification,
+    object: nil
+)
+
+@objc func handleMemoryWarning() {
+    imageCache.removeAllObjects()     // purge NSCache
+    thumbnailCache.removeAll()        // purge custom caches
+    prefetchedData = nil              // release prefetched buffers
+}</code></pre>
+
+<p><code>NSCache</code> purges its contents automatically under memory pressure — prefer <code>NSCache</code> over <code>Dictionary</code> for caches.</p>
+
+<h3 id="image-memory">Image Memory</h3>
+
+<p>Images are the largest single consumer of memory in most apps. A 3× retina photo decoded from JPEG takes: width × height × 4 bytes. A 4032×3024 (12 MP) photo at 3× = 4032×3024×4 = ~46 MB per image in memory, not the 3–5 MB JPEG file size.</p>
+
+<p>Strategies:</p>
+<ul>
+<li><strong>Downscale to display size</strong> before rendering: <code>UIGraphicsImageRenderer</code> at the image view's frame size.</li>
+<li><em></em>Use <code>UIImage(named:)</code> for assets<em></em> — it caches using the asset catalog's asset key, deduplicating.</li>
+<li><em></em>Use <code>UIImage(contentsOfFile:)</code> for large photos<em></em> — not cached by the system.</li>
+<li><em></em><code>SDWebImage</code> / <code>Kingfisher</code><em></em> implement memory + disk two-level caches with eviction.</li>
+</ul>
+
+<h3 id="avoiding-memory-fragmentation">Avoiding Memory Fragmentation</h3>
+
+<p>Small frequent allocations fragment the heap, increasing peak memory and allocation latency. Patterns:</p>
+<ul>
+<li><strong>Object pools</strong>: reuse objects (cells use the dequeue/enqueue pool automatically; for other objects, implement a pool with a <code>[T]</code> free list).</li>
+<li><strong>Contiguous storage</strong>: <code>ContiguousArray&lt;T&gt;</code> (for non-Objective-C types) and flat arrays instead of arrays of arrays.</li>
+<li><strong>Batched allocations</strong>: allocate in bulk rather than one-at-a-time in a loop.</li>
+</ul>
+
+<h3 id="instruments-allocations-workflow">Instruments: Allocations Workflow</h3>
+
+<ol>
+<li>Profile → Allocations template.</li>
+<li>Use the app to reach the suspect scenario.</li>
+<li>Switch to <strong>"All Heap Allocations"</strong> → sort by <strong>Persistent Bytes</strong> descending.</li>
+<li>The top class in persistent bytes is what's consuming the most live memory.</li>
+<li>Click the class → <strong>Object Details</strong> pane → see the allocation call stack of every live instance.</li>
+<li>Use <strong>Heap Shots</strong> to find objects that survive a scenario that should release them (see <a href="instruments-profiling.md">Instruments &amp; Profiling</a>).</li>
+</ol>
+
+<h3 id="vm-tracker">VM Tracker</h3>
+
+<p>The <strong>VM Tracker</strong> Instruments template shows virtual memory regions — <code>__TEXT</code>, <code>__DATA</code>, <code>mapped files</code>, <code>malloc heaps</code>, <code>dirty pages</code>. The critical metric is <strong>Dirty + Swapped</strong> size, which is the memory the OS considers "in use". <code>__TEXT</code> (compiled code) is clean and can be evicted. Large <code>dirty pages</code> in the malloc region indicate heavy heap use. Large <code>mapped files</code> indicate <code>mmap</code>'d resources (e.g., memory-mapped Core Data SQLite file).</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+
+// ── Prefer struct for data models ─────────────────────────────
+struct PostViewModel {       // ✓ value type — stack allocated, no ARC
+    let id: String
+    let title: String
+    let authorName: String
+    var isBookmarked: Bool
+}
+
+// vs.
+// final class PostViewModel { ... }  // ✗ heap + ARC for every assignment
+
+// ── NSCache for images — auto-evicts under memory pressure ────
+final class ImageCache {
+    static let shared = ImageCache()
+
+    private let cache: NSCache&lt;NSString, UIImage&gt; = {
+        let c = NSCache&lt;NSString, UIImage&gt;()
+        c.countLimit = 200           // max 200 images retained
+        c.totalCostLimit = 50 * 1024 * 1024   // 50 MB cost limit
+        return c
+    }()
+
+    func image(for url: URL) -&gt; UIImage? {
+        cache.object(forKey: url.absoluteString as NSString)
+    }
+
+    func store(_ image: UIImage, for url: URL) {
+        // Estimate cost = width × height × 4 bytes
+        let cost = Int(image.size.width * image.size.height * 4 * image.scale * image.scale)
+        cache.setObject(image, forKey: url.absoluteString as NSString, cost: cost)
+    }
+}
+
+// ── Downscaling large images to display size ──────────────────
+extension UIImage {
+    /// Returns a version of the image scaled to `targetSize`, reducing memory usage.
+    func downsampled(to targetSize: CGSize, scale: CGFloat = UIScreen.main.scale) -&gt; UIImage {
+        let imageSourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let data = jpegData(compressionQuality: 1.0),
+              let source = CGImageSourceCreateWithData(data as CFData, imageSourceOptions)
+        else { return self }
+
+        let maxDimension = max(targetSize.width, targetSize.height) * scale
+        let downsampleOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxDimension
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions as CFDictionary)
+        else { return self }
+        return UIImage(cgImage: thumbnail)
+    }
+}
+
+// ── Responding to memory warnings ─────────────────────────────
+final class FeedViewController: UIViewController {
+
+    private var imageCache = ImageCache.shared
+    private var prefetchedPostBodies: [String: String] = [:]
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(didReceiveMemoryWarning),
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
+    }
+
+    @objc private func didReceiveMemoryWarning() {
+        // Release what can be re-fetched on demand
+        prefetchedPostBodies.removeAll(keepingCapacity: false)
+        // NSCache (ImageCache) purges itself automatically
+    }
+}
+
+// ── Avoiding retain cycles with closures ──────────────────────
+final class ProfileViewModel {
+    var onUpdate: (() -&gt; Void)?
+
+    func loadProfile() {
+        fetchProfile { [weak self] profile in     // weak — avoids retain cycle
+            guard let self else { return }
+            self.onUpdate?()
+        }
+    }
+
+    private func fetchProfile(completion: @escaping (String) -&gt; Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { completion("Alice") }
+    }
+}
+
+// ── Object pool for expensive-to-create objects ───────────────
+final class DateFormatterPool {
+    private var pool: [DateFormatter] = []
+    private let queue = DispatchQueue(label: "DateFormatterPool")
+
+    func acquire() -&gt; DateFormatter {
+        queue.sync {
+            if pool.isEmpty {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .short
+                return formatter
+            }
+            return pool.removeLast()
+        }
+    }
+
+    func release(_ formatter: DateFormatter) {
+        queue.async { self.pool.append(formatter) }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between stack allocation and heap allocation on iOS, and why does it matter for performance?</strong></p>
+
+<p>A: Stack allocation places a value at the current stack frame pointer and reclaims it by adjusting the pointer — two instructions, no locks. Heap allocation calls <code>malloc</code>, which searches a free-list, possibly invokes <code>mmap</code>, and updates allocator bookkeeping — hundreds of instructions, potentially blocking. For reference types, every assignment also triggers an atomic <code>retain</code>/<code>release</code>, involving a CPU memory barrier. Struct values stored in local variables or function arguments live on the stack (if ≤ 3 words); class instances always live on the heap. For hot code paths processing thousands of items (e.g., populating 1000 cells during a scroll), the difference between struct and class can be a 2–5× speedup in a tight loop, visible in Instruments as a reduction in <code>malloc</code> and <code>objc_retain</code> self-time.</p>
+
+<p><strong>Q: What is copy-on-write in Swift and what is its performance implication?</strong></p>
+
+<p>A: Copy-on-write (CoW) is an optimisation in Swift's standard library collection types (<code>Array</code>, <code>Dictionary</code>, <code>String</code>, <code>Data</code>) where multiple values share one underlying heap buffer until one of them is mutated. When a mutation occurs on a non-uniquely-owned buffer, the buffer is copied first. The implication: passing an <code>Array</code> into a function is O(1) (shared buffer, no copy), and reading it is O(1). Only writing to a non-unique copy triggers an O(n) buffer copy. For performance, this means you can safely pass large arrays as function arguments without copying them, but mutating an array inside a function when multiple variables reference it will trigger a copy — profile with Instruments Allocations to detect unexpected copies in hot paths.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you diagnose a progressive memory growth that doesn't appear as a Leaks instrument leak?</strong></p>
+
+<p>A: This is a "logical leak" — the object is reachable through a valid reference path but should have been released. Diagnosis: (1) Take Heap Shots: perform the suspect action (e.g., open and dismiss a modal) five times, marking the heap before and after each cycle. (2) Examine the delta: any class whose instance count grows monotonically with each cycle is accumulating. (3) Use "Object Details" for that class to see each instance's allocation call stack. (4) Common causes: a <code>[MyViewController]</code> array collecting dismissed VCs; <code>NotificationCenter</code> observers added but never removed (the observer closure captures <code>self</code> strongly, keeping the VC alive); <code>URLSession</code> completion handlers stored in a dictionary without cleanup; <code>Timer</code> with a strong <code>target</code> reference. Fix: audit <code>removeObserver</code> calls, use <code>weak self</code> in closures, and ensure caches have eviction policies (<code>NSCache</code> instead of <code>Dictionary</code>).</p>
+
+<p><strong>Q: What techniques reduce memory usage when displaying a grid of high-resolution images?</strong></p>
+
+<p>A: Four techniques: (1) <strong>Downsampling at decode time</strong>: use <code>CGImageSourceCreateThumbnailAtIndex</code> with <code>kCGImageSourceThumbnailMaxPixelSize</code> set to the display pixel size. A 12 MP photo decoded at 375×375 pt at 3× = 1125×1125 px = 5 MB instead of 46 MB. (2) <strong>Two-level cache</strong>: <code>NSCache</code> for in-memory (auto-evicted under pressure), filesystem for disk cache (survives app relaunch). Limit <code>NSCache.totalCostLimit</code> proportionally to device RAM, queried from <code>ProcessInfo.processInfo.physicalMemory</code>. (3) <strong>Cell-based lifecycle</strong>: assign images only in <code>cellForRow</code>; cancel in-flight image loads in <code>prepareForReuse</code> to avoid setting a stale image. (4) <strong>Prefetching cap</strong>: use <code>UICollectionViewDataSourcePrefetching</code> to start loading the next 3–5 rows, but cancel the rest — prefetching too aggressively causes memory pressure. All four together can reduce peak memory from several hundred MB to under 50 MB on a photo-heavy feed screen.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you design a memory management strategy for a social media app that displays an infinite scroll feed with images, video previews, and text?</strong></p>
+
+<p>A: Four-layer strategy: (1) <strong>Rendering budget per cell type</strong>: compute the maximum memory per cell (image: downsampled to cell size; video: thumbnail only, not decoded video buffer; text: negligible). For 100 visible+buffered cells, cap total at ~100 MB. Set <code>NSCache.totalCostLimit</code> accordingly. (2) <strong>Lifecycle-aware resource management</strong>: track which cells are visible (<code>UICollectionView.indexPathsForVisibleItems</code>). When a cell scrolls off-screen beyond 2 screens of distance, cancel its image/video task and set thumbnail to <code>nil</code>. Resume on scroll-back. This is the "cell eviction" complement to cell reuse. (3) <strong>Video streaming, not decoding</strong>: use <code>AVPlayerItem</code> with an <code>AVAssetResourceLoaderDelegate</code> that streams the video lazily from the network — never decode the full video into memory. Pause and nil out <code>AVPlayer</code> in cells more than 1 screen away. (4) <strong>Memory pressure tiers</strong>: implement a <code>MemoryPressureResponder</code> that listens to <code>UIApplication.didReceiveMemoryWarningNotification</code> and progressively purges: Level 1 → clear off-screen thumbnail cache; Level 2 → clear all thumbnail cache; Level 3 → cancel all pending network requests and release all non-visible cell data. This ensures the app survives memory warnings without a crash.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: App is terminated by the OS without a crash log — just disappears.</strong></p>
+
+<p>Solution: This is an OOM (out-of-memory) kill. Check <code>UIApplicationDidReceiveMemoryWarningNotification</code> — if the app never receives it, the growth was sudden (e.g., loading a large image into memory at once). Use Instruments VM Tracker to find the dirty-memory peak. Profile with Allocations and look for the largest persistent allocation class. Common cause: an uncompressed image loaded into a <code>UIImageView</code> at its original resolution rather than the display size.</p>
+
+<p><em></em>Issue: <code>NSCache</code> is purging too aggressively — images reload frequently.<em></em></p>
+
+<p>Solution: Set <code>countLimit</code> and <code>totalCostLimit</code> to match device capability. Query <code>ProcessInfo.processInfo.physicalMemory</code> and set <code>totalCostLimit</code> to 10–20% of device RAM. On a 6 GB device that's 600 MB–1.2 GB — far more than the default (unlimited). Also set <code>cost</code> per object correctly (pixel area × bytes per pixel) rather than using cost = 1.</p>
+
+<p><em></em>Issue: Allocations instrument shows <code>String</code> objects growing unboundedly.<em></em></p>
+
+<p>Solution: Strings in Swift are value types but their storage buffer is heap-allocated. Unbounded string growth often means: log accumulation (a <code>[String]</code> log buffer appending indefinitely), attributed string creation per-cell without reuse, or <code>String(describing:)</code> called in a hot path creating many short-lived strings. Identify the allocation call stack in Instruments, add <code>keepingCapacity: true</code> to <code>removeAll</code> calls where appropriate, and reuse <code>AttributedString</code> formatters.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="instruments-profiling.md">Instruments &amp; Profiling</a> — Allocations and Leaks workflows</li>
+<li><a href="../02-memory-management/arc-memory-management.md">ARC &amp; Memory Management</a> — retain count mechanics</li>
+<li><a href="../02-memory-management/retain-cycles.md">Retain Cycles &amp; Weak References</a> — fixing cycles found in Leaks</li>
+<li><a href="lazy-loading.md">Lazy Loading</a> — deferred allocation strategies</li>
+<li><a href="../04-ui-frameworks/uitableview-uicollectionview.md">UITableView &amp; UICollectionView</a> — cell reuse and prefetching</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

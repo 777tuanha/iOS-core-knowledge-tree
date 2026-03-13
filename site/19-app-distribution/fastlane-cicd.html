@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fastlane & CI/CD — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../19-app-distribution/index.html">App Distribution</a></span>
+    <span>Fastlane Cicd</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html" class="active">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="fastlane--cicd">Fastlane &amp; CI/CD</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Fastlane is a Ruby-based automation tool that wraps Xcode's command-line tools (<code>xcodebuild</code>, <code>xcrun altool</code>, <code>agvtool</code>) and the App Store Connect API into composable actions called <strong>actions</strong> and <strong>lanes</strong>. Core tools: <code>match</code> (certificate and provisioning profile sync via an encrypted Git repo), <code>gym</code> (build and archive), <code>scan</code> (run tests), <code>pilot</code> (upload and manage TestFlight builds), and <code>deliver</code> (upload metadata, screenshots, and submit for App Review). Fastlane is integrated into CI/CD pipelines (GitHub Actions, Bitrise, CircleCI, Xcode Cloud) to make distribution repeatable and auditable. A CI/CD pipeline for iOS automates the chain: pull → install dependencies → run tests → build → sign → upload to TestFlight or App Store → notify. The goal is that any team member can trigger a release with a single command or git push, without knowing the details of code signing or App Store Connect navigation.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Fastlane is a recipe book for app distribution. Each action is a single step (bake a cake, apply icing). A lane is a complete recipe (birthday cake = bake + ice + add candles). <code>match</code> is the shared pantry: all team members and CI machines go to the same pantry to get the same ingredients (certificates, profiles) — nobody bakes with different flour. CI/CD is the automated kitchen: every time a new recipe card arrives (git push), the kitchen automatically follows it start-to-finish without a human needing to watch.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="fastlane-match">Fastlane match</h3>
+
+<p><code>match</code> is the recommended approach for team certificate management. It stores all certificates and provisioning profiles encrypted in a private Git repository (or S3/Google Cloud Storage).</p>
+
+<p><strong>Setup:</strong></p>
+<pre><code class="language-bash">fastlane match init    # configures storage backend and creates Matchfile
+fastlane match development   # creates/fetches dev certificate + profiles
+fastlane match appstore      # creates/fetches distribution certificate + App Store profiles
+fastlane match adhoc         # Ad Hoc profiles</code></pre>
+
+<p><strong>Matchfile:</strong></p>
+<pre><code class="language-ruby">git_url("git@github.com:acme/ios-certs.git")
+storage_mode("git")
+type("appstore")          # default type
+app_identifier(["com.acme.App", "com.acme.App.NotificationExtension"])
+username("ci@acme.com")   # Apple ID for portal access (or use API key)</code></pre>
+
+<p><strong>On CI: read-only mode</strong> — prevents CI from accidentally modifying shared certs:</p>
+<pre><code class="language-bash">fastlane match appstore --readonly</code></pre>
+
+<p><strong>Rotating a certificate</strong>: when the distribution certificate expires (1 year), run <code>fastlane match appstore --force</code> on a developer machine. <code>match</code> revokes the old cert, creates a new one, re-generates all profiles, and pushes to the encrypted repo. CI runners automatically pick up the new cert on next run.</p>
+
+<h3 id="fastlane-gym">Fastlane gym</h3>
+
+<p><code>gym</code> wraps <code>xcodebuild archive</code> + <code>xcodebuild -exportArchive</code>:</p>
+
+<pre><code class="language-ruby">gym(
+  scheme: "MyApp",
+  configuration: "Release",
+  export_method: "app-store",           # "ad-hoc" | "enterprise" | "development"
+  output_directory: "./build",
+  output_name: "MyApp.ipa",
+  export_options: {
+    provisioningProfiles: {
+      "com.acme.App" =&gt; "match AppStore com.acme.App",
+      "com.acme.App.NotificationServiceExtension" =&gt;
+        "match AppStore com.acme.App.NotificationServiceExtension"
+    }
+  },
+  xcargs: "OTHER_SWIFT_FLAGS='-D RELEASE'"   # additional build flags
+)</code></pre>
+
+<h3 id="fastlane-scan">Fastlane scan</h3>
+
+<p><code>scan</code> runs the test suite and generates JUnit XML reports for CI consumption:</p>
+
+<pre><code class="language-ruby">scan(
+  scheme: "MyAppTests",
+  device: "iPhone 16 Pro",
+  output_types: "junit,html",
+  output_directory: "./test-results",
+  result_bundle: true,           # generates .xcresult for Xcode Cloud / GitHub
+  fail_build: true               # fail the lane if any test fails
+)</code></pre>
+
+<h3 id="fastlane-pilot">Fastlane pilot</h3>
+
+<p><code>pilot</code> manages TestFlight builds:</p>
+
+<pre><code class="language-ruby">pilot(
+  ipa: "./build/MyApp.ipa",
+  skip_waiting_for_build_processing: true,    # don't block CI while Apple processes
+  distribute_external: true,
+  groups: ["Beta Testers", "QA Team"],
+  changelog: "See CHANGELOG.md for details",
+  beta_app_feedback_email: "beta@acme.com",
+  notify_external_testers: true
+)</code></pre>
+
+<h3 id="fastlane-deliver">Fastlane deliver</h3>
+
+<p><code>deliver</code> uploads metadata and submits to App Review:</p>
+
+<pre><code class="language-ruby">deliver(
+  ipa: "./build/MyApp.ipa",
+  metadata_path: "./metadata",              # localised metadata per language
+  screenshots_path: "./screenshots",         # per-device screenshots
+  submit_for_review: true,
+  automatic_release: false,                 # manual release toggle in ASC
+  phased_release: true,
+  submission_information: {
+    export_compliance_uses_encryption: true,
+    export_compliance_is_exempt: true       # HTTPS-only encryption (exempt)
+  },
+  precheck_include_in_app_purchases: false
+)</code></pre>
+
+<h3 id="cicd-pipeline-with-github-actions">CI/CD Pipeline with GitHub Actions</h3>
+
+<p><strong>Structure:</strong></p>
+<pre><code>.github/
+└── workflows/
+    ├── test.yml        # runs on every PR
+    ├── beta.yml        # runs on push to develop
+    └── release.yml     # runs on push to main / manual trigger</code></pre>
+
+<p><strong>GitHub Actions workflow — beta lane:</strong></p>
+<pre><code class="language-yaml"># .github/workflows/beta.yml
+name: Beta
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  beta:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true   # caches gems from Gemfile.lock
+
+      - name: Install dependencies
+        run: bundle install
+
+      - name: Set up SSH for match
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MATCH_SSH_PRIVATE_KEY }}
+
+      - name: Run tests
+        run: bundle exec fastlane scan
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_16.app
+
+      - name: Build and upload to TestFlight
+        run: bundle exec fastlane beta
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          DEVELOPER_DIR: /Applications/Xcode_16.app</code></pre>
+
+<h3 id="fastfile-structure">Fastfile Structure</h3>
+
+<pre><code class="language-ruby"># fastlane/Fastfile
+
+default_platform(:ios)
+
+platform :ios do
+
+  before_all do
+    # Set up App Store Connect API authentication (preferred over Apple ID)
+    app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_API_KEY_CONTENT"],
+      is_key_content_base64: true
+    )
+  end
+
+  # ── Test lane ────────────────────────────────────────────────
+  lane :test do
+    scan(
+      scheme: "MyAppTests",
+      device: "iPhone 16 Pro",
+      output_types: "junit",
+      output_directory: "./test-results"
+    )
+  end
+
+  # ── Beta lane (TestFlight) ────────────────────────────────────
+  lane :beta do
+    # Sync certificates and profiles
+    match(type: "appstore", readonly: true)
+
+    # Increment build number using CI run number
+    increment_build_number(build_number: ENV["GITHUB_RUN_NUMBER"] || Time.now.to_i)
+
+    # Build
+    gym(
+      scheme: "MyApp",
+      configuration: "Release",
+      export_method: "app-store"
+    )
+
+    # Upload to TestFlight
+    pilot(
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      changelog: changelog_from_git_commits(merge_commit_filtering: "exclude_merges")
+    )
+
+    # Notify Slack
+    slack(
+      message: "New beta build uploaded to TestFlight :rocket:",
+      channel: "#ios-releases",
+      slack_url: ENV["SLACK_WEBHOOK_URL"]
+    ) if ENV["SLACK_WEBHOOK_URL"]
+  end
+
+  # ── Release lane (App Store) ──────────────────────────────────
+  lane :release do
+    ensure_git_status_clean
+
+    # Sync certificates
+    match(type: "appstore", readonly: true)
+
+    # Run tests
+    test
+
+    # Bump version (marketing version from git tag or manual input)
+    version = prompt(text: "Version number: ") unless ENV["VERSION"]
+    increment_version_number(version_number: ENV["VERSION"] || version)
+    increment_build_number(build_number: ENV["GITHUB_RUN_NUMBER"] || Time.now.to_i)
+
+    # Build
+    gym(
+      scheme: "MyApp",
+      configuration: "Release",
+      export_method: "app-store"
+    )
+
+    # Upload and submit
+    deliver(
+      submit_for_review: true,
+      phased_release: true,
+      automatic_release: false
+    )
+
+    # Tag
+    add_git_tag(tag: "v#{get_version_number}")
+    push_git_tags
+  end
+
+  # ── Error handler ─────────────────────────────────────────────
+  error do |lane, exception|
+    slack(
+      message: "Lane :#{lane} failed: #{exception.message}",
+      success: false,
+      channel: "#ios-releases",
+      slack_url: ENV["SLACK_WEBHOOK_URL"]
+    ) if ENV["SLACK_WEBHOOK_URL"]
+  end
+
+end</code></pre>
+
+<h3 id="xcode-cloud">Xcode Cloud</h3>
+
+<p>Apple's native CI/CD integrated into Xcode and App Store Connect. Workflows defined in Xcode, triggered by git events. Xcode Cloud handles code signing automatically using the team's certificates. Suited for teams who want zero CI infrastructure management. Limitations: fewer customisation options than GitHub Actions, costs are metered by compute hours, no self-hosted runners.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-ruby"># Gemfile — pins Fastlane and plugin versions
+source "https://rubygems.org"
+
+gem "fastlane", "~&gt; 2.220"
+gem "cocoapods", "~&gt; 1.15"
+
+# fastlane/Appfile — app identity
+app_identifier("com.acme.App")
+apple_id("ci@acme.com")
+team_id("XXXXXXXXXX")
+
+# fastlane/Matchfile
+git_url("git@github.com:acme/ios-certs.git")
+type("appstore")
+app_identifier([
+  "com.acme.App",
+  "com.acme.App.NotificationServiceExtension",
+  "com.acme.App.ShareExtension"
+])</code></pre>
+
+<pre><code class="language-bash"># ── One-time match bootstrap (run by a team admin) ────────────
+fastlane match appstore   # creates certs + profiles for all app_identifiers
+fastlane match development
+
+# ── Routine developer setup on a new machine ─────────────────
+fastlane match development --readonly   # installs without modifying portal
+
+# ── Force-regenerate after certificate expiry ─────────────────
+fastlane match appstore --force        # revoke old, create new, push to repo
+
+# ── Running a lane locally ────────────────────────────────────
+bundle exec fastlane beta              # use bundle exec to respect Gemfile.lock
+bundle exec fastlane release VERSION=2.5.0</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What does <code>fastlane match</code> solve and how does it work?<em></em></p>
+
+<p>A: <code>fastlane match</code> solves the problem of certificate and provisioning profile inconsistency across a team. Without it, each developer generates their own certificates, and CI machines require manual <code>.p12</code> imports. <code>match</code> establishes a single source of truth: all certificates and profiles are stored encrypted (using <code>openssl</code>) in a private Git repository (or S3/GCS). When any developer or CI machine runs <code>fastlane match</code>, it: (1) decrypts and downloads the existing certificate and profile from the repo, (2) installs them in the macOS Keychain and <code>~/Library/MobileDevice/Provisioning Profiles</code>, (3) optionally updates Xcode project settings to reference the correct profiles. If a cert is expired or doesn't exist yet, <code>match</code> creates it via the App Store Connect API and pushes it encrypted to the repo. The passphrase (<code>MATCH_PASSWORD</code>) is the only secret that needs to be shared — everything else is derived from it.</p>
+
+<p><em></em>Q: What is the difference between <code>gym</code>, <code>pilot</code>, and <code>deliver</code> in Fastlane?<em></em></p>
+
+<p>A: They cover three different stages of distribution: <em></em><code>gym</code><em></em> is the build step — it calls <code>xcodebuild archive</code> and <code>xcodebuild -exportArchive</code> to produce a signed <code>.ipa</code>. It handles the signing configuration, export options, and build settings. <em></em><code>pilot</code><em></em> is the TestFlight step — it uploads the <code>.ipa</code> to App Store Connect, manages TestFlight groups, sends notifications to testers, and (optionally) waits for processing to complete. It's used for beta distribution. <em></em><code>deliver</code><em></em> is the App Store submission step — it uploads metadata (description, keywords, release notes), screenshots, and the build, then optionally submits for App Review. It reads from a <code>metadata/</code> directory structure with one folder per locale. A complete release lane typically calls all three: <code>gym</code> → <code>pilot</code> (or skip and call <code>deliver</code> directly for a production submission).</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you increment build numbers correctly on CI to avoid TestFlight rejections?</strong></p>
+
+<p>A: TestFlight rejects builds with a CFBundleVersion (build number) that's ≤ the previously uploaded build for the same CFBundleShortVersionString (marketing version). Three strategies: (1) <strong>CI run number</strong>: use the CI environment's monotonically increasing run counter — <code>increment_build_number(build_number: ENV["GITHUB_RUN_NUMBER"])</code>. GitHub Actions, Bitrise, and CircleCI all provide unique sequential numbers. This is the simplest and most reliable approach. (2) <strong>Unix timestamp</strong>: <code>increment_build_number(build_number: Time.now.to_i)</code> — always increasing but not human-readable. (3) <strong>Latest build number from App Store Connect</strong>: query the API for the current max build number and increment: Fastlane's <code>latest_testflight_build_number</code> action fetches it automatically. Never commit the build number change to the main branch — the CI build number should be set at build time, not stored in <code>Info.plist</code> in source control (or use a separate <code>BuildNumber.xcconfig</code> that's <code>.gitignored</code>). The marketing version (<code>CFBundleShortVersionString</code>) is stored in source control and bumped manually (or via the release lane) at the start of a new version.</p>
+
+<p><strong>Q: How do you set up a CI pipeline that signs with match on a fresh macOS runner without an Apple ID?</strong></p>
+
+<p>A: Use the <strong>App Store Connect API key</strong> (not Apple ID) for all portal operations: create an API key in App Store Connect → Users and Access → Keys with App Manager role. Download the <code>.p8</code> private key file. Store the Key ID, Issuer ID, and base64-encoded key content as CI secrets. In the Fastfile: <code>app_store_connect_api_key(key_id:, issuer_id:, key_content:, is_key_content_base64: true)</code> — call this in <code>before_all</code>. For <code>match</code>: the API key is used for portal operations (downloading/creating profiles); the <code>MATCH_PASSWORD</code> secret decrypts the Git repo contents. SSH access to the private match repo is configured via <code>MATCH_SSH_PRIVATE_KEY</code> secret. The workflow: (1) CI runner checks out the repo, (2) <code>webfactory/ssh-agent</code> loads the match SSH key, (3) <code>fastlane match appstore --readonly</code> downloads and installs certs, (4) <code>gym</code> builds and signs using the installed profile, (5) <code>pilot</code> uploads using the API key — no Apple ID credentials needed anywhere.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a multi-app Fastlane setup for a suite of 3 iOS apps (main app + 2 companion apps) that share a certificate but have separate App IDs, extensions, and release schedules.</strong></p>
+
+<p>A: Four-component design: (1) <em></em>Single <code>match</code> repo with per-app profiles<em></em>: <code>app_identifier(["com.acme.Main", "com.acme.Main.Widget", "com.acme.Notes", "com.acme.Keyboard"])</code> — one distribution certificate for all apps (shared via <code>match</code>); separate App Store provisioning profiles per bundle ID. (2) <strong>Per-app Fastfile lanes</strong>: a shared <code>Fastfile</code> with a <code>build_app(app_id:, scheme:)</code> helper action; top-level lanes <code>release_main</code>, <code>release_notes</code>, <code>release_keyboard</code> that call it with the appropriate parameters. Alternatively, use a <code>Fastfile</code> that reads the target app from an environment variable (<code>APP_TARGET = ENV["APP_TARGET"]</code>) — CI passes <code>APP_TARGET=Main</code> or <code>APP_TARGET=Notes</code>. (3) <strong>Separate GitHub Actions workflows</strong>: <code>release-main.yml</code>, <code>release-notes.yml</code>, <code>release-keyboard.yml</code> — triggered manually via <code>workflow_dispatch</code> with a <code>version</code> input. They set <code>APP_TARGET</code> and <code>VERSION</code> environment variables before calling <code>bundle exec fastlane release</code>. All three share the same secrets (MATCH_PASSWORD, ASC API key) because they use the same team. (4) <strong>Shared metadata structure</strong>: <code>metadata/main/</code>, <code>metadata/notes/</code>, <code>metadata/keyboard/</code> — each with localised descriptions and screenshots. The <code>deliver</code> action is called with the appropriate <code>metadata_path</code> and <code>screenshots_path</code> per app. This avoids a separate repo per app while keeping release pipelines independent.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>fastlane match</code> fails with "Could not find a valid certificate" after rotating.<em></em></p>
+
+<p>Solution: Another team member or CI run may have revoked the certificate while regenerating — check App Store Connect → Certificates for the current valid certificate. Run <code>fastlane match appstore --force</code> from one developer machine only (others should use <code>--readonly</code>) to create a new certificate and push to the match repo. Ensure the MATCH_PASSWORD environment variable is identical on all machines — a typo in the password causes decryption failures that look like missing certificates.</p>
+
+<p><em></em>Issue: CI fails at the <code>gym</code> step with "User interaction not allowed" when accessing Keychain.<em></em></p>
+
+<p>Solution: The macOS CI runner's Keychain is locked or requires a password prompt. Fix with: <code>security unlock-keychain -p "" ~/Library/Keychains/login.keychain</code> before running <code>gym</code>. Some CI providers (Bitrise, GitHub Actions hosted runners) handle this automatically; self-hosted runners may not. Also set the Keychain's lock timeout to a high value so it doesn't re-lock during a long build: <code>security set-keychain-settings -lut 7200 ~/Library/Keychains/login.keychain</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="code-signing.md">Code Signing</a> — certificates and profiles managed by <code>match</code></li>
+<li><a href="distribution.md">Distribution</a> — TestFlight and App Store submission via <code>pilot</code> and <code>deliver</code></li>
+<li><a href="../11-testing/ui-testing.md">Testing — UI Testing</a> — <code>scan</code> runs UI tests in the CI pipeline</li>
+<li><a href="../17-observability/crash-reporting.md">Observability — Crash Reporting</a> — dSYM upload in the CI pipeline</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

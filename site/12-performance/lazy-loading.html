@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lazy Loading — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../12-performance/index.html">Performance</a></span>
+    <span>Lazy Loading</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html" class="active">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="lazy-loading">Lazy Loading</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Lazy loading defers the creation, computation, or fetching of a resource until the moment it is first needed. On iOS, this pattern appears at multiple layers: <code>lazy var</code> properties (computed once on first access), lazy <code>Sequence</code>/<code>Collection</code> operations (transformed elements produced on demand), on-demand image loading (thumbnails downloaded as cells scroll into view), and deferred view controller instantiation (pushing a VC only when navigating). The core benefit is lower startup cost and reduced peak memory — resources that are never needed are never allocated. The tradeoff is that first-access can be slow if the deferred work is expensive; for user-visible latency this requires pairing lazy loading with <strong>prefetching</strong> (starting the load slightly before it's needed) and <strong>placeholders</strong> (showing a skeleton view while loading). The primary iOS APIs for lazy loading and prefetching are <code>UITableViewDataSourcePrefetching</code>, <code>UICollectionViewDataSourcePrefetching</code>, and Swift's <code>lazy</code> keyword.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Lazy loading is like a just-in-time warehouse. A traditional warehouse pre-stocks every shelf before opening — slow to set up, expensive, and half the stock may never be used. A just-in-time warehouse keeps shelves empty and fetches goods from the supplier only when a customer orders them. The first customer for any item waits slightly longer (the fetch), but startup is instant and nothing is wasted. Prefetching is the warehouse manager watching which shelves customers are walking toward and pre-ordering those goods 30 seconds before they arrive — eliminating the customer wait entirely.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="lazy-var-properties"><code>lazy var</code> Properties</h3>
+
+<p>A <code>lazy var</code> is initialised on first access and the result is stored. Subsequent accesses return the stored value — the initialiser runs exactly once. The initialiser closure can reference <code>self</code> safely because <code>lazy</code> requires the enclosing type to be a <code>struct</code> or <code>class</code> (not a <code>let</code>), and <code>self</code> is fully initialised by the time the lazy property is first accessed.</p>
+
+<pre><code class="language-swift">lazy var expensiveObject = HeavyObject()   // created only if accessed
+lazy var formattedDate: String = {          // closure form
+    let f = DateFormatter(); f.dateStyle = .long
+    return f.string(from: self.date)
+}()</code></pre>
+
+<p>Limitation: <code>lazy var</code> is <strong>not thread-safe</strong> — two threads can both observe nil and both initialise the property. For thread-safe lazy initialisation, use <code>DispatchQueue.once</code>, a <code>static let</code> (always safe), or an actor-isolated property.</p>
+
+<h3 id="static-let--safe-lazy-singleton">Static <code>let</code> — Safe Lazy Singleton</h3>
+
+<p><code>static let</code> in Swift is lazily initialised by the runtime on first access, and the initialisation is guaranteed to happen exactly once (thread-safe, uses <code>dispatch_once</code> under the hood). Use it for heavy shared resources:</p>
+
+<pre><code class="language-swift">final class ExpensiveService {
+    static let shared = ExpensiveService()   // initialised on first access, thread-safe
+    private init() { /* heavy setup */ }
+}</code></pre>
+
+<h3 id="lazy-sequence-operations"><code>lazy</code> Sequence Operations</h3>
+
+<p>Applying <code>.lazy</code> to a sequence returns a <code>LazySequence</code> wrapper that defers <code>map</code>, <code>filter</code>, <code>compactMap</code>, and other transformations until elements are consumed. See <a href="efficient-data-structures.md">Efficient Data Structures</a> for complexity details. Key use case: when only a prefix of a large, transformed sequence is needed.</p>
+
+<h3 id="on-demand-image-loading">On-Demand Image Loading</h3>
+
+<p>The canonical pattern: cells display a placeholder immediately, then load the real image asynchronously.</p>
+
+<pre><code class="language-swift">// Cell configuration — immediate
+func configure(with post: Post) {
+    thumbnailImageView.image = UIImage(named: "placeholder")
+    loadThumbnail(from: post.thumbnailURL)
+}
+
+// Load on demand — cancel on reuse
+var imageTask: Task&lt;Void, Never&gt;?
+
+func loadThumbnail(from url: URL) {
+    imageTask?.cancel()
+    imageTask = Task {
+        let image = await ImageLoader.shared.load(url)
+        guard !Task.isCancelled else { return }
+        await MainActor.run { thumbnailImageView.image = image }
+    }
+}
+
+override func prepareForReuse() {
+    super.prepareForReuse()
+    imageTask?.cancel()
+    imageTask = nil
+    thumbnailImageView.image = UIImage(named: "placeholder")
+}</code></pre>
+
+<h3 id="prefetching-with-uicollectionviewdatasourceprefetching">Prefetching with <code>UICollectionViewDataSourcePrefetching</code></h3>
+
+<p>The prefetching delegate receives index paths for cells that are about to enter the visible area — before <code>cellForItemAt</code> is called. Use this to start loading images or data so they're ready when the cell is dequeued.</p>
+
+<pre><code class="language-swift">extension FeedViewController: UICollectionViewDataSourcePrefetching {
+
+    func collectionView(_ collectionView: UICollectionView,
+                        prefetchItemsAt indexPaths: [IndexPath]) {
+        for indexPath in indexPaths {
+            let post = posts[indexPath.item]
+            ImageLoader.shared.startPrefetch(url: post.thumbnailURL)
+        }
+    }
+
+    func collectionView(_ collectionView: UICollectionView,
+                        cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
+        for indexPath in indexPaths {
+            let post = posts[indexPath.item]
+            ImageLoader.shared.cancelPrefetch(url: post.thumbnailURL)
+        }
+    }
+}</code></pre>
+
+<p><strong>Important</strong>: prefetching is cancelled automatically when the user changes scroll direction — the cancel delegate ensures you don't waste bandwidth on images that scrolled out of the upcoming visible area.</p>
+
+<h3 id="lazy-view-controller-loading">Lazy View Controller Loading</h3>
+
+<p><code>UIViewController</code>'s <code>view</code> property is lazy — <code>viewDidLoad</code> is not called until someone accesses <code>vc.view</code>. Avoid accessing <code>.view</code> unnecessarily (it forces an eager load). In a tab bar or navigation controller with many tabs/stacks, child VCs that haven't been tapped never load their views.</p>
+
+<p>In SwiftUI, <code>NavigationLink(destination:)</code> lazily creates the destination view only when the link is tapped (<code>NavigationStack</code> with <code>navigationDestination(for:)</code> is even more efficient — the destination closure is evaluated only when navigating).</p>
+
+<h3 id="pagination-as-lazy-loading">Pagination as Lazy Loading</h3>
+
+<p>Infinite scroll is lazy loading applied to data: fetch the first 20 items, and load the next page only when the user scrolls near the bottom.</p>
+
+<pre><code class="language-swift">func collectionView(_ collectionView: UICollectionView,
+                    willDisplay cell: UICollectionViewCell,
+                    forItemAt indexPath: IndexPath) {
+    let threshold = posts.count - 5   // 5 items from the end
+    if indexPath.item &gt;= threshold &amp;&amp; !isFetchingNextPage {
+        loadNextPage()
+    }
+}</code></pre>
+
+<h3 id="skeleton-screens">Skeleton Screens</h3>
+
+<p>Skeleton screens (shimmering grey placeholders that match the expected layout) provide immediate visual feedback while lazy loading completes. They are preferable to activity spinners for content-heavy feeds because they communicate the shape of the incoming content and reduce perceived wait time.</p>
+
+<p>Implementation: create a separate "skeleton" cell class with animated gradient layers using <code>CAGradientLayer</code> + <code>CABasicAnimation</code> for the shimmer.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+
+// ── lazy var — computed once on first access ───────────────────
+final class ProfileViewController: UIViewController {
+
+    // Heavy object — don't create it if the profile VC is never shown
+    private lazy var analyticsLogger: AnalyticsLogger = {
+        AnalyticsLogger(screen: .profile, userID: currentUserID)
+    }()
+
+    private var currentUserID: String = ""
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        analyticsLogger.logScreenView()   // created here, on first call
+    }
+}
+
+// ── Thread-safe lazy via actor ─────────────────────────────────
+actor ServiceLocator {
+    private var _heavyService: HeavyService?
+
+    var heavyService: HeavyService {
+        if let s = _heavyService { return s }
+        let s = HeavyService()   // initialised on first access, actor-serialised
+        _heavyService = s
+        return s
+    }
+}
+
+// ── Lazy image loader with NSCache ────────────────────────────
+actor ImageLoader {
+    static let shared = ImageLoader()
+
+    private let cache = NSCache&lt;NSString, UIImage&gt;()
+    private var inFlightTasks: [URL: Task&lt;UIImage?, Never&gt;] = [:]
+
+    func load(_ url: URL) async -&gt; UIImage? {
+        // Cache hit
+        if let cached = cache.object(forKey: url.absoluteString as NSString) {
+            return cached
+        }
+        // Coalesce concurrent requests for the same URL
+        if let existing = inFlightTasks[url] {
+            return await existing.value
+        }
+        let task = Task&lt;UIImage?, Never&gt; {
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let image = UIImage(data: data)
+            else { return nil }
+            self.cache.setObject(image, forKey: url.absoluteString as NSString)
+            return image
+        }
+        inFlightTasks[url] = task
+        let result = await task.value
+        inFlightTasks[url] = nil
+        return result
+    }
+
+    func startPrefetch(url: URL) {
+        guard inFlightTasks[url] == nil,
+              cache.object(forKey: url.absoluteString as NSString) == nil
+        else { return }
+        inFlightTasks[url] = Task { await self.load(url) }
+    }
+
+    func cancelPrefetch(url: URL) {
+        inFlightTasks[url]?.cancel()
+        inFlightTasks[url] = nil
+    }
+}
+
+// ── Skeleton cell with shimmer animation ──────────────────────
+final class SkeletonCell: UICollectionViewCell {
+    private let shimmerLayer = CAGradientLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .systemGray6
+
+        shimmerLayer.colors = [
+            UIColor.systemGray5.cgColor,
+            UIColor.systemGray4.cgColor,
+            UIColor.systemGray5.cgColor
+        ]
+        shimmerLayer.startPoint = CGPoint(x: 0, y: 0.5)
+        shimmerLayer.endPoint = CGPoint(x: 1, y: 0.5)
+        shimmerLayer.locations = [0, 0.5, 1]
+        layer.addSublayer(shimmerLayer)
+
+        startShimmer()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        shimmerLayer.frame = bounds
+    }
+
+    private func startShimmer() {
+        let animation = CABasicAnimation(keyPath: "locations")
+        animation.fromValue = [-1.0, -0.5, 0.0]
+        animation.toValue = [1.0, 1.5, 2.0]
+        animation.duration = 1.2
+        animation.repeatCount = .infinity
+        shimmerLayer.add(animation, forKey: "shimmer")
+    }
+}
+
+// ── Lazy sequence — only compute first N matching elements ─────
+func firstFeaturedPosts(_ posts: [Post], count: Int) -&gt; [Post] {
+    Array(
+        posts.lazy
+            .filter { $0.isFeatured &amp;&amp; !$0.isExpired }
+            .map { PostViewModel(post: $0) }   // expensive transform
+            .prefix(count)
+    )   // stops at `count` — does not scan the whole array
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What does the <code>lazy</code> keyword do on a stored property and what are its limitations?<em></em></p>
+
+<p>A: <code>lazy var</code> defers the property's initialisation until the first time it is read. The initialisation closure runs once; the result is stored and returned on all subsequent accesses. Practical use: avoiding the construction cost of a heavy object until (if ever) it's needed. Limitations: (1) Must be <code>var</code>, not <code>let</code> — the property mutates from nil to a value on first access. (2) Not thread-safe — if two threads simultaneously read a not-yet-initialised <code>lazy var</code>, both may run the initialiser and one result is discarded (or, in a struct, undefined behaviour). Use <code>static let</code> (which is thread-safe) for shared lazy singletons, or protect <code>lazy var</code> with a lock or actor. (3) Cannot be used in a <code>struct</code> that is itself a <code>let</code> — the mutation on first access requires a <code>var</code> binding of the enclosing struct.</p>
+
+<p><em></em>Q: What is the difference between <code>UICollectionViewDataSourcePrefetching.prefetchItemsAt</code> and <code>cellForItemAt</code>?<em></em></p>
+
+<p>A: <code>cellForItemAt</code> is called when a cell must be displayed — it is on the critical path of rendering. Anything slow here causes a dropped frame. <code>prefetchItemsAt</code> is called for index paths that are about to become visible (typically 1–2 screens ahead in the scroll direction) but haven't reached the display threshold yet. It runs off the critical path, giving you time to start asynchronous network or disk loads so that by the time <code>cellForItemAt</code> is called, the data is ready in a cache. The pair <code>cancelPrefetchingForItemsAt</code> is called if the user reverses scroll direction, telling you to cancel work for cells that no longer need to be prefetched. Together, they enable a "pre-load ahead, cancel on reversal" strategy that eliminates visible loading states during forward scrolling.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you prevent a cell's image load task from displaying on the wrong cell after the cell is reused?</strong></p>
+
+<p>A: Cell reuse is the classic stale-image bug: cell A starts loading image for row 3, is reused for row 7 while still loading, and when the image for row 3 arrives it's displayed in the cell now showing row 7. Fix in three parts: (1) <em></em>Cancel in <code>prepareForReuse</code><em></em>: store the <code>Task</code> (or <code>AnyCancellable</code>) as a property on the cell and call <code>.cancel()</code> in <code>prepareForReuse</code>. (2) <strong>Guard after await</strong>: after the <code>await</code> for the image, check <code>Task.isCancelled</code> — if the task was cancelled (cell was reused), return without setting the image. (3) <strong>Tag the request</strong>: some implementations store the URL as a property on the cell and check at completion that <code>cell.currentURL == requestURL</code> before assigning. This is a belt-and-suspenders check for cases where cancellation is not perfectly synchronous. All three together guarantee the correct image is displayed in the correct cell with no flicker.</p>
+
+<p><em></em>Q: How does <code>lazy</code> evaluation interact with Combine and <code>AsyncSequence</code>?<em></em></p>
+
+<p>A: Combine publishers and <code>AsyncSequence</code> are inherently lazy — no work is performed until there is a subscriber or an active <code>for await</code> loop. A publisher chain <code>publisher.filter { }.map { }</code> creates no values until a subscription is established with <code>.sink</code> or <code>.assign</code>. An <code>AsyncSequence</code> with <code>.filter { }.map { }</code> evaluates no elements until the <code>for await in</code> loop iterates. This means you can construct complex transformation pipelines cheaply and conditionally start them. The practical implication: prefer lazy Combine chains or <code>AsyncSequence</code> pipelines over eagerly transforming arrays when the consumer might not need all values, or when values arrive over time. For one-shot transformations of an existing in-memory array, Swift's standard library <code>.lazy</code> is sufficient.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a lazy-loading image system for a photo grid that must handle 100,000 photos, remain responsive at 60 fps, and not crash from memory pressure.</strong></p>
+
+<p>A: Five-layer architecture: (1) <strong>Demand-based loading</strong>: only load images for cells within 2 screens of the current scroll position. Track visible + prefetch index ranges using <code>UICollectionView.indexPathsForVisibleItems</code> plus the prefetch delegate. Start loads for the next range; cancel loads outside the range. (2) <strong>Two-level cache</strong>: <code>NSCache&lt;NSString, UIImage&gt;</code> (in-memory, auto-evicted) as L1; filesystem cache directory as L2 (persist across launches). On a cache miss, check L2 before making a network request. (3) <strong>Request coalescing</strong>: the actor-based <code>ImageLoader</code> shown above deduplicates concurrent requests for the same URL — if 3 cells request the same avatar, only 1 network call is made. (4) <strong>Thumbnail generation</strong>: store a 200×200 thumbnail on the server per photo. Download thumbnails (small) for the grid; download full resolution only when a photo is tapped. Downscale even the thumbnail to the cell's display size using <code>CGImageSourceCreateThumbnailAtIndex</code> before storing in L1. (5) <strong>Memory pressure response</strong>: subscribe to <code>UIApplication.didReceiveMemoryWarningNotification</code> and call <code>cache.removeAllObjects()</code> on L1. The grid will refetch from L2 or network — slower, but no crash. <code>NSCache</code> handles Level 1 evictions automatically; Level 2 evictions are managed by the cache directory size limit (remove oldest-accessed files when &gt; 200 MB).</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Images flicker or show the wrong thumbnail when scrolling fast.</strong></p>
+
+<p>Solution: The cell is being reused before the previous image load task is cancelled. In <code>prepareForReuse</code>, cancel the active <code>Task</code> and reset <code>imageView.image</code> to the placeholder. After <code>await</code>ing the image, check <code>Task.isCancelled</code> before assigning. Also ensure the cell's <code>currentURL</code> matches the requested URL at the assignment site.</p>
+
+<p><em></em>Issue: <code>lazy var</code> is being initialised multiple times (duplicate side effects).<em></em></p>
+
+<p>Solution: <code>lazy var</code> is not thread-safe. If the property is accessed from multiple threads simultaneously, both can observe it as unset and both run the initialiser. Fix: if the property must be computed once, use a <code>static let</code> (guaranteed once), an <code>actor</code>, or a <code>DispatchQueue</code> serialiser. If it's a UIKit property accessed only from the main thread, <code>lazy var</code> is safe because UIKit enforces single-thread access.</p>
+
+<p><strong>Issue: Prefetch requests are being made for index paths the user never scrolls to, wasting bandwidth.</strong></p>
+
+<p>Solution: Implement <code>cancelPrefetchingForItemsAt</code> and cancel the corresponding tasks. Also limit the look-ahead window — request at most 10 upcoming items in <code>prefetchItemsAt</code>, ignoring any more distant index paths. Sort by distance from the current scroll position if the prefetch delegate delivers a large batch at once.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="efficient-data-structures.md">Efficient Data Structures</a> — lazy sequences, NSCache</li>
+<li><a href="memory-optimization.md">Memory Optimization</a> — NSCache eviction, image downsampling</li>
+<li><a href="main-thread-optimization.md">Main Thread Optimization</a> — async image loading offloading</li>
+<li><a href="../04-ui-frameworks/uitableview-uicollectionview.md">UITableView &amp; UICollectionView</a> — <code>UICollectionViewDataSourcePrefetching</code>, cell reuse</li>
+<li><a href="../03-concurrency/async-await.md">Concurrency — async/await</a> — Task cancellation, actor-based loaders</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

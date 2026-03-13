@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Modular Architecture — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../20-system-design/index.html">System Design</a></span>
+    <span>Modular Architecture</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="modular-architecture">Modular Architecture</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Modular architecture organises a large iOS codebase into a graph of discrete, independently compilable units (Swift packages or Xcode frameworks) rather than a single monolithic target. Each module owns a specific vertical slice of functionality (a feature) or a horizontal slice (shared infrastructure), exposes a narrow public API, and hides its implementation details. The benefits compound with team size: <strong>build performance</strong> (incremental compilation — only changed modules recompile, not the whole app), <strong>parallel development</strong> (teams work independently on separate modules without merge conflicts in shared files), <strong>testability</strong> (modules can be unit-tested without the full app), <strong>reusability</strong> (a NetworkKit module is used by both the main app and a share extension), and <strong>feature isolation</strong> (a feature module that fails to compile doesn't prevent other features from building). The tradeoffs: higher initial setup cost, cross-module navigation complexity, and risk of premature modularisation creating more friction than value.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Modular architecture is like a city of specialist shops instead of one enormous department store. A bakery (FeatureAuth), a pharmacy (FeatureOnboarding), and a hardware store (CoreNetworking) each have their own staff, inventory, and front door. When the bakery wants bread bags, it buys from a supplier (CoreShared) — it doesn't go through the pharmacy. The city directory (the app target) knows all the shops but doesn't manage their internal operations. If the bakery catches fire, the pharmacy stays open. That's isolation. If you add a new branch of the bakery (iPad target), it reuses the same bread-making equipment (Swift Package) — that's reusability.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="module-graph-topology">Module Graph Topology</h3>
+
+<p>A well-designed module graph is a directed acyclic graph (DAG). Common layers:</p>
+
+<pre><code>┌─────────────────────────────────────────────┐
+│                   App Target                 │
+│  (thin shell: entry point, DI container)     │
+└────────┬───────────────────────┬────────────┘
+         │                       │
+         ▼                       ▼
+┌────────────────┐   ┌────────────────────────┐
+│  FeatureAuth   │   │     FeatureFeed         │
+│  (login UI,    │   │  (timeline UI,          │
+│   sign-up)     │   │   posts, interactions)  │
+└───────┬────────┘   └─────────┬──────────────┘
+        │                      │
+        ▼                      ▼
+┌──────────────────────────────────────────────┐
+│              CoreNetworking                  │
+│  (URLSession, auth token injection,          │
+│   retry, error types)                        │
+└─────────────────────────────────────────────┘
+        │                      │
+        ▼                      ▼
+┌─────────────────┐  ┌────────────────────────┐
+│   CoreData      │  │     CoreUI             │
+│  (persistence,  │  │  (design system:       │
+│   models)       │  │   colors, fonts,       │
+│                 │  │   shared components)   │
+└─────────────────┘  └────────────────────────┘
+        │
+        ▼
+┌─────────────────┐
+│   CoreFoundation│
+│  (extensions,   │
+│   utilities,    │
+│   no UIKit dep) │
+└─────────────────┘</code></pre>
+
+<p><strong>Rules:</strong></p>
+<ul>
+<li>Feature modules depend on Core modules, never on other Feature modules.</li>
+<li>Core modules never depend on Feature modules.</li>
+<li>No circular dependencies.</li>
+<li>The App target is the only place that knows about all Feature modules (DI wiring).</li>
+</ul>
+
+<h3 id="swift-package-manager-for-modules">Swift Package Manager for Modules</h3>
+
+<p>SPM is the preferred tool for modularisation (Xcode 12+). A multi-package monorepo:</p>
+
+<pre><code>Packages/
+├── CoreNetworking/
+│   ├── Package.swift
+│   └── Sources/CoreNetworking/
+│       ├── NetworkClient.swift
+│       └── AuthInterceptor.swift
+├── CoreUI/
+│   ├── Package.swift
+│   └── Sources/CoreUI/
+│       └── DesignSystem.swift
+├── FeatureAuth/
+│   ├── Package.swift
+│   └── Sources/FeatureAuth/
+│       ├── LoginView.swift
+│       └── AuthCoordinator.swift
+└── FeatureFeed/
+    ├── Package.swift
+    └── Sources/FeatureFeed/
+        ├── FeedView.swift
+        └── FeedViewModel.swift</code></pre>
+
+<pre><code class="language-swift">// Packages/FeatureAuth/Package.swift
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "FeatureAuth",
+    platforms: [.iOS(.v16)],
+    products: [
+        .library(name: "FeatureAuth", targets: ["FeatureAuth"])
+    ],
+    dependencies: [
+        .package(path: "../CoreNetworking"),   // sibling package
+        .package(path: "../CoreUI")
+    ],
+    targets: [
+        .target(
+            name: "FeatureAuth",
+            dependencies: [
+                "CoreNetworking",
+                "CoreUI"
+            ],
+            swiftSettings: [
+                .enableExperimentalFeature("StrictConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "FeatureAuthTests",
+            dependencies: ["FeatureAuth"]
+        )
+    ]
+)</code></pre>
+
+<h3 id="public-api-design">Public API Design</h3>
+
+<p>Each module exposes only what downstream consumers need. Everything else is <code>internal</code> (default in Swift):</p>
+
+<pre><code class="language-swift">// CoreNetworking — public surface
+public protocol NetworkClient: Sendable {
+    func send&lt;T: Decodable&gt;(_ request: URLRequest) async throws -&gt; T
+}
+
+public struct HTTPError: Error {
+    public let statusCode: Int
+    public let body: Data?
+}
+
+// Internal implementation — not visible outside the module
+final class DefaultNetworkClient: NetworkClient, @unchecked Sendable {
+    private let session: URLSession
+    private let tokenProvider: TokenProvider
+
+    // ...hidden implementation
+    func send&lt;T: Decodable&gt;(_ request: URLRequest) async throws -&gt; T {
+        // retry, token refresh, error mapping
+    }
+}
+
+// Factory — the only way to create a NetworkClient from outside the module
+public enum NetworkClientFactory {
+    public static func make(tokenProvider: TokenProvider) -&gt; any NetworkClient {
+        DefaultNetworkClient(session: .shared, tokenProvider: tokenProvider)
+    }
+}</code></pre>
+
+<h3 id="cross-module-navigation">Cross-Module Navigation</h3>
+
+<p>Feature modules cannot import each other (no cycles), so they cannot push to each other's view controllers directly. Solutions:</p>
+
+<p><strong>Coordinator-based navigation</strong> (preferred):</p>
+
+<pre><code class="language-swift">// The App target owns all coordinators and wires them together
+// Feature modules expose a `Coordinator` type but don't know about sibling features
+
+// FeatureAuth exposes:
+public protocol AuthCoordinatorDelegate: AnyObject {
+    func authCoordinatorDidAuthenticate(_ coordinator: AuthCoordinator)
+}
+
+public final class AuthCoordinator {
+    public weak var delegate: AuthCoordinatorDelegate?
+    private let navigationController: UINavigationController
+
+    public init(navigationController: UINavigationController) {
+        self.navigationController = navigationController
+    }
+
+    public func start() {
+        let vc = LoginViewController(viewModel: LoginViewModel())
+        navigationController.setViewControllers([vc], animated: false)
+    }
+}
+
+// App target wires:
+final class AppCoordinator: AuthCoordinatorDelegate {
+    func authCoordinatorDidAuthenticate(_ coordinator: AuthCoordinator) {
+        // Start the FeedCoordinator — App target knows both modules
+        startFeedCoordinator()
+    }
+}</code></pre>
+
+<p><strong>URL-based deep linking</strong> (for decoupled navigation):</p>
+
+<pre><code class="language-swift">// Each module registers its routes in a central router
+// The router is in a CoreNavigation module that features depend on
+
+// CoreNavigation module
+public protocol RouteHandler: AnyObject {
+    func canHandle(url: URL) -&gt; Bool
+    func handle(url: URL, from navigationController: UINavigationController)
+}
+
+public final class AppRouter {
+    private var handlers: [RouteHandler] = []
+
+    public func register(_ handler: RouteHandler) {
+        handlers.append(handler)
+    }
+
+    public func route(to url: URL, from nav: UINavigationController) -&gt; Bool {
+        guard let handler = handlers.first(where: { $0.canHandle(url: url) }) else {
+            return false
+        }
+        handler.handle(url: url, from: nav)
+        return true
+    }
+}
+
+// FeatureFeed registers at startup (via App target):
+final class FeedRouteHandler: RouteHandler {
+    func canHandle(url: URL) -&gt; Bool {
+        url.host == "feed"
+    }
+    func handle(url: URL, from nav: UINavigationController) {
+        nav.pushViewController(FeedViewController(), animated: true)
+    }
+}</code></pre>
+
+<h3 id="shared-components-coreui--design-system">Shared Components (CoreUI / Design System)</h3>
+
+<pre><code class="language-swift">// CoreUI/Sources/CoreUI/DesignSystem.swift
+import SwiftUI
+
+// Colours — single source of truth
+public extension Color {
+    static let brandPrimary = Color("BrandPrimary", bundle: .module)
+    static let brandSecondary = Color("BrandSecondary", bundle: .module)
+    static let textPrimary = Color(.label)
+    static let textSecondary = Color(.secondaryLabel)
+}
+
+// Typography
+public extension Font {
+    static func branded(_ style: Font.TextStyle) -&gt; Font {
+        .system(style, design: .default)   // or custom font via UIFontMetrics
+    }
+}
+
+// Shared button component
+public struct PrimaryButton: View {
+    let title: String
+    let action: () -&gt; Void
+
+    public init(_ title: String, action: @escaping () -&gt; Void) {
+        self.title = title
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.branded(.headline))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.brandPrimary)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .accessibilityLabel(title)
+    }
+}</code></pre>
+
+<h3 id="sdk-design">SDK Design</h3>
+
+<p>When packaging a module for external consumption (third-party SDK, internal library consumed by other teams):</p>
+
+<p><strong>Binary XCFramework</strong> (for proprietary code — source not distributed):</p>
+<pre><code class="language-bash"># Build for simulator and device, then combine
+xcodebuild archive -scheme CoreAnalytics -destination "generic/platform=iOS" \
+  -archivePath build/CoreAnalytics-iOS.xcarchive SKIP_INSTALL=NO
+xcodebuild archive -scheme CoreAnalytics -destination "generic/platform=iOS Simulator" \
+  -archivePath build/CoreAnalytics-Simulator.xcarchive SKIP_INSTALL=NO
+xcodebuild -create-xcframework \
+  -archive build/CoreAnalytics-iOS.xcarchive -framework CoreAnalytics.framework \
+  -archive build/CoreAnalytics-Simulator.xcarchive -framework CoreAnalytics.framework \
+  -output CoreAnalytics.xcframework</code></pre>
+
+<p><strong>SDK design principles:</strong></p>
+<ol>
+<li><strong>Minimal surface area</strong>: expose only what the consumer needs — hide internals with <code>internal</code> or <code>private</code>.</li>
+<li><strong>Sendable compliance</strong>: all public types crossing module boundaries must be <code>Sendable</code> (Swift concurrency requirement).</li>
+<li><strong>No transitive dependency leakage</strong>: don't expose third-party types in your public API — wrap them.</li>
+<li><strong>Semantic versioning</strong>: major = breaking change, minor = additive, patch = bugfix.</li>
+<li><strong>Thread safety guarantees</strong>: document whether callbacks arrive on the main thread or a background thread.</li>
+</ol>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── App target: wiring the module graph ──────────────────────
+import FeatureAuth
+import FeatureFeed
+import CoreNetworking
+import CoreUI
+
+@main
+struct AcmeApp: App {
+    // DI container — only the App target knows about all modules
+    private let container = DependencyContainer()
+
+    var body: some Scene {
+        WindowGroup {
+            RootView(container: container)
+        }
+    }
+}
+
+final class DependencyContainer {
+    // Shared infrastructure
+    lazy var networkClient: any NetworkClient = NetworkClientFactory.make(
+        tokenProvider: keychainTokenProvider
+    )
+    private lazy var keychainTokenProvider = KeychainTokenProvider()
+
+    // Feature coordinators — created on demand
+    func makeAuthCoordinator(nav: UINavigationController) -&gt; AuthCoordinator {
+        AuthCoordinator(networkClient: networkClient, navigationController: nav)
+    }
+
+    func makeFeedCoordinator(nav: UINavigationController) -&gt; FeedCoordinator {
+        FeedCoordinator(networkClient: networkClient, navigationController: nav)
+    }
+}
+
+// ── FeatureAuth/Sources/FeatureAuth/LoginViewModel.swift ──────
+// (no import of FeatureFeed — no cross-feature dependency)
+import CoreNetworking
+
+@MainActor
+public final class LoginViewModel: ObservableObject {
+    @Published public var email = ""
+    @Published public var password = ""
+    @Published public private(set) var isLoading = false
+
+    private let networkClient: any NetworkClient
+
+    public init(networkClient: any NetworkClient) {
+        self.networkClient = networkClient
+    }
+
+    public func signIn() async {
+        isLoading = true
+        defer { isLoading = false }
+        // Uses CoreNetworking — no knowledge of FeatureFeed
+        do {
+            let _: AuthResponse = try await networkClient.send(
+                URLRequest(url: URL(string: "https://api.acme.com/auth/login")!)
+            )
+            // Notify delegate (set by App target's AppCoordinator)
+        } catch { }
+    }
+}
+
+struct AuthResponse: Decodable { let token: String }
+struct KeychainTokenProvider {}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What are the main benefits of modular iOS architecture?</strong></p>
+
+<p>A: Four primary benefits: (1) <strong>Build performance</strong>: Xcode only recompiles modules that have changed and their dependents. In a monolith, changing a shared utility recompiles the entire app. In a modular setup, changing <code>CoreNetworking</code> recompiles <code>CoreNetworking</code> and the feature modules that import it — not the design system or unrelated features. With parallel compilation, build times for large apps drop from 10+ minutes to 2–3 minutes. (2) <strong>Team scalability</strong>: separate teams work on separate modules with minimal merge conflicts. A team of 4 working on <code>FeatureFeed</code> doesn't need to touch files owned by the <code>FeatureAuth</code> team. (3) <strong>Testability</strong>: modules can be unit-tested in isolation. <code>FeatureAuth</code> tests can inject mock <code>NetworkClient</code> without launching the full app or depending on <code>FeatureFeed</code>. (4) <strong>Reuse across targets</strong>: a <code>CoreNetworking</code> module is shared between the main app target, the Notification Service Extension, and a Share Extension without duplicating code.</p>
+
+<p><strong>Q: How do you handle navigation between two feature modules that cannot import each other?</strong></p>
+
+<p>A: Use either the Coordinator pattern or URL-based routing — both mediated by the App target (which is the only place that can import both feature modules). <strong>Coordinator pattern</strong>: each feature module exposes a <code>Coordinator</code> class and a <code>Delegate</code> protocol. The feature coordinator calls its delegate when it's done (e.g., <code>AuthCoordinatorDelegate.authCoordinatorDidAuthenticate</code>). The App target's <code>AppCoordinator</code> implements the delegate and transitions to the next coordinator. The feature module doesn't know what comes next — it only signals that it's finished. <strong>URL routing</strong>: each feature module registers a <code>RouteHandler</code> with a <code>CoreNavigation.AppRouter</code> (a shared module both features can import). When any module wants to navigate to another feature, it calls <code>router.route(to: URL(string: "myapp://feed"))</code> — the router finds the appropriate handler and handles the navigation. This is more decoupled but harder to pass typed data between features.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you manage shared dependencies (e.g., a singleton cache, a database) across multiple feature modules without creating global state?</strong></p>
+
+<p>A: Use a <strong>dependency injection container</strong> owned exclusively by the App target. Feature modules declare their dependencies as protocol types in their <code>init</code> methods (constructor injection) — they don't create or own shared instances. The App target creates all shared instances (<code>URLSession</code>, Core Data stack, <code>NSCache</code>, analytics service) in one <code>DependencyContainer</code> and injects the appropriate instances when creating each feature coordinator/view model. Because feature modules depend on protocols (not concrete types), the container can inject real implementations in production and mock implementations in tests. For protocol types that cross module boundaries (e.g., <code>NetworkClient</code> defined in <code>CoreNetworking</code>, used in <code>FeatureAuth</code> and <code>FeatureFeed</code>): both feature modules import <code>CoreNetworking</code> for the protocol; the App target injects the same <code>DefaultNetworkClient</code> instance to both, so they share the same URLSession connection pool and auth token state. No global state — the container is the single owner, passed via init.</p>
+
+<p><strong>Q: What is the risk of premature modularisation and how do you decide when to modularise?</strong></p>
+
+<p>A: Premature modularisation creates overhead without benefit: (1) <strong>Cross-module refactoring cost</strong>: renaming a type in a core module requires updating all dependent modules and often a <code>public</code> API bump; in a monolith, Xcode's refactor rename handles it in one step. (2) <strong>Boilerplate</strong>: every public type needs explicit <code>public</code> access control; internal utilities that don't need sharing still get extracted. (3) <strong>Build system complexity</strong>: <code>Package.swift</code> files must be maintained; local package paths break when repo layout changes. (4) <strong>Over-engineering for small teams</strong>: a team of 3 doesn't benefit from parallel compilation or module isolation. Modularise when: (a) build times exceed 5 minutes and slow daily development, (b) the team has ≥ 3 independent workstreams that frequently conflict, (c) code needs to be reused in a second target (extension, watch app, widget) without duplication, or (d) a subsystem needs to be packaged as a binary SDK for external consumption. Start by extracting the most isolated, stable layer first (typically the network or persistence layer) — not feature modules.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a modular architecture for a super-app with 20 features developed by 5 independent teams, where features must be composable (a feature can host another feature's UI inline) and independently releasable.</strong></p>
+
+<p>A: Six-layer design: (1) <strong>Module tiers</strong>: <code>CoreFoundation</code> (zero UIKit, pure Swift utilities), <code>CoreData</code> (persistence), <code>CoreNetworking</code>, <code>CoreUI</code> (design system), <code>CoreNavigation</code> (routing protocols, no concrete features), then one <code>Feature&lt;X&gt;</code> package per feature. (2) <strong>Feature contracts</strong>: each feature module exports a <code>FeatureXEntry</code> type conforming to a <code>FeatureEntry</code> protocol (defined in <code>CoreNavigation</code>): <code>func makeRootView() -&gt; AnyView</code> and <code>func makeCoordinator(nav:) -&gt; Coordinator</code>. The App target composes features by calling <code>makeRootView()</code> — features don't know who hosts them. (3) <strong>Inline embedding</strong>: to embed Feature B inside Feature A's UI (without a direct import), use <code>CoreNavigation.FeatureRegistry</code> — a shared registry where features register themselves by ID at startup. Feature A asks the registry for a view by ID: <code>registry.view(for: "featureB.miniCard")</code>. The App target registers all feature views at launch. (4) <strong>Independent release via feature flags</strong>: each feature module is a versioned SPM package in a separate Git repo. The main app's <code>Package.resolved</code> specifies exact versions. New feature code ships in the binary but behind a feature flag — the flag controls whether the <code>FeatureXEntry</code> is registered at startup. (5) <strong>Shared test infrastructure</strong>: a <code>TestSupport</code> package (not shipped in production) exports mock implementations of all Core protocols. Each feature's test target depends only on <code>TestSupport</code> + the feature under test. (6) <strong>CI per module</strong>: each feature repo has its own GitHub Actions workflow that builds and unit-tests the module independently on every commit. Integration testing (all features combined) runs only in the main app repo on PRs.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Adding a new <code>public</code> type to a Core module breaks the build in all feature modules.<em></em></p>
+
+<p>Solution: Distinguish between additive and breaking changes. Adding a new <code>public</code> type is additive — it cannot break downstream modules (they don't reference it). Breaking changes are: renaming a <code>public</code> type or method, changing method signatures, removing a public API. Use semantic versioning: additive changes = minor bump; breaking changes = major bump. For internal API evolution, add a <code>@available(*, deprecated, renamed: "newName")</code> annotation before removing the old API — this gives downstream modules time to migrate before the old API is deleted in the next major version.</p>
+
+<p><strong>Issue: Two feature modules both need the same singleton (e.g., analytics service) but importing the App target from a feature module creates a cycle.</strong></p>
+
+<p>Solution: The singleton should live in a Core module (e.g., <code>CoreAnalytics</code>) that both feature modules can import. The App target creates the concrete implementation and injects it via the DI container. Feature modules depend only on the protocol defined in <code>CoreAnalytics</code> — they call <code>analyticsService.track(...)</code> without knowing the implementation. If <code>CoreAnalytics</code> would create a cycle (it needs something from a Feature module), extract a thinner <code>CoreAnalyticsProtocol</code> package that contains only the protocol with no implementation dependencies — both feature modules and <code>CoreAnalytics</code> can import it without cycles.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="../06-architecture/index.md">Architecture</a> — MVVM and Clean Architecture within each module</li>
+<li><a href="../10-dependency-management/index.md">Dependency Management</a> — SPM package management</li>
+<li><a href="../11-testing/index.md">Testing</a> — unit testing modules in isolation with mocks</li>
+<li><a href="../19-app-distribution/fastlane-cicd.md">App Distribution — Fastlane &amp; CI/CD</a> — per-module CI pipelines</li>
+<li><a href="offline-first-architecture.md">Offline-First Architecture</a> — repository pattern as a module boundary</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

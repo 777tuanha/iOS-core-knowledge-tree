@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Logging — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../17-observability/index.html">Observability</a></span>
+    <span>Logging</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html" class="active">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="logging">Logging</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Logging is the practice of recording events, errors, and diagnostic information from a running app. On iOS, the recommended system is Apple's <strong>Unified Logging System (ULS)</strong> — accessed via <code>os_log</code> (C API) or the Swift <code>Logger</code> type (introduced iOS 14). The ULS is performant (log calls are lazy — formatting only happens if the message will actually be recorded), privacy-respecting (dynamic values are redacted by default in system logs), and integrated with Console.app and Instruments. Structured logging — using categories, subsystems, and typed fields instead of unstructured strings — makes logs searchable and aggregatable. Log levels (<code>.debug</code>, <code>.info</code>, <code>.default</code>, <code>.error</code>, <code>.fault</code>) control which messages are stored and which are discarded. Good logging practice: log the event and its context at appropriate levels, never log PII or secrets, and distinguish between user-facing error states and internal diagnostic information.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Logging is like keeping a ship's log. The captain records: when the ship departed, what weather was encountered, navigational decisions, any engine problems, and whether any cargo was damaged — but never records the passengers' private conversations. The log is written in real time; if the ship sinks, investigators read the log to understand what happened. On iOS, <code>Logger</code> is the ship's log system: you write to it in real time, and when a bug report arrives or you connect Console.app, you read the entries to reconstruct what happened. The privacy redaction is the policy of not recording passengers' conversations — even if an engineer reads the log, sensitive values appear as <code>&lt;private&gt;</code> unless they explicitly unlock them.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="logger-swift-vs-os_log-c">Logger (Swift) vs os_log (C)</h3>
+
+<p><code>Logger</code> (iOS 14+) is the Swift-native API over <code>os_log</code>. Prefer <code>Logger</code> in new Swift code — it uses string interpolation with compile-time privacy guarantees. <code>os_log</code> (C-level) remains available for Objective-C code.</p>
+
+<pre><code class="language-swift">import os
+
+// Create a logger — subsystem = app bundle ID, category = functional area
+let logger = Logger(subsystem: "com.myapp", category: "networking")
+let authLogger = Logger(subsystem: "com.myapp", category: "auth")
+let dbLogger = Logger(subsystem: "com.myapp", category: "database")</code></pre>
+
+<h3 id="log-levels">Log Levels</h3>
+
+<table>
+<tr><td>Level</td><td>Use case</td><td>Stored to disk?</td><td>Default visibility</td></tr>
+<tr><td><code>.debug</code></td><td>Verbose developer info</td><td>No</td><td>Only with active profiling session</td></tr>
+<tr><td><code>.info</code></td><td>Informational events</td><td>No</td><td>Visible in Console with filter</td></tr>
+<tr><td><code>.default</code> (<code>.notice</code>)</td><td>Significant events</td><td>Yes (until rotated)</td><td>Visible in Console</td></tr>
+<tr><td><code>.error</code></td><td>Recoverable errors</td><td>Yes</td><td>Always visible</td></tr>
+<tr><td><code>.fault</code> (<code>.critical</code>)</td><td>Programmer errors, data corruption</td><td>Yes, high priority</td><td>Always visible</td></tr>
+</table>
+
+<h3 id="privacy-levels">Privacy Levels</h3>
+
+<p>Dynamic values in <code>Logger</code> interpolations are <strong>private by default</strong> — redacted as <code>&lt;private&gt;</code> in Console.app output on other devices. Options:</p>
+
+<pre><code class="language-swift">logger.info("User \(userID, privacy: .private) logged in")       // redacted externally
+logger.info("Request to \(url, privacy: .public)")               // always visible
+logger.info("Error code: \(errorCode, privacy: .public)")        // safe to expose
+logger.info("Amount: \(amount, privacy: .sensitive)")            // masked in all contexts</code></pre>
+
+<p>Use <code>.public</code> only for non-sensitive data (URLs, error codes, status codes). Never use <code>.public</code> for user IDs, emails, names, or financial data.</p>
+
+<h3 id="subsystems-and-categories">Subsystems and Categories</h3>
+
+<ul>
+<li><strong>Subsystem</strong>: the app's bundle ID (<code>"com.myapp"</code>) — identifies the app.</li>
+<li><strong>Category</strong>: the functional area (<code>"networking"</code>, <code>"auth"</code>, <code>"database"</code>) — enables filtering in Console.</li>
+</ul>
+
+<p>In Console.app: filter by subsystem to see only your app's logs; filter by category to focus on one area.</p>
+
+<h3 id="performance">Performance</h3>
+
+<p><code>Logger</code> is designed to be used pervasively — even disabled log calls are near-zero cost because the string formatting is deferred until the message is actually consumed. The ULS writes to a compressed circular buffer in memory; writes to disk happen only for <code>.default</code> level and above. This means <code>.debug</code> and <code>.info</code> logs are low-cost when not being observed.</p>
+
+<h3 id="oslog-categories-as-namespaces">OSLog Categories as Namespaces</h3>
+
+<p>Use a <code>Logger</code> extension to define all loggers in one place:</p>
+
+<pre><code class="language-swift">extension Logger {
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.myapp"
+    static let network = Logger(subsystem: subsystem, category: "network")
+    static let auth    = Logger(subsystem: subsystem, category: "auth")
+    static let ui      = Logger(subsystem: subsystem, category: "ui")
+    static let db      = Logger(subsystem: subsystem, category: "database")
+}</code></pre>
+
+<h3 id="structured-logging-pattern">Structured Logging Pattern</h3>
+
+<p>Structured logging emits key-value pairs that can be searched programmatically:</p>
+
+<pre><code class="language-swift">// Unstructured (hard to query):
+logger.error("Login failed for user \(email) because \(error)")
+
+// Structured (searchable by field):
+logger.error("Login failed — reason: \(reason, privacy: .public) user: \(userID.prefix(4), privacy: .public)***")</code></pre>
+
+<p>For remote logging backends (Datadog, Logtail), serialize log entries as JSON:</p>
+
+<pre><code class="language-swift">struct LogEntry: Codable {
+    let level: String
+    let category: String
+    let event: String
+    let properties: [String: String]
+    let timestamp: Date
+    let sessionID: String
+}</code></pre>
+
+<h3 id="viewing-logs">Viewing Logs</h3>
+
+<p><strong>Console.app</strong>: Filter by <code>com.myapp</code> subsystem. Connect device via cable for live streaming or click "Start" to capture. Use the search bar with <code>subsystem:com.myapp category:network</code> syntax.</p>
+
+<p><strong>Xcode Console</strong>: During a debug session, <code>Logger</code> output appears in the Xcode debug console. Use <code>po OSLog.disabled = false</code> to force-enable private data during debugging.</p>
+
+<p><strong>Command line</strong>:</p>
+<pre><code class="language-bash"># Stream logs from a connected device
+xcrun simctl spawn booted log stream --predicate 'subsystem == "com.myapp"'
+
+# Collect logs from device
+xcrun devicectl device log collect --device &lt;udid&gt; --output device.logarchive</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import os
+import Foundation
+
+// ── Logger namespace ──────────────────────────────────────────
+extension Logger {
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.myapp"
+    static let network   = Logger(subsystem: subsystem, category: "network")
+    static let auth      = Logger(subsystem: subsystem, category: "auth")
+    static let ui        = Logger(subsystem: subsystem, category: "ui")
+    static let database  = Logger(subsystem: subsystem, category: "database")
+    static let lifecycle = Logger(subsystem: subsystem, category: "lifecycle")
+}
+
+// ── Network layer logging ─────────────────────────────────────
+final class APIClient {
+
+    func fetch&lt;T: Decodable&gt;(_ request: URLRequest) async throws -&gt; T {
+        let url = request.url?.absoluteString ?? "unknown"
+        Logger.network.debug("→ \(request.httpMethod ?? "GET", privacy: .public) \(url, privacy: .public)")
+
+        let start = CFAbsoluteTimeGetCurrent()
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+
+        if statusCode &gt;= 400 {
+            Logger.network.error("← HTTP \(statusCode, privacy: .public) \(url, privacy: .public) (\(String(format: "%.0f", ms), privacy: .public)ms)")
+        } else {
+            Logger.network.info("← HTTP \(statusCode, privacy: .public) \(data.count, privacy: .public)B (\(String(format: "%.0f", ms), privacy: .public)ms)")
+        }
+
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+}
+
+// ── Auth logging — PII kept private ──────────────────────────
+final class AuthService {
+
+    func login(email: String, password: String) async throws -&gt; User {
+        Logger.auth.info("Login attempt — email: \(email, privacy: .private)")
+        do {
+            let user = try await apiLogin(email: email, password: password)
+            Logger.auth.info("Login success — userID: \(user.id, privacy: .private)")
+            return user
+        } catch let error as AuthError {
+            Logger.auth.error("Login failed — reason: \(error.code, privacy: .public)")
+            throw error
+        }
+    }
+
+    private func apiLogin(email: String, password: String) async throws -&gt; User { User(id: "u1") }
+}
+
+// ── Database logging ──────────────────────────────────────────
+final class PostRepository {
+
+    func fetchPosts(page: Int) async throws -&gt; [Post] {
+        Logger.database.debug("Fetching posts page=\(page, privacy: .public)")
+        let posts: [Post] = [] // … actual fetch
+        Logger.database.debug("Fetched \(posts.count, privacy: .public) posts")
+        return posts
+    }
+}
+
+// ── View lifecycle logging ────────────────────────────────────
+class TrackedViewController: UIViewController {
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        Logger.lifecycle.debug("\(type(of: self), privacy: .public) viewDidLoad")
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        Logger.lifecycle.info("\(type(of: self), privacy: .public) appeared")
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        Logger.lifecycle.debug("\(type(of: self), privacy: .public) disappeared")
+    }
+}
+
+// ── Remote log forwarder (send structured logs to backend) ────
+final class RemoteLogger {
+    private var buffer: [LogEntry] = []
+    private let maxBuffer = 100
+
+    func log(level: LogLevel, category: String, event: String, props: [String: String] = [:]) {
+        let entry = LogEntry(
+            level: level.rawValue,
+            category: category,
+            event: event,
+            properties: props,
+            timestamp: Date(),
+            sessionID: Session.current.id
+        )
+        buffer.append(entry)
+        if buffer.count &gt;= maxBuffer { flush() }
+    }
+
+    func flush() {
+        guard !buffer.isEmpty else { return }
+        let batch = buffer
+        buffer.removeAll(keepingCapacity: true)
+        Task.detached(priority: .utility) {
+            try? await LoggingBackend.upload(batch)
+        }
+    }
+}
+
+enum LogLevel: String { case debug, info, warning, error, critical }
+struct LogEntry: Codable {
+    let level: String; let category: String; let event: String
+    let properties: [String: String]; let timestamp: Date; let sessionID: String
+}
+enum LoggingBackend {
+    static func upload(_ entries: [LogEntry]) async throws {}
+}
+struct Session { static let current = Session(); let id = UUID().uuidString }
+struct User { let id: String }
+struct Post {}
+enum AuthError: Error { case invalidCredentials; var code: String { "invalid_credentials" } }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>os_log</code> and <code>print()</code> for iOS logging?<em></em></p>
+
+<p>A: <code>print()</code> writes a plain string to standard output (stdout). It is visible only in the Xcode console during a debug session — it does not integrate with the Unified Logging System, has no privacy controls, is not filterable by category/subsystem, and has no log levels. In production (no debugger attached), <code>print()</code> output goes nowhere. <code>os_log</code> / <code>Logger</code> write to the Unified Logging System — a kernel-level logging infrastructure. Messages persist in a compressed circular buffer, are filterable in Console.app by subsystem/category/level, support <code>privacy: .private</code> redaction of sensitive fields, and remain available for post-mortem debugging without a debugger attached. <code>os_log</code> is near-zero cost when not being observed (no string formatting occurs). Use <code>Logger</code> in all production code; use <code>print()</code> only in quick debug experiments.</p>
+
+<p><em></em>Q: What does <code>privacy: .private</code> do in a <code>Logger</code> interpolation?<em></em></p>
+
+<p>A: <code>privacy: .private</code> marks an interpolated value as sensitive — it is redacted to <code>&lt;private&gt;</code> in Console.app and system log dumps unless captured with explicit developer consent (a special debugging profile or a live Xcode session). Without any privacy annotation, dynamic values (non-literal strings, integers, etc.) are <code>.private</code> by default in <code>Logger</code>. Only literal string values are <code>.public</code> by default. This means that if you write <code>Logger.auth.info("Login for user \(email)")</code>, the email is redacted in any external log capture. To make a value visible to system log consumers, you must explicitly mark it <code>.public</code>: <code>Logger.auth.info("Status: \(statusCode, privacy: .public)")</code>. This design prevents accidental PII leakage in logs without requiring developers to manually scrub every log statement.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you send structured logs from an iOS app to a remote backend without impacting app performance?</strong></p>
+
+<p>A: Four-component design: (1) <strong>Buffered in-memory queue</strong>: accumulate log entries in an in-memory array (not a persistent store) up to a <code>maxBuffer</code> count (e.g., 100 entries). Writing to the buffer is an O(1) append — negligible cost. (2) <strong>Async flush</strong>: when the buffer fills, or when <code>applicationDidEnterBackground</code> fires (the last reliable moment before suspension), flush the buffer via a <code>Task.detached(priority: .utility)</code> that serialises entries to JSON and POSTs to the logging backend. The detached task runs off the main thread — no impact on frame rendering. (3) <strong>Background task extension</strong>: call <code>UIApplication.beginBackgroundTask</code> before the flush to ensure it completes if the app moves to background mid-flush. End the task in the completion handler. (4) <strong>Sampling for high-volume events</strong>: for events that fire thousands of times per session (scroll position, mouse movement), sample 1-in-10 or 1-in-100. Log the sampling rate in the payload so the backend can correct counts. Never log every frame of a <code>CADisplayLink</code> callback.</p>
+
+<p><strong>Q: How do you correlate logs across frontend (iOS) and backend when debugging a production issue?</strong></p>
+
+<p>A: Use a <strong>session ID</strong> and <strong>request correlation ID</strong>: (1) Generate a <code>sessionID</code> (<code>UUID().uuidString</code>) at app launch and include it in every log entry and every outgoing API request header (<code>X-Session-ID</code>). (2) For each API request, generate a <code>requestID</code> (<code>UUID().uuidString</code>) and include it in the request header (<code>X-Request-ID</code>). The backend includes this ID in its response and in its own server-side logs. (3) To debug an issue: take the session ID from the Crashlytics crash report or user report, query the backend log system for all server-side events matching that session ID, and reconstruct the full timeline of client + server events. (4) For structured log aggregation: emit events as JSON with <code>sessionId</code>, <code>requestId</code>, <code>userId</code> (hashed), <code>timestamp</code>, and <code>event</code> fields — these can be joined across frontend and backend log tables in BigQuery, Datadog, or Splunk.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a privacy-compliant logging system for a healthcare iOS app where logs may contain medical information.</strong></p>
+
+<p>A: Five-layer architecture: (1) <strong>Two-tier logging</strong>: client-side <code>Logger</code> (ULS) for development-only diagnostics — all health-related fields use <code>privacy: .private</code> and are never uploaded. A separate <code>AuditLogger</code> class emits compliance-required events (login, record access, data export) to the backend — these are the only logs that leave the device. (2) <strong>Field classification</strong>: define an enum <code>LogField</code> with <code>.safe</code> (can be logged), <code>.pii</code> (user identifier, hashed before logging), <code>.phi</code> (Protected Health Information — never logged remotely, redacted to a category like "diagnosis_viewed" without the actual diagnosis). (3) <strong>Consent-gated logging</strong>: extended diagnostics (beyond minimum audit trail) require explicit user consent. Store consent status in Keychain. If consent is not given, only audit-required events are sent. (4) <strong>Audit log integrity</strong>: each audit entry is signed with an HMAC using a key derived from the device's Secure Enclave. This ensures audit logs cannot be tampered with after the fact. (5) <strong>Data residency</strong>: audit logs are uploaded to a region-specific endpoint (EU users → EU servers, US users → US servers) to comply with GDPR / HIPAA data residency requirements. The endpoint is determined at login from the user's jurisdiction profile.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Logs show as <code>&lt;private&gt;</code> in Console.app even though the data is not sensitive.<em></em></p>
+
+<p>Solution: By default, dynamic values are private. Add <code>privacy: .public</code> to the interpolation: <code>logger.info("Status: \(code, privacy: .public)")</code>. For development, you can also enable a logging configuration profile that makes all private data visible on a specific device — install the Apple Logging profile from the developer documentation onto the test device.</p>
+
+<p><strong>Issue: Logger output floods the Xcode console and hides important messages.</strong></p>
+
+<p>Solution: Use log levels correctly — <code>.debug</code> for verbose output, <code>.info</code> for significant events. In the Xcode console, use the filter bar to filter by category: type the category name (e.g., "networking") to show only that category. Alternatively, use Console.app (which has richer filtering) instead of the Xcode console for log analysis. Also consider making <code>.debug</code> logs conditional on a flag: <code>if FeatureFlags.verboseLogging { Logger.network.debug(...) }</code>.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="crash-reporting.md">Crash Reporting</a> — Crashlytics log breadcrumbs complement system logs</li>
+<li><a href="monitoring.md">Monitoring</a> — analytics events alongside diagnostic logs</li>
+<li><a href="../14-security/data-security.md">Security — Data Security</a> — PII protection in logs</li>
+<li><a href="../11-testing/unit-testing.md">Testing — Unit Testing</a> — testing log output via mock loggers</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

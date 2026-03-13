@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Creational Patterns — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../15-design-patterns/index.html">Design Patterns</a></span>
+    <span>Creational Patterns</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html" class="active">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="creational-patterns">Creational Patterns</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Creational patterns deal with <strong>how objects are instantiated</strong> — abstracting the creation logic away from the calling code so that the system is not tightly coupled to specific concrete classes. The four core creational patterns for iOS are: <strong>Factory Method</strong> (a method or type that decides which concrete type to return based on input), <strong>Abstract Factory</strong> (a factory for a family of related objects, enabling swapping the entire family at once), <strong>Builder</strong> (assembles a complex object step-by-step, avoiding a massive initializer), and <strong>Singleton</strong> (ensures exactly one instance exists globally). Each pattern trades off flexibility vs. simplicity — Singleton is the simplest but the hardest to test; Builder is the most explicit but adds boilerplate.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Creational patterns are about ordering from a menu instead of cooking yourself. <strong>Factory Method</strong>: you say "I want a dessert" and the waiter brings you whatever the kitchen's featured dessert is today — you don't specify the exact dish. <strong>Abstract Factory</strong>: you say "I want the Italian menu set" and everything — starter, main, dessert — comes from Italian cuisine. Swap to "French set" and the entire family changes. <strong>Builder</strong>: you custom-order a burger: first choose the bun, then the patty, then the toppings, then confirm. The builder assembles it step by step. <strong>Singleton</strong>: there's only one head chef in the kitchen — everyone sends orders to the same person.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="factory-method">Factory Method</h3>
+
+<p>A factory method is a static method (or a protocol with a factory method) that returns an instance of a protocol type, hiding the concrete class. Enables: switching implementations, creating test doubles, and decoupling call sites from concrete types.</p>
+
+<p>iOS examples: <code>UITableViewCell.dequeueReusableCell(withIdentifier:)</code>, <code>UIStoryboard.instantiateViewController(withIdentifier:)</code>.</p>
+
+<pre><code class="language-swift">protocol Analytics { func log(event: String) }
+final class FirebaseAnalytics: Analytics { func log(event: String) { /* ... */ } }
+final class MockAnalytics: Analytics { func log(event: String) { /* ... */ } }
+
+enum AnalyticsFactory {
+    static func make() -&gt; Analytics {
+        #if DEBUG
+        return MockAnalytics()
+        #else
+        return FirebaseAnalytics()
+        #endif
+    }
+}</code></pre>
+
+<h3 id="abstract-factory">Abstract Factory</h3>
+
+<p>An abstract factory is a protocol (or class) with multiple factory methods — one per product type — forming a family. Switching the factory implementation changes the entire family.</p>
+
+<p>iOS example: creating different UI component families for different app themes or A/B test variants.</p>
+
+<pre><code class="language-swift">protocol ButtonFactory {
+    func makePrimaryButton(title: String) -&gt; UIButton
+    func makeSecondaryButton(title: String) -&gt; UIButton
+}
+
+final class MaterialButtonFactory: ButtonFactory {
+    func makePrimaryButton(title: String) -&gt; UIButton { /* Material style */ UIButton() }
+    func makeSecondaryButton(title: String) -&gt; UIButton { UIButton() }
+}
+
+final class CupertinoButtonFactory: ButtonFactory {
+    func makePrimaryButton(title: String) -&gt; UIButton { /* iOS native style */ UIButton() }
+    func makeSecondaryButton(title: String) -&gt; UIButton { UIButton() }
+}</code></pre>
+
+<h3 id="builder">Builder</h3>
+
+<p>The Builder pattern constructs a complex object incrementally. Swift provides two variants: a <strong>fluent builder</strong> (each setter returns <code>Self</code> for method chaining) and a <strong>closure-based builder</strong> (configure a mutable object inside a closure). The closure-based variant is idiomatic in Swift.</p>
+
+<p>iOS examples: <code>URLComponents</code>, <code>URLRequest</code>, <code>NSAttributedString</code>.</p>
+
+<pre><code class="language-swift">final class NotificationBuilder {
+    private var title: String = ""
+    private var body: String = ""
+    private var sound: UNNotificationSound = .default
+    private var badge: NSNumber? = nil
+    private var userInfo: [AnyHashable: Any] = [:]
+
+    @discardableResult
+    func title(_ title: String) -&gt; Self { self.title = title; return self }
+
+    @discardableResult
+    func body(_ body: String) -&gt; Self { self.body = body; return self }
+
+    @discardableResult
+    func sound(_ sound: UNNotificationSound) -&gt; Self { self.sound = sound; return self }
+
+    @discardableResult
+    func badge(_ count: Int) -&gt; Self { self.badge = NSNumber(value: count); return self }
+
+    @discardableResult
+    func userInfo(_ info: [AnyHashable: Any]) -&gt; Self { self.userInfo = info; return self }
+
+    func build() -&gt; UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = sound
+        content.badge = badge
+        content.userInfo = userInfo
+        return content
+    }
+}</code></pre>
+
+<h3 id="singleton">Singleton</h3>
+
+<p>Singleton ensures a class has exactly one instance. In Swift, <code>static let</code> provides thread-safe lazy initialization:</p>
+
+<pre><code class="language-swift">final class Logger {
+    static let shared = Logger()
+    private init() {}
+
+    func log(_ message: String) { print("[LOG] \(message)") }
+}</code></pre>
+
+<p><strong>Singleton anti-patterns</strong>: global singletons create hidden dependencies, making code hard to test. Prefer dependency injection where possible — inject the singleton as a protocol into types that need it, rather than having them reach for <code>Logger.shared</code> directly.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import UserNotifications
+
+// ── Factory Method: View Controller Factory ───────────────────
+protocol Screen {}
+final class FeedViewController: UIViewController, Screen {}
+final class AuthViewController: UIViewController, Screen {}
+
+enum ScreenFactory {
+    enum Route { case feed, auth, profile(userID: String) }
+
+    static func make(for route: Route) -&gt; UIViewController {
+        switch route {
+        case .feed:   return FeedViewController()
+        case .auth:   return AuthViewController()
+        case .profile(let id): return ProfileViewController(userID: id)
+        }
+    }
+}
+
+// Usage — call site never mentions the concrete class
+let vc = ScreenFactory.make(for: .feed)
+
+// ── Abstract Factory: Theme System ────────────────────────────
+protocol Theme {
+    var primaryColor: UIColor { get }
+    var font: UIFont { get }
+    func makeButton(title: String) -&gt; UIButton
+}
+
+final class DarkTheme: Theme {
+    var primaryColor: UIColor { .systemIndigo }
+    var font: UIFont { .systemFont(ofSize: 16, weight: .semibold) }
+
+    func makeButton(title: String) -&gt; UIButton {
+        let b = UIButton(type: .system)
+        b.setTitle(title, for: .normal)
+        b.backgroundColor = primaryColor
+        return b
+    }
+}
+
+final class LightTheme: Theme {
+    var primaryColor: UIColor { .systemBlue }
+    var font: UIFont { .systemFont(ofSize: 16) }
+
+    func makeButton(title: String) -&gt; UIButton {
+        let b = UIButton(type: .system)
+        b.setTitle(title, for: .normal)
+        b.tintColor = primaryColor
+        return b
+    }
+}
+
+// Inject the factory — swap entire theme without touching UI code
+final class SettingsViewController: UIViewController {
+    private let theme: Theme
+
+    init(theme: Theme) {
+        self.theme = theme
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let saveButton = theme.makeButton(title: "Save")
+        view.addSubview(saveButton)
+    }
+}
+
+// ── Builder: URLRequest builder ───────────────────────────────
+final class RequestBuilder {
+    private var url: URL
+    private var method: String = "GET"
+    private var headers: [String: String] = [:]
+    private var body: Data? = nil
+
+    init(url: URL) { self.url = url }
+
+    @discardableResult
+    func method(_ method: String) -&gt; Self { self.method = method; return self }
+
+    @discardableResult
+    func header(_ key: String, _ value: String) -&gt; Self { headers[key] = value; return self }
+
+    @discardableResult
+    func jsonBody&lt;T: Encodable&gt;(_ value: T) -&gt; Self {
+        body = try? JSONEncoder().encode(value)
+        headers["Content-Type"] = "application/json"
+        return self
+    }
+
+    func build() -&gt; URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        return request
+    }
+}
+
+// Usage
+let request = RequestBuilder(url: URL(string: "https://api.example.com/posts")!)
+    .method("POST")
+    .header("Authorization", "Bearer \(token)")
+    .jsonBody(newPost)
+    .build()
+
+// ── Singleton: App-wide configuration ────────────────────────
+final class AppConfiguration {
+    static let shared = AppConfiguration()
+    private init() {}
+
+    private(set) var apiBaseURL: URL = URL(string: "https://api.example.com")!
+    private(set) var featureFlags: [String: Bool] = [:]
+
+    func configure(baseURL: URL, flags: [String: Bool]) {
+        apiBaseURL = baseURL
+        featureFlags = flags
+    }
+}
+
+// Testable version: inject as protocol
+protocol Configuration {
+    var apiBaseURL: URL { get }
+    var featureFlags: [String: Bool] { get }
+}
+
+extension AppConfiguration: Configuration {}
+
+// In tests:
+struct MockConfiguration: Configuration {
+    let apiBaseURL = URL(string: "https://mock.api")!
+    let featureFlags: [String: Bool] = ["newFeed": true]
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between a Factory Method and an Abstract Factory?</strong></p>
+
+<p>A: A <strong>Factory Method</strong> is a single method that creates one type of product — it encapsulates the <code>if/else</code> or <code>switch</code> logic that decides which concrete subtype to return. Callers ask for "an Analytics" and receive whichever implementation is appropriate (production vs. test). An <strong>Abstract Factory</strong> is a protocol or class with multiple factory methods, one per product in a family. It ensures that the products it creates are consistent with each other — a <code>MaterialTheme</code> factory produces both buttons and text fields in Material style; a <code>CupertinoTheme</code> factory produces both in iOS style. Swapping the factory swaps the entire family at once. Use Factory Method when you need to abstract the creation of one type of object; use Abstract Factory when you need to ensure a whole group of related objects are created together consistently.</p>
+
+<p><strong>Q: What are the disadvantages of the Singleton pattern?</strong></p>
+
+<p>A: Three main disadvantages: (1) <strong>Hidden dependencies</strong> — code that calls <code>Logger.shared</code> has an implicit coupling to the singleton. This is invisible from the function signature and cannot be mocked in unit tests without altering the global. (2) <strong>Global mutable state</strong> — if the singleton holds mutable state, concurrent access requires synchronisation (actor or lock), and state changes from one test or module can affect unrelated code. (3) <strong>Tight coupling to concrete type</strong> — the singleton is always the concrete class; you cannot inject a <code>MockLogger</code> for testing unless you redesign the call sites. Mitigation: define the singleton as a protocol (<code>LoggerProtocol</code>), inject it into types that need it rather than having them reach for <code>.shared</code> directly. The singleton can be the default implementation but the dependency can be swapped in tests.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: When should you use a Builder pattern instead of a multi-parameter initializer?</strong></p>
+
+<p>A: Use Builder when: (1) The object has many optional parameters (more than 3–4) — a 10-parameter initializer is hard to read and call correctly. Builder allows you to set only the parameters you care about and leave others at defaults. (2) Construction requires multiple steps that must occur in a specific order. (3) The same construction process needs to produce different representations (e.g., a JSON query builder that can produce either SQL or GraphQL). For Swift specifically, Builder is less necessary when the type is a <code>struct</code> with default values — <code>URLComponents</code> uses it because it's an Objective-C type with a mutable API; a Swift <code>struct</code> with default parameter values achieves the same result more concisely. Use Builder in Swift primarily when (a) the type is a class with mutability, (b) the fluent interface significantly improves readability at call sites, or (c) you need to validate the combination of parameters at build time (returning <code>nil</code> or throwing from <code>build()</code>).</p>
+
+<p><strong>Q: How do you make a Singleton testable?</strong></p>
+
+<p>A: Two approaches: (1) <strong>Protocol injection</strong>: define a protocol (<code>AnalyticsProtocol</code>) that the singleton conforms to. Types that use the singleton take <code>AnalyticsProtocol</code> as a dependency in their initializer. In production, pass <code>Analytics.shared</code>; in tests, pass a <code>MockAnalytics</code>. The singleton still exists globally but the dependency is explicit and swappable. (2) <strong>Static property injection</strong>: expose the shared instance as a settable <code>static var</code> (with access control): <code>static var shared: Analytics = RealAnalytics()</code>. In test <code>setUp</code>, replace it: <code>Analytics.shared = MockAnalytics()</code>. Reset in <code>tearDown</code>. This is less clean (global mutation) but requires less refactoring of existing call sites. Prefer approach (1) for new code — it makes dependencies explicit and doesn't require global mutation in tests.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a ViewController factory for a large app with 50+ screens that supports dependency injection, deep linking, and testability.</strong></p>
+
+<p>A: Three-component design: (1) <strong>Route enum</strong>: define all app destinations as associated-value cases (<code>enum Route { case feed; case profile(userID: String); case post(id: String, source: String) }</code>). This is the single-source-of-truth for navigation destinations — deep link parsing translates URL paths into <code>Route</code> cases. (2) <strong>ViewController factory protocol</strong>: <code>protocol ViewControllerFactory { func makeViewController(for route: Route) -&gt; UIViewController }</code>. The concrete factory holds references to all app-level dependencies (<code>struct AppDependencies { let networkService: NetworkServiceProtocol; let database: DatabaseProtocol; ... }</code>). Each <code>case</code> in the factory implementation injects only the dependencies the created VC needs. (3) <strong>Test factory</strong>: <code>final class MockViewControllerFactory: ViewControllerFactory { var createdRoutes: [Route] = []; func makeViewController(for route: Route) -&gt; UIViewController { createdRoutes.append(route); return UIViewController() } }</code>. Tests inject the mock factory into the <code>Coordinator</code>, assert that navigating to a screen creates the right route. This architecture means: adding a new screen adds one <code>Route</code> case and one factory method — no scattered <code>if</code> chains at call sites.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Builder pattern has many <code>@discardableResult</code> annotations and callers forget to call <code>build()</code>.<em></em></p>
+
+<p>Solution: Make the intermediate builder type distinct from the final product using a two-type approach: <code>RequestBuilder</code> has no <code>URLRequest</code> conversion; calling <code>.build()</code> returns a <code>URLRequest</code>. If callers need a compile-time guarantee, make <code>RequestBuilder</code> accept a closure: <code>RequestBuilder(url:) { builder in builder.method("POST") }</code> — the closure returns <code>Void</code>, and the <code>URLRequest</code> is produced internally. Swift's result builder (<code>@resultBuilder</code>) can also express this.</p>
+
+<p><em></em>Issue: Factory Method returns <code>UIViewController</code> (a concrete class) instead of a protocol, causing import cycles.<em></em></p>
+
+<p>Solution: Define a <code>Screen</code> protocol in a shared module that both the factory and the view controllers conform to. The factory returns <code>Screen</code>, breaking the import cycle. Alternatively, use <code>any UIViewController</code> conforming to a protocol in the same module.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="structural-patterns.md">Structural Patterns</a> — Adapter and Facade for wrapping factories</li>
+<li><a href="behavioral-patterns.md">Behavioral Patterns</a> — Command for queuing factory-created objects</li>
+<li><a href="ios-patterns.md">iOS-Specific Patterns</a> — Dependency Injection as the complement to Factory</li>
+<li><a href="../06-architecture/dependency-injection.md">Dependency Injection</a> — injecting factory-created objects</li>
+<li><a href="../11-testing/testable-architecture.md">Testable Architecture</a> — test doubles for factories</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

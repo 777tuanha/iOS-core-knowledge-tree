@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App Launch Process — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../13-app-startup/index.html">App Startup</a></span>
+    <span>App Launch Process</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="app-launch-process">App Launch Process</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>When a user taps an iOS app icon, the OS creates a new process, maps the app's Mach-O binary into memory, and hands control to <code>dyld</code> — Apple's dynamic linker. <code>dyld</code> handles the entire pre-<code>main()</code> phase: mapping the <code>__TEXT</code> segment (the code pages, shared across processes, never dirty), applying ASLR rebasing to the <code>__DATA</code> segment, binding cross-dylib symbol references (ObjC selectors, Swift protocol witnesses, C function pointers), running Objective-C runtime registration (<code>+load</code>, category attachment), and executing C++ static initializers. Only after all of this does <code>main()</code> run, which calls <code>UIApplicationMain</code>, which triggers <code>AppDelegate.didFinishLaunchingWithOptions</code>, which installs the root view controller, which finally commits the first <code>CATransaction</code> to produce the first visible frame. Understanding each phase is essential for diagnosing slow cold-launch times and for knowing where optimization efforts will have the most impact.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Launching an app is like opening a new restaurant. Before the first customer can eat (first rendered frame): the health inspector checks the building (dyld verifies code signatures), suppliers deliver stock and set up the kitchen (dynamic libraries are mapped and linked), the kitchen staff learn today's menu (<code>+load</code> and static initializers run), and the manager unlocks the front door and seats the first customer (<code>AppDelegate.didFinishLaunching</code> runs and installs the root VC). The faster you can complete the pre-opening work, the sooner the first customer is served. The big wins come from reducing the kitchen setup time (<code>+load</code> work and static initializers) and reducing the number of suppliers making deliveries (dynamic framework count).</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="dyld-3-and-dyld-4">dyld 3 and dyld 4</h3>
+
+<p>Modern iOS uses <strong>dyld 4</strong> (introduced iOS 16) and the <strong>dyld shared cache</strong> — all system frameworks (<code>UIKit</code>, <code>Foundation</code>, <code>SwiftUI</code>) are pre-linked into a single shared cache file on disk, loaded read-only. This means system framework linking cost is essentially zero at launch. The remaining cost is resolving your app's own dylibs and any third-party dynamic frameworks.</p>
+
+<p><strong>dyld closure / launch closure</strong>: dyld pre-computes a "closure" (a binary description of all bindings for a given app binary) and caches it. The closure is invalidated whenever the app binary changes (e.g., after an update). The first cold launch after install or update is slower because the closure must be rebuilt.</p>
+
+<h3 id="pre-main-phases-in-detail">Pre-main Phases in Detail</h3>
+
+<p><strong>1. Mach-O loading</strong></p>
+<p>The kernel maps the app binary's <code>__TEXT</code> segment (executable code) as read-only and the <code>__DATA</code> segment (globals, pointers) as copy-on-write. <code>__TEXT</code> is shared across processes — if two apps use the same dylib, they share the same physical pages for <code>__TEXT</code>.</p>
+
+<p><strong>2. Rebasing</strong></p>
+<p>ASLR (Address Space Layout Randomization) places the binary at a random base address each launch. All absolute pointers in <code>__DATA</code> must be adjusted by the slide value — this is "rebasing." Minimizing the size of <code>__DATA</code> (fewer global objects, fewer indirection levels) reduces rebase time.</p>
+
+<p><strong>3. Binding</strong></p>
+<p>Symbol references that cross dylib boundaries (e.g., your app calling <code>UIViewController</code> from UIKit) are resolved: dyld looks up each symbol in the target dylib's export trie and writes the resolved address into your <code>__DATA</code> section. Fewer dynamic frameworks = fewer bindings = faster launch.</p>
+
+<p><strong>4. ObjC Runtime</strong></p>
+<p>The ObjC runtime scans all <code>__objc_classlist</code>, <code>__objc_catlist</code>, and <code>__objc_protolist</code> sections:</p>
+<ul>
+<li>Registers each class.</li>
+<li>Attaches categories to their target classes.</li>
+<li>Calls <code>+load</code> on every class and category that implements it.</li>
+</ul>
+
+<p><em></em><code>+load</code> is dangerous for launch performance<em></em>: it runs synchronously in the pre-main phase, on the main thread, under a global lock. Any work in <code>+load</code> — including <code>dispatch_once</code>, lock contention, file I/O — blocks all other initialization. Even 1 ms per <code>+load</code> method × 100 methods = 100 ms of blocked startup. Replace <code>+load</code> with <code>+initialize</code> (called lazily on first message send to the class) or with explicit setup in <code>application(_:didFinishLaunchingWithOptions:)</code>.</p>
+
+<p><strong>5. C++ Static Initializers</strong></p>
+<p>Functions marked <code>__attribute__((constructor))</code> and constructors of global C++ objects run here. These are common in C++ libraries embedded via SPM or CocoaPods. Profile with <code>DYLD_PRINT_STATISTICS=1</code> to see time spent in static initializers.</p>
+
+<p><strong>6. Swift runtime initialization</strong></p>
+<p>Swift global variables with non-trivial initializers, protocol witness tables, and metadata are registered. Swift's global initializers are lazy by default (unlike C++) — they run on first access, not at binary load time.</p>
+
+<h3 id="measuring-pre-main-time">Measuring Pre-main Time</h3>
+
+<pre><code class="language-bash"># Set environment variable in scheme diagnostics
+DYLD_PRINT_STATISTICS=1
+# Or more detailed:
+DYLD_PRINT_STATISTICS_DETAILS=1</code></pre>
+
+<p>Instruments: <strong>App Launch</strong> template — shows the full pre-main + post-main timeline with the frame budget overlaid.</p>
+
+<p>Sample <code>DYLD_PRINT_STATISTICS</code> output:</p>
+<pre><code>Total pre-main time: 248.32 milliseconds (100.0%)
+         dylib loading time:  84.20 milliseconds (33.9%)
+        rebase/binding time:  12.11 milliseconds (4.9%)
+            ObjC setup time:  42.83 milliseconds (17.2%)
+           initializer time: 109.18 milliseconds (44.0%)
+           slowest intializers:
+             libSystem.B.dylib :   3.31 milliseconds (1.3%)
+               libglInterpose.dylib :  40.22 milliseconds (16.2%)
+                     MyApp :  65.71 milliseconds (26.5%)</code></pre>
+
+<h3 id="initial-view-controller-setup">Initial View Controller Setup</h3>
+
+<p>In Storyboard-based apps: the Storyboard's initial view controller is instantiated from the nib archive — <code>initWithCoder:</code> runs, then <code>viewDidLoad</code> on the first VC. The Storyboard XML is parsed and all scene objects are deserialized.</p>
+
+<p>In code-only apps: the window and root VC are created programmatically in <code>didFinishLaunchingWithOptions</code> or <code>scene(_:willConnectTo:options:)</code>. This is faster (no XML parse) but requires more boilerplate.</p>
+
+<h3 id="cold-vs-warm-vs-hot-launch">Cold vs Warm vs Hot Launch</h3>
+
+<table>
+<tr><td>Type</td><td>Cause</td><td>Cost</td></tr>
+<tr><td>Cold</td><td>App not in memory, page cache empty</td><td>Highest (full dyld + IO)</td></tr>
+<tr><td>Warm</td><td>App not in memory, page cache warm</td><td>Medium (no IO, dyld still runs)</td></tr>
+<tr><td>Hot</td><td>App suspended in memory</td><td>Near-zero (process resume)</td></tr>
+</table>
+
+<p>Instruments' App Launch template measures <strong>cold launch</strong>. To force a cold launch: reboot the device, then launch once (to warm the page cache), then reboot again and test.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Dangerous: work in +load ───────────────────────────────────
+// DO NOT DO THIS — runs synchronously before main(), holds a global lock
+@objc class BadSetup: NSObject {
+    override class func load() {
+        // Anything here blocks launch
+        URLSession.shared.dataTask(with: URL(string: "https://config.api")!) { _, _, _ in }.resume()
+    }
+}
+
+// ── Better: +initialize (lazy, called on first use) ────────────
+@objc class GoodSetup: NSObject {
+    override class func initialize() {
+        super.initialize()
+        // Called only when GoodSetup is first messaged — not at launch
+        // Still on main thread, so keep it short
+    }
+}
+
+// ── Best: explicit setup in AppDelegate ───────────────────────
+@main
+final class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -&gt; Bool {
+        // Only setup needed before first frame — keep &lt; 100ms total
+
+        // Critical: configure crash reporter first (needs to catch early crashes)
+        CrashReporter.configure()
+
+        // Deferred setup — not needed for first frame
+        Task.detached(priority: .utility) {
+            await AnalyticsService.shared.configure()
+            await RemoteConfig.shared.fetch()
+        }
+
+        return true
+    }
+}
+
+// ── Measuring launch time from main() ─────────────────────────
+// In main.swift (or @main struct):
+let launchStart = Date()
+
+// In viewDidAppear of the first visible VC:
+override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    if let start = AppDelegate.launchStart {
+        let elapsed = Date().timeIntervalSince(start)
+        MetricsLogger.log("app_launch_time", value: elapsed)
+        AppDelegate.launchStart = nil  // log only once
+    }
+}
+
+// ── Checking dylib count in your binary ───────────────────────
+// Terminal: otool -L /path/to/YourApp.app/YourApp
+// Each @rpath/Something.framework line = one dynamic framework to load
+// Target: &lt; 6 dynamic frameworks (excluding system cache)
+
+// ── Deferring Storyboard-heavy flows ──────────────────────────
+// The onboarding flow is only needed for new users — don't instantiate it at launch
+final class RootRouter {
+    func makeRootViewController(for user: User?) -&gt; UIViewController {
+        if let user {
+            // Returning user — instantiate feed directly (fast, no storyboard parse)
+            return FeedViewController(user: user)
+        } else {
+            // New user — onboarding storyboard is loaded lazily here, not at app start
+            return UIStoryboard(name: "Onboarding", bundle: nil)
+                .instantiateInitialViewController()!
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is <code>dyld</code> and what does it do during app launch?<em></em></p>
+
+<p>A: <code>dyld</code> (the dynamic linker/loader) is the first code that runs in an iOS app process before <code>main()</code>. It is responsible for: (1) <strong>Loading dylibs</strong> — mapping the app binary and all dependent dynamic libraries (frameworks) into the process's virtual address space; (2) <strong>Rebasing</strong> — adjusting all absolute pointers in <code>__DATA</code> segments because ASLR places binaries at random base addresses each launch; (3) <strong>Binding</strong> — resolving cross-dylib symbol references (e.g., calls from your app to UIKit functions) by looking up addresses in exported symbol tables; (4) <strong>ObjC setup</strong> — registering all classes, attaching categories, and calling <code>+load</code> methods; (5) <strong>C++ static initializers</strong> — running <code>__attribute__((constructor))</code> functions and global C++ object constructors. Only after all of this completes does <code>main()</code> run.</p>
+
+<p><em></em>Q: What is the difference between <code>+load</code> and <code>+initialize</code> in Objective-C, and why does it matter for launch performance?<em></em></p>
+
+<p>A: <code>+load</code> is called on every class and category that implements it, <strong>at dyld initialization time</strong>, before <code>main()</code> runs, synchronously on the main thread, while holding a global ObjC runtime lock. All <code>+load</code> methods across all frameworks run before the app starts. <code>+initialize</code> is called lazily — the first time a message is sent to the class (or a subclass). Implications for launch: <code>+load</code> methods add directly to pre-main time and can cause deadlocks if they acquire locks that interact with the global runtime lock. <code>+initialize</code> amortises the cost to when the class is first used. Rule: avoid <code>+load</code> entirely in app code; use <code>+initialize</code> for lightweight class-level setup, and <code>application(_:didFinishLaunchingWithOptions:)</code> for everything else.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you measure and reduce the pre-main launch time of an iOS app?</strong></p>
+
+<p>A: Measurement: set <code>DYLD_PRINT_STATISTICS=1</code> in the scheme's environment variables (or <code>DYLD_PRINT_STATISTICS_DETAILS=1</code> for a per-initializer breakdown). This prints the time breakdown: dylib loading, rebase/binding, ObjC setup, and C++ initializer time, with the slowest initializers named. Use Instruments' App Launch template for a visual timeline. Reduction: (1) <strong>Reduce dynamic framework count</strong> — every <code>@rpath</code> framework in <code>otool -L</code> output adds ~1–5 ms of dylib loading. Convert rarely-changed internal frameworks to static libraries (SPM <code>type: .static</code>). (2) <em></em>Eliminate <code>+load</code><em></em> — find all <code>+load</code> implementations with <code>grep -r "+load" --include="*.m"</code> or Xcode's call hierarchy. Replace with <code>+initialize</code> or explicit <code>didFinishLaunchingWithOptions</code> calls. (3) <strong>Reduce C++ static initializers</strong> — C++ libraries (e.g., OpenSSL, Realm, some analytics SDKs) have global constructors. Use <code>nm -m binary | grep "__ZN"</code> to list C++ symbols. Profile the initializer time in <code>DYLD_PRINT_STATISTICS_DETAILS</code>. (4) <strong>Reduce ObjC class count</strong> — thousands of registered classes slow down category attachment. Prefer Swift types for new code.</p>
+
+<p><strong>Q: What is the dyld launch closure and when is it invalidated?</strong></p>
+
+<p>A: The dyld launch closure is a pre-computed binary record that describes all the work dyld needs to do for a specific app binary: which dylibs to load, all rebase/bind operations, ObjC class registrations. dyld builds this closure on the first cold launch (or after an app update) and caches it, making subsequent launches faster — the closure replaces the full symbol-resolution work with a compact, pre-computed record. The closure is invalidated whenever the app binary changes (after an App Store update or TestFlight build install), when any of the dependent dylibs change (an OS update), or when the device reboots (the cache is in a volatile region). This is why the first launch after an app update is slower — the closure is rebuilt. You cannot control closure invalidation, but you can reduce its rebuild cost by having fewer dylibs and fewer ObjC classes.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a launch time optimization strategy for an app that currently takes 1.8 seconds to reach the first frame on a cold launch.</strong></p>
+
+<p>A: Systematic four-phase approach: (1) <strong>Profile first</strong>: run Instruments App Launch template on a physical device (never simulator) with a Release build. Identify whether the bottleneck is pre-main (dyld) or post-main (AppDelegate setup). The App Launch template shows a flame graph with a 400 ms reference line. (2) <strong>Pre-main reduction</strong>: if dylib loading dominates, use <code>otool -L</code> to audit dynamic frameworks. Convert non-SDK internal frameworks to SPM static targets. If initializer time dominates, use <code>DYLD_PRINT_STATISTICS_DETAILS=1</code> to identify the slow initializer and eliminate or defer it. Target &lt; 100 ms pre-main. (3) <strong>AppDelegate triage</strong>: in <code>didFinishLaunchingWithOptions</code>, log the duration of each setup call. Any call &gt; 5 ms is a candidate for deferral. Move non-critical setup (analytics configuration, remote config fetch, A/B test loading, image cache warm-up) into a <code>Task.detached(priority: .utility)</code> started from <code>didFinishLaunching</code>. The task runs after the first frame is displayed — the user sees a responsive UI immediately. (4) <strong>View hierarchy optimization</strong>: if the first VC's <code>viewDidLoad</code> is slow (Storyboard parse, heavy layout), switch to programmatic UI, defer subview creation with <code>lazy var</code>, and use skeleton screens while data loads asynchronously. Iterate with Instruments after each change; target &lt; 400 ms total cold launch and &lt; 200 ms warm launch.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: App is killed by the watchdog during launch with a crash log showing <code>0x8badf00d</code> exception code.<em></em></p>
+
+<p>Solution: <code>0x8badf00d</code> ("ate bad food") is the watchdog kill code — the app took too long on the main thread during launch or state transition (the limit is ~20 seconds for launch). Look in the crash log for the main thread backtraces showing which function was blocking. Common causes: synchronous network call in <code>didFinishLaunchingWithOptions</code>, blocking wait for a serial queue from the main thread, or a deadlock in a third-party SDK initializer. Move all async work to background threads and ensure <code>didFinishLaunchingWithOptions</code> returns quickly.</p>
+
+<p><em></em>Issue: <code>DYLD_PRINT_STATISTICS</code> shows initializer time dominated by a third-party SDK.<em></em></p>
+
+<p>Solution: The SDK has C++ global constructors or <code>+load</code> methods. Options: (1) Contact the SDK vendor — some SDKs provide a "configure manually" API that defers their initializer. (2) If the SDK is via SPM, check if it can be built as a static library (removes one dylib, but static initializers still run). (3) Wrap the SDK in a lazy-initialized facade: create a singleton that initialises the SDK on first method call rather than at app launch. If the SDK is only used after the user performs a specific action (e.g., plays a video), this defers the cost entirely.</p>
+
+<p><strong>Issue: Launch time is fast on simulator but slow on device.</strong></p>
+
+<p>Solution: Simulator uses the host Mac's CPU and memory — it is significantly faster and has no dylib loading overhead (system frameworks are available natively on the Mac). Always measure launch time on a real device using the App Launch Instruments template. Also ensure you're testing a Release build — Debug builds have disabled optimizations and much slower startup.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="startup-optimization.md">Startup Optimization</a> — techniques derived from launch process understanding</li>
+<li><a href="runloop-runtime.md">RunLoop &amp; Runtime</a> — what runs after launch</li>
+<li><a href="../10-dependency-management/static-dynamic-frameworks.md">Static Libraries &amp; Dynamic Frameworks</a> — dylib count and startup cost</li>
+<li><a href="../09-ios-platform/app-lifecycle.md">App Lifecycle</a> — <code>didFinishLaunchingWithOptions</code> structure</li>
+<li><a href="../12-performance/instruments-profiling.md">Instruments &amp; Profiling</a> — App Launch Instruments template</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

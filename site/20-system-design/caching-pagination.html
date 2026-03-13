@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Caching & Pagination — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../20-system-design/index.html">System Design</a></span>
+    <span>Caching Pagination</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="caching--pagination">Caching &amp; Pagination</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Caching and pagination are the two performance levers most directly visible to users in data-heavy apps. <strong>Caching</strong> stores previously fetched data close to the consumer — in memory (fastest), on disk (persistent across launches), or as HTTP-layer caching (transparent, uses server headers). An effective cache strategy delivers fast first-render, reduces bandwidth and server load, and provides graceful offline behaviour. <strong>Pagination</strong> loads data in chunks rather than all at once — essential for feeds, search results, or any list that grows over time. The standard approach for mobile is cursor-based pagination (stateless server, handles insertions between pages), not offset pagination (fragile under insertions, requires server to count). The two systems interact: each page is a cacheable unit; an expired cache should trigger re-fetching the first page; pre-fetching the next page fills the cache before the user scrolls to it.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Caching is like keeping a grocery list on your fridge. Next time you need eggs, you check the fridge first — instant, free, no trip to the store. If the list is out of date (expired), you go to the store (network) and update the fridge. Pagination is like loading a book 20 pages at a time instead of downloading the whole library. When you reach the last page you've loaded, the app fetches the next 20. The cursor is a bookmark that tells the server exactly where you left off — even if new pages were added at the beginning.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="caching-layers">Caching Layers</h3>
+
+<pre><code>Request
+  │
+  ▼
+1. Memory Cache (NSCache / dictionary)
+   — Hit: return immediately (microseconds)
+   — Miss: check Disk Cache
+     │
+     ▼
+2. Disk Cache (Files / SQLite / URLCache)
+   — Hit: return from disk, optionally warm memory cache
+   — Miss: fetch from Network
+     │
+     ▼
+3. HTTP Response Cache (URLCache)
+   — Uses Cache-Control / ETag headers
+   — Can revalidate with conditional GET (If-None-Match)
+     │
+     ▼
+4. CDN (Content Delivery Network)
+   — Edge cache close to user (not controlled by app)
+   — Images, static assets, API responses with long TTL</code></pre>
+
+<h3 id="nscache-memory-cache">NSCache (Memory Cache)</h3>
+
+<p><code>NSCache</code> is thread-safe, auto-evicts under memory pressure, and is the standard in-memory cache for iOS.</p>
+
+<pre><code class="language-swift">import UIKit
+
+// Typed NSCache wrapper
+final class ImageCache {
+    private let cache: NSCache&lt;NSString, UIImage&gt; = {
+        let cache = NSCache&lt;NSString, UIImage&gt;()
+        cache.totalCostLimit = 50 * 1024 * 1024   // 50 MB — measured in bytes
+        cache.countLimit = 200                      // max 200 images
+        return cache
+    }()
+
+    func image(for url: URL) -&gt; UIImage? {
+        cache.object(forKey: url.absoluteString as NSString)
+    }
+
+    func setImage(_ image: UIImage, for url: URL) {
+        // Cost = pixel count × 4 bytes per pixel (ARGB)
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale) * 4
+        cache.setObject(image, forKey: url.absoluteString as NSString, cost: cost)
+    }
+
+    func removeImage(for url: URL) {
+        cache.removeObject(forKey: url.absoluteString as NSString)
+    }
+}</code></pre>
+
+<h3 id="disk-cache">Disk Cache</h3>
+
+<p>For persistence across app launches (images, JSON responses):</p>
+
+<pre><code class="language-swift">import Foundation
+import CryptoKit  // for hashing cache key
+
+actor DiskCache {
+    private let directory: URL
+
+    init(name: String) {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        directory = caches.appendingPathComponent(name)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    func read(key: String) -&gt; Data? {
+        let path = filePath(for: key)
+        guard let data = try? Data(contentsOf: path) else { return nil }
+        // Check TTL stored in extended attributes or a sidecar file
+        guard !isExpired(key: key) else {
+            try? FileManager.default.removeItem(at: path)
+            return nil
+        }
+        return data
+    }
+
+    func write(_ data: Data, key: String, ttl: TimeInterval = 3600) {
+        let path = filePath(for: key)
+        try? data.write(to: path)
+        // Store expiry in a sidecar JSON
+        let expiry = Date().addingTimeInterval(ttl)
+        let expiryData = try? JSONEncoder().encode(expiry)
+        try? expiryData?.write(to: path.appendingPathExtension("expiry"))
+    }
+
+    func purge() {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    private func filePath(for key: String) -&gt; URL {
+        // Hash the key to get a safe filename
+        let hash = SHA256.hash(data: Data(key.utf8)).compactMap { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent(hash)
+    }
+
+    private func isExpired(key: String) -&gt; Bool {
+        let expiryPath = filePath(for: key).appendingPathExtension("expiry")
+        guard let data = try? Data(contentsOf: expiryPath),
+              let expiry = try? JSONDecoder().decode(Date.self, from: data) else {
+            return false   // no expiry info — treat as not expired
+        }
+        return Date() &gt; expiry
+    }
+}</code></pre>
+
+<h3 id="urlcache-http-response-caching">URLCache (HTTP Response Caching)</h3>
+
+<p><code>URLCache</code> respects <code>Cache-Control</code> and <code>ETag</code> headers automatically:</p>
+
+<pre><code class="language-swift">// Configure URLSession with a persistent URLCache
+let configuration = URLSessionConfiguration.default
+configuration.urlCache = URLCache(
+    memoryCapacity: 10 * 1024 * 1024,   // 10 MB memory
+    diskCapacity: 100 * 1024 * 1024,    // 100 MB disk
+    diskPath: "api_cache"
+)
+configuration.requestCachePolicy = .returnCacheDataElseLoad  // offline-first
+// or: .useProtocolCachePolicy (respects Cache-Control headers)
+
+let session = URLSession(configuration: configuration)</code></pre>
+
+<p><strong>Cache-Control header strategies:</strong></p>
+
+<table>
+<tr><td>Header</td><td>Behaviour</td></tr>
+<tr><td><code>Cache-Control: max-age=300</code></td><td>Cache for 5 minutes</td></tr>
+<tr><td><code>Cache-Control: no-store</code></td><td>Never cache</td></tr>
+<tr><td><code>Cache-Control: no-cache</code></td><td>Cache but always revalidate</td></tr>
+<tr><td><code>ETag: "abc123"</code> + <code>If-None-Match</code></td><td>Conditional GET — 304 Not Modified if unchanged</td></tr>
+<tr><td><code>Last-Modified</code> + <code>If-Modified-Since</code></td><td>Alternative conditional GET</td></tr>
+</table>
+
+<h3 id="cache-invalidation-strategies">Cache Invalidation Strategies</h3>
+
+<table>
+<tr><td>Strategy</td><td>Description</td><td>Use When</td></tr>
+<tr><td>TTL (Time-to-Live)</td><td>Cache expires after N seconds</td><td>API data that changes infrequently</td></tr>
+<tr><td>Event-based</td><td>Invalidate on write (<code>POST</code>/<code>PUT</code>/<code>DELETE</code>)</td><td>Data the user can modify</td></tr>
+<tr><td>ETag revalidation</td><td>Conditional GET; 304 if unchanged</td><td>Large responses where bandwidth matters</td></tr>
+<tr><td>Cache version</td><td>Append version to cache key; bump version to invalidate all</td><td>Design system assets, app configuration</td></tr>
+<tr><td>Manual purge</td><td><code>URLCache.shared.removeAllCachedResponses()</code></td><td>User logout, account switch</td></tr>
+</table>
+
+<h3 id="cursor-based-pagination">Cursor-Based Pagination</h3>
+
+<p>Preferred over offset pagination for mobile feeds. The server returns a <code>nextCursor</code> (an opaque token representing the position in the result set).</p>
+
+<pre><code class="language-swift">// Server response for a paginated feed
+struct FeedPage: Decodable {
+    let articles: [Article]
+    let nextCursor: String?     // nil = no more pages
+    let totalCount: Int?        // optional — for display ("1,234 results")
+}
+
+// Pagination state machine
+actor PaginationController&lt;Item: Decodable&gt; {
+    private let pageSize = 20
+    private var cursor: String? = nil    // nil = fetch first page
+    private var isFetching = false
+    private(set) var hasMore = true
+    private(set) var items: [Item] = []
+
+    private let fetch: (String?) async throws -&gt; (items: [Item], nextCursor: String?)
+
+    init(fetch: @escaping (String?) async throws -&gt; (items: [Item], nextCursor: String?)) {
+        self.fetch = fetch
+    }
+
+    func loadNextPage() async throws {
+        guard !isFetching, hasMore else { return }
+        isFetching = true
+        defer { isFetching = false }
+
+        let result = try await fetch(cursor)
+        items.append(contentsOf: result.items)
+        cursor = result.nextCursor
+        hasMore = result.nextCursor != nil
+    }
+
+    func reset() {
+        cursor = nil
+        hasMore = true
+        items = []
+    }
+}</code></pre>
+
+<h3 id="prefetching">Prefetching</h3>
+
+<p>Load the next page before the user reaches the bottom:</p>
+
+<pre><code class="language-swift">// UICollectionView prefetching
+extension FeedViewController: UICollectionViewDataSourcePrefetching {
+    func collectionView(_ collectionView: UICollectionView,
+                        prefetchItemsAt indexPaths: [IndexPath]) {
+        let lastVisible = collectionView.indexPathsForVisibleItems
+            .map { $0.item }
+            .max() ?? 0
+        let totalItems = viewModel.items.count
+
+        // Load next page when within 5 items of the end
+        if lastVisible &gt; totalItems - 5 {
+            Task { try? await viewModel.loadNextPage() }
+        }
+    }
+}
+
+// SwiftUI: use .task(id:) or .onAppear on the last item
+struct ArticleListView: View {
+    @StateObject private var viewModel: FeedViewModel
+
+    var body: some View {
+        LazyVStack {
+            ForEach(viewModel.articles) { article in
+                ArticleRow(article: article)
+                    .onAppear {
+                        if article.id == viewModel.articles.last?.id {
+                            Task { try? await viewModel.loadNextPage() }
+                        }
+                    }
+            }
+            if viewModel.isLoading {
+                ProgressView()
+            }
+        }
+    }
+}</code></pre>
+
+<h3 id="image-pipeline-architecture">Image Pipeline Architecture</h3>
+
+<p>A production image pipeline: URL → memory cache → disk cache → network download → decode → memory cache update.</p>
+
+<pre><code class="language-swift">import UIKit
+
+// Thread-safe image loader with request coalescing
+// (multiple requests for the same URL share one network call)
+actor ImageLoader {
+    private let memoryCache = ImageCache()
+    private let diskCache = DiskCache(name: "images")
+    private var inFlightTasks: [URL: Task&lt;UIImage, Error&gt;] = [:]
+
+    func image(for url: URL) async throws -&gt; UIImage {
+        // 1. Memory cache
+        if let cached = memoryCache.image(for: url) { return cached }
+
+        // 2. Coalesce: reuse in-flight task
+        if let task = inFlightTasks[url] { return try await task.value }
+
+        // 3. Create new load task
+        let task = Task&lt;UIImage, Error&gt; {
+            // Check disk cache first
+            if let data = await diskCache.read(key: url.absoluteString),
+               let image = UIImage(data: data) {
+                memoryCache.setImage(image, for: url)
+                return image
+            }
+
+            // Network download
+            let (data, _) = try await URLSession.shared.data(from: url)
+
+            // Downsample to display size (avoid decoding a 4K image for a 44pt thumbnail)
+            let image = try downsample(data: data, to: CGSize(width: 200, height: 200))
+
+            // Cache
+            await diskCache.write(data, key: url.absoluteString, ttl: 86400)
+            memoryCache.setImage(image, for: url)
+            return image
+        }
+
+        inFlightTasks[url] = task
+        defer { inFlightTasks[url] = nil }
+
+        return try await task.value
+    }
+
+    private func downsample(data: Data, to size: CGSize) throws -&gt; UIImage {
+        let options: [CFString: Any] = [
+            kCGImageSourceShouldCache: false,
+            kCGImageSourceShouldAllowFloat: false
+        ]
+        guard let source = CGImageSourceCreateWithData(data as CFData, options as CFDictionary) else {
+            throw ImageError.invalidData
+        }
+        let maxPixel = max(size.width, size.height) * UIScreen.main.scale
+        let thumbOptions: [CFString: Any] = [
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else {
+            throw ImageError.thumbnailFailed
+        }
+        return UIImage(cgImage: cgImage)
+    }
+
+    enum ImageError: Error { case invalidData, thumbnailFailed }
+}</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Complete feed ViewModel with pagination + caching ─────────
+import SwiftUI
+import Combine
+
+@MainActor
+final class FeedViewModel: ObservableObject {
+    @Published private(set) var articles: [Article] = []
+    @Published private(set) var isLoading = false
+    @Published private(set) var error: Error?
+
+    private let repository: ArticleRepository
+    private let cache: ResponseCache
+    private var pagination: PaginationController&lt;Article&gt;!
+
+    init(repository: ArticleRepository, cache: ResponseCache) {
+        self.repository = repository
+        self.cache = cache
+        self.pagination = PaginationController { [weak self] cursor in
+            guard let self else { return ([], nil) }
+            return try await self.repository.fetchPage(cursor: cursor)
+        }
+    }
+
+    func loadInitialPage() async {
+        // Show cached data immediately
+        if let cached = await cache.cachedArticles() {
+            articles = cached
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            await pagination.reset()
+            try await pagination.loadNextPage()
+            articles = await pagination.items
+            await cache.cacheArticles(articles)
+        } catch {
+            self.error = error
+        }
+    }
+
+    func loadNextPage() async {
+        guard !isLoading else { return }
+        do {
+            try await pagination.loadNextPage()
+            articles = await pagination.items
+        } catch {
+            self.error = error
+        }
+    }
+
+    func refresh() async {
+        await cache.invalidate()
+        await loadInitialPage()
+    }
+}
+
+// Placeholder types
+protocol ArticleRepository {
+    func fetchPage(cursor: String?) async throws -&gt; (items: [Article], nextCursor: String?)
+}
+actor ResponseCache {
+    func cachedArticles() -&gt; [Article]? { nil }
+    func cacheArticles(_ articles: [Article]) {}
+    func invalidate() {}
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between offset pagination and cursor pagination?</strong></p>
+
+<p>A: <strong>Offset pagination</strong> uses <code>page=2&amp;limit=20</code> or <code>offset=20&amp;limit=20</code>. The server skips the first N rows and returns the next batch. Problems: (1) if new items are inserted at the top between page fetches, items shift and the user sees duplicates or skips items; (2) large offsets are expensive — the database must count and skip rows. <strong>Cursor pagination</strong> uses an opaque token (the cursor) representing the last seen item — e.g., the item's ID or a timestamp. The server returns all items after that cursor: <code>cursor=xyz&amp;limit=20</code>. Advantages: (1) stable — insertions at the top don't affect subsequent pages because the server returns items relative to the cursor, not an offset; (2) efficient — the cursor can be an indexed primary key, making the query fast regardless of position. Disadvantage: you cannot jump to an arbitrary page (no "go to page 5"). For mobile feeds, cursor pagination is always preferred: the user scrolls linearly, page-jumping isn't needed, and stability under live updates is critical.</p>
+
+<p><em></em>Q: When should you use <code>NSCache</code> vs a disk cache?<em></em></p>
+
+<p>A: Use <em></em><code>NSCache</code><em></em> for: data that's expensive to compute but cheap to re-fetch (decoded images, parsed JSON), data that doesn't need to survive app restart (session-lived), and when automatic eviction under memory pressure is acceptable. <code>NSCache</code> lives in memory — fastest access but lost on launch or memory warning. Use a <strong>disk cache</strong> for: data that must survive app restart (feed content for offline-first, user preferences, downloaded assets), data that's expensive or slow to fetch from the network, and content that should be available immediately on next launch (avoiding a loading state). The cost of a disk cache is I/O latency for reads/writes. A production app uses both: memory cache for the session, disk cache for persistence. The typical read path is: memory → disk → network.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you invalidate disk cache correctly when the server data changes?</strong></p>
+
+<p>A: Three strategies depending on the data type: (1) <strong>TTL (Time-to-Live)</strong>: associate an expiry timestamp with each cache entry. Common TTLs: user profile 5 minutes, feed articles 2 minutes, images 24 hours, config 1 hour. On read, check if the entry is expired before returning it. On expiry, return the stale entry (for immediate render) and trigger a background refresh. (2) <strong>ETag / conditional GET</strong>: store the <code>ETag</code> header value from the response alongside the cached data. On next request, send <code>If-None-Match: &lt;etag&gt;</code> — if the server returns <code>304 Not Modified</code>, use the cached data; if <code>200 OK</code>, update the cache. This is bandwidth-efficient for large, infrequently changing responses. <code>URLCache</code> handles this automatically for HTTP responses. (3) <strong>Event-driven invalidation</strong>: when the user performs a write (creates, updates, or deletes), invalidate the relevant cache keys immediately before the network request returns — the cache key is known (e.g., <code>feed/&lt;userId&gt;</code>). The next read triggers a fresh fetch. For multi-device sync, use a server-sent invalidation event (WebSocket message or silent push) to signal that the cache is stale.</p>
+
+<p><strong>Q: How would you build an image pre-fetching system for a scrolling feed of 1,000 items?</strong></p>
+
+<p>A: Four-component system: (1) <strong>Prefetch trigger</strong>: adopt <code>UICollectionViewDataSourcePrefetching</code> — <code>prefetchItemsAt</code> is called with upcoming index paths as the user scrolls. Extract the image URLs for those items and enqueue download tasks. In <code>cancelPrefetchingForItemsAt</code>, cancel tasks for items scrolled past. (2) <strong>Prioritised task queue</strong>: use an <code>actor</code>-based <code>ImageLoader</code> with a priority queue — items close to the visible area get <code>.userInitiated</code> QoS; prefetch items get <code>.utility</code>. Limit concurrent downloads to 3–5 (configurable) to avoid network saturation. (3) <strong>Request coalescing</strong>: if the same URL is requested multiple times (same image appears in multiple cells), the <code>ImageLoader</code> deduplicates by URL — one network request, multiple waiters via <code>Task.value</code>. (4) <strong>Cancellation</strong>: each cell's prefetch request is wrapped in a <code>Task</code> stored keyed by index path. When the cell is reused, cancel the old task before starting a new one. Memory budget: <code>NSCache</code> with <code>totalCostLimit = 50MB</code> (cost = pixel count × 4 bytes). Images outside the visible window + 50 items above/below are eligible for eviction.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a caching strategy for a social media app where feed content is real-time (new posts every few seconds) but the cache must provide instant rendering on cold launch.</strong></p>
+
+<p>A: Five-layer strategy: (1) <strong>Layered cache with explicit TTLs</strong>: memory cache TTL = 30 seconds (fastest path, acceptable for real-time feed — 30s stale is imperceptible); disk cache TTL = 5 minutes (for cold launch); both layers store the full feed page including images URLs. (2) <strong>Cold launch render from disk</strong>: on app cold launch, before any network request, read the last cached feed page from disk and render it immediately. Users see content within 100ms, no loading spinner. Stale indicator ("Updated 3 minutes ago") shown. (3) <strong>Concurrent refresh</strong>: immediately after rendering cached content, fetch the latest feed page. On response, merge new posts at the top using <code>DiffableDataSource</code> — existing cells stay in place, new cells are inserted with animation. (4) <strong>Real-time updates via WebSocket</strong>: once the feed is visible, subscribe to a WebSocket channel for the user's feed. New posts arrive as events — prepend to the local store and update the UI. No polling needed while the app is in the foreground. (5) <strong>Cache invalidation on background</strong>: use a background URLSession task (triggered by silent push) to refresh the disk cache while the app is suspended. The next cold launch shows content that's at most the push delivery delay (seconds) stale, rather than 5 minutes stale. Image prefetching: prefetch images for the first 10 feed items immediately after the disk cache render, using the <code>ImageLoader</code> actor at <code>.userInitiated</code> priority.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Paginated feed shows duplicate items when the user pulls-to-refresh mid-scroll.</strong></p>
+
+<p>Solution: Pull-to-refresh must reset the <code>PaginationController</code> (clear items, reset cursor to <code>nil</code>) before fetching the first page. If the user has already loaded 3 pages (60 items) and pulls-to-refresh, the controller is reset, a fresh first page (20 items) is fetched, and <code>items</code> is set to those 20 items — replacing the previous 60. Use <code>DiffableDataSource</code> to apply the new snapshot; it handles the deletion and insertion animation automatically without UICollectionView crashes.</p>
+
+<p><strong>Issue: NSCache grows unbounded when caching decoded images.</strong></p>
+
+<p>Solution: <code>NSCache</code> evicts automatically under memory pressure, but only if <code>cost</code> is set correctly when inserting items. If <code>setObject(_:forKey:cost:)</code> is called with <code>cost = 0</code> (or <code>setObject(_:forKey:)</code> without cost), <code>totalCostLimit</code> has no effect — <code>NSCache</code> only evicts by count (<code>countLimit</code>). Calculate the actual cost: for <code>UIImage</code>, cost = <code>Int(image.size.width * image.size.height * image.scale * image.scale) * 4</code> (bytes). Set <code>totalCostLimit</code> to your target memory budget (e.g., 50MB). Also register for <code>UIApplication.didReceiveMemoryWarningNotification</code> and call <code>cache.removeAllObjects()</code> as a safety net.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="offline-first-architecture.md">Offline-First Architecture</a> — repository layer above the cache</li>
+<li><a href="../12-performance/memory-optimization.md">Performance — Memory Optimization</a> — NSCache cost-based eviction</li>
+<li><a href="../12-performance/lazy-loading.md">Performance — Lazy Loading</a> — image loader actor and prefetching</li>
+<li><a href="../07-networking/index.md">Networking</a> — URLSession, URLCache, ETag handling</li>
+<li><a href="../08-data-persistence/index.md">Data Persistence</a> — disk persistence for cache entries</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

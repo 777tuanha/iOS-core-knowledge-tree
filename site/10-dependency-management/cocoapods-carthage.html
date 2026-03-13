@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CocoaPods & Carthage — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../10-dependency-management/index.html">Dependency Management</a></span>
+    <span>Cocoapods Carthage</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html" class="active">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="cocoapods--carthage">CocoaPods &amp; Carthage</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>CocoaPods and Carthage are the two major third-party dependency managers that predate Swift Package Manager. <strong>CocoaPods</strong> is a centralised, workspace-based manager — the dominant tool for the past decade, with thousands of published libraries (Podspecs). It modifies the Xcode project, creates a workspace, builds all dependencies as frameworks at compile time, and handles transitive dependencies automatically. <strong>Carthage</strong> takes a decentralised, minimal-integration approach: it builds pre-compiled frameworks from GitHub repositories and requires you to manually add them to build phases. Carthage never modifies your <code>.xcodeproj</code>. Both are in maintenance mode for most new projects, with SPM now covering most use cases, but understanding them is essential for maintaining existing codebases.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p><strong>CocoaPods</strong> is a full-service moving company: you give it a list of what you need (Podfile), it fetches everything, assembles the furniture (builds frameworks), and even sets up the rooms for you (modifies your Xcode workspace). You just open the <code>.xcworkspace</code> it creates. <strong>Carthage</strong> is a parts supplier: you tell it what kits to order (Cartfile), it builds the kits for you, and hands you the boxes (<code>.framework</code> files). You then put the boxes on the shelves yourself (drag them into Xcode). Less hand-holding, more control.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="cocoapods--architecture">CocoaPods — Architecture</h3>
+
+<p>CocoaPods manages dependencies through three artefacts:</p>
+
+<table>
+<tr><td>File</td><td>Purpose</td><td>Commit?</td></tr>
+<tr><td><code>Podfile</code></td><td>Declares dependencies and configuration</td><td>Yes</td></tr>
+<tr><td><code>Podfile.lock</code></td><td>Pins exact resolved versions</td><td>Yes (apps); No (libraries)</td></tr>
+<tr><td><code>Pods/</code> directory</td><td>Downloaded sources and build products</td><td>No — add to <code>.gitignore</code></td></tr>
+<tr><td><code>.xcworkspace</code></td><td>Generated workspace containing app + Pods project</td><td>No (auto-generated)</td></tr>
+</table>
+
+<h3 id="podfile-structure">Podfile Structure</h3>
+
+<pre><code class="language-ruby">platform :ios, '16.0'
+use_frameworks!          # link as dynamic frameworks; omit for static
+
+workspace 'MyApp'
+
+target 'MyApp' do
+  # Dependencies
+  pod 'Alamofire',    '~&gt; 5.8'         # up to next major
+  pod 'GRDB.swift',   '~&gt; 6.0'
+  pod 'Kingfisher',   '&gt;= 7.0', '&lt; 8'  # explicit range
+  pod 'CryptoSwift',  :git =&gt; 'https://github.com/krzyzanowskim/CryptoSwift.git',
+                      :tag =&gt; '1.8.0'  # pin to tag
+
+  target 'MyAppTests' do
+    inherit! :search_paths              # inherit app pods without re-linking
+    pod 'OHHTTPStubs/Swift', '~&gt; 9.0'
+  end
+end
+
+# Post-install hook — modify build settings after generation
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+      config.build_settings['SWIFT_VERSION'] = '5.0'
+    end
+  end
+end</code></pre>
+
+<h3 id="pod-install-vs-pod-update">pod install vs pod update</h3>
+
+<table>
+<tr><td>Command</td><td>Effect</td></tr>
+<tr><td><code>pod install</code></td><td>Installs versions recorded in <code>Podfile.lock</code>; resolves new/changed entries only</td></tr>
+<tr><td><code>pod update [PodName]</code></td><td>Fetches the latest version satisfying constraints; updates <code>Podfile.lock</code></td></tr>
+<tr><td><code>pod update</code></td><td>Updates ALL pods to latest — use cautiously</td></tr>
+</table>
+
+<p><strong>Rule</strong>: always run <code>pod install</code> on CI and fresh clones. Run <code>pod update &lt;PodName&gt;</code> when intentionally upgrading a specific library.</p>
+
+<h3 id="use_frameworks-and-static-pods">use_frameworks! and Static Pods</h3>
+
+<p><code>use_frameworks!</code> (dynamic linking) was required before Xcode 9 for Swift pods. Modern CocoaPods supports static frameworks:</p>
+
+<pre><code class="language-ruby">use_frameworks! :linkage =&gt; :static   # static linking (faster startup, larger binary)
+# or per-pod:
+pod 'SomeLibrary', :linkage =&gt; :dynamic</code></pre>
+
+<p><strong>Static pods</strong> do not require embedding in the app bundle and have zero runtime startup cost — preferred when not targeting App Extensions.</p>
+
+<h3 id="podspec">Podspec</h3>
+
+<p>A <code>.podspec</code> file describes a publishable library. Required for open-source pods and for distributing private pods via a private Specs repo or <code>:path =&gt;</code>:</p>
+
+<pre><code class="language-ruby">Pod::Spec.new do |s|
+  s.name         = 'NetworkKit'
+  s.version      = '1.2.0'
+  s.summary      = 'Thin URLSession wrapper'
+  s.homepage     = 'https://github.com/company/NetworkKit'
+  s.license      = { :type =&gt; 'MIT' }
+  s.author       = 'Company'
+  s.platform     = :ios, '16.0'
+  s.source       = { :git =&gt; 'https://github.com/company/NetworkKit.git', :tag =&gt; s.version }
+  s.source_files = 'Sources/**/*.swift'
+  s.swift_version = '5.9'
+  s.dependency 'Alamofire', '~&gt; 5.8'
+end</code></pre>
+
+<h3 id="carthage--architecture">Carthage — Architecture</h3>
+
+<p>Carthage resolves and builds dependencies but leaves Xcode project integration manual.</p>
+
+<p><strong>Cartfile</strong>:</p>
+<pre><code>github "Alamofire/Alamofire" ~&gt; 5.8
+github "groue/GRDB.swift" ~&gt; 6.0
+git "https://github.com/company/PrivateLib.git" "1.0.0"</code></pre>
+
+<p><strong>Cartfile.resolved</strong>: lock file — commit for apps.</p>
+
+<p><strong>Workflow</strong>:</p>
+<pre><code class="language-bash"># Build all dependencies for iOS (arm64 + x86_64 Simulator):
+carthage update --platform iOS --use-xcframeworks
+
+# Bootstrap from lock file (equivalent to pod install):
+carthage bootstrap --platform iOS --use-xcframeworks</code></pre>
+
+<p>Output: <code>Carthage/Build/iOS/*.xcframework</code> (with <code>--use-xcframeworks</code>).</p>
+
+<p>Manual integration: add each <code>.xcframework</code> to the app target's "Frameworks, Libraries, and Embedded Content" in Xcode. For dynamic frameworks, add a "Copy Files" build phase or use <code>--use-xcframeworks</code> (recommended — handles simulator slices automatically).</p>
+
+<h3 id="carthage-vs-cocoapods-vs-spm">Carthage vs CocoaPods vs SPM</h3>
+
+<table>
+<tr><td>Concern</td><td>CocoaPods</td><td>Carthage</td><td>SPM</td></tr>
+<tr><td>Modifies Xcode project</td><td>Yes</td><td>No</td><td>Yes (adds package ref)</td></tr>
+<tr><td>Build speed</td><td>Slow (builds from source each clean)</td><td>Faster (pre-built)</td><td>Fast (Xcode caches)</td></tr>
+<tr><td>Transitive deps</td><td>Automatic</td><td>Automatic</td><td>Automatic</td></tr>
+<tr><td>Private repos</td><td>Specs repo or :path</td><td>Git URL</td><td>Git URL</td></tr>
+<tr><td>App Extensions</td><td>With <code>use_frameworks!</code></td><td>Yes</td><td>Yes</td></tr>
+<tr><td>Active development</td><td>Maintenance mode</td><td>Declining</td><td>Active (Apple)</td></tr>
+</table>
+
+<h3 id="migrating-from-cocoapodscarthage-to-spm">Migrating from CocoaPods/Carthage to SPM</h3>
+
+<ol>
+<li>Check if the library has an SPM-compatible <code>Package.swift</code> (most modern libraries do).</li>
+<li>Remove the pod from <code>Podfile</code>; run <code>pod install</code> to deintegrate.</li>
+<li>In Xcode, File → Add Package Dependencies → paste the library's Git URL.</li>
+<li>Fix any import path differences (module names occasionally differ).</li>
+<li>Update <code>Bundle.module</code> vs <code>Bundle(for:)</code> resource access patterns.</li>
+</ol>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-ruby"># ── Production Podfile example ────────────────────────────────
+platform :ios, '16.0'
+use_frameworks! :linkage =&gt; :static   # static = faster launch
+
+inhibit_all_warnings!   # suppress warnings from pod source
+
+target 'MyApp' do
+  # Networking
+  pod 'Alamofire',   '~&gt; 5.8'
+  pod 'Kingfisher',  '~&gt; 7.0'   # image loading
+
+  # Analytics (binary-only; use vendored framework)
+  pod 'Firebase/Analytics', '~&gt; 10.0'
+  pod 'Firebase/Crashlytics'
+
+  # Development-only
+  pod 'Reveal-SDK', :configurations =&gt; ['Debug']
+
+  target 'MyAppTests' do
+    inherit! :search_paths
+    pod 'OHHTTPStubs/Swift', '~&gt; 9.0'
+    pod 'Quick',   '~&gt; 7.0'
+    pod 'Nimble',  '~&gt; 12.0'
+  end
+
+  target 'MyAppUITests' do
+    # UI test targets usually need no additional pods
+  end
+end
+
+post_install do |installer|
+  # Ensure all pods target the same iOS version to prevent linker warnings
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+    end
+  end
+
+  # Enable module stability for XCFramework distribution
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
+    end
+  end
+end</code></pre>
+
+<pre><code class="language-bash"># ── CocoaPods CI workflow ─────────────────────────────────────
+# Install exact versions from Podfile.lock (never pod update on CI):
+bundle exec pod install --deployment --clean-install
+
+# Lint a podspec before publishing:
+pod spec lint NetworkKit.podspec --allow-warnings
+
+# Publish to CocoaPods trunk:
+pod trunk push NetworkKit.podspec
+
+# ── Carthage workflow ─────────────────────────────────────────
+# First run / update dependencies:
+carthage update --platform iOS --use-xcframeworks
+
+# Subsequent runs (from Cartfile.resolved — fast):
+carthage bootstrap --platform iOS --use-xcframeworks
+
+# Build a single dependency:
+carthage update Alamofire --platform iOS --use-xcframeworks
+
+# Diagnose build failure:
+carthage update --platform iOS --use-xcframeworks --verbose</code></pre>
+
+<pre><code class="language-swift">// ── Accessing a CocoaPods resource bundle ─────────────────────
+// When a pod has resources, CocoaPods creates a separate bundle
+// named &lt;PodName&gt;.bundle alongside the framework:
+let podBundle = Bundle(for: SomePodClass.self)
+    .url(forResource: "SomePod", withExtension: "bundle")
+    .flatMap { Bundle(url: $0) }
+let image = UIImage(named: "icon", in: podBundle, compatibleWith: nil)</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>pod install</code> and <code>pod update</code>?<em></em></p>
+
+<p>A: <code>pod install</code> reads <code>Podfile.lock</code> and installs the exact versions recorded there. For pods not yet in the lock file (newly added entries), it resolves the latest version satisfying the Podfile constraint and records it. <code>pod update [PodName]</code> ignores <code>Podfile.lock</code> for the specified pod (or all pods if no name is given) and fetches the latest version satisfying the Podfile constraint, then updates <code>Podfile.lock</code>. Use <code>pod install</code> on CI and on fresh clones to get reproducible builds. Use <code>pod update</code> when you intentionally want to upgrade a library. Never run bare <code>pod update</code> without a pod name on CI — it upgrades all dependencies, breaking reproducibility.</p>
+
+<p><em></em>Q: What does <code>use_frameworks!</code> do in a Podfile and when should you avoid it?<em></em></p>
+
+<p>A: <code>use_frameworks!</code> tells CocoaPods to build each pod as a dynamic framework (<code>.framework</code> containing a dylib) rather than a static library. This was historically required for Swift pods because the Swift standard library was not statically linked before Xcode 7. Today, <code>use_frameworks!</code> with dynamic linking adds startup time (each framework is loaded at launch) and requires all frameworks to be embedded in the app bundle, increasing size. Modern best practice is <code>use_frameworks! :linkage =&gt; :static</code> — pods are compiled as static libraries wrapped in framework format, retaining the module system without the startup cost. Avoid bare <code>use_frameworks!</code> (dynamic) unless a specific pod requires dynamic linking (e.g., some Firebase SDKs, pods using <code>+load</code> for registration patterns).</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does CocoaPods handle transitive dependencies and what happens when two pods require conflicting versions of the same dependency?</strong></p>
+
+<p>A: CocoaPods uses a dependency resolver (Molinillo) that finds a set of versions satisfying all constraints simultaneously. When pod A requires <code>Lib ~&gt; 1.0</code> and pod B requires <code>Lib ~&gt; 2.0</code>, the resolver cannot find a version satisfying both and reports a conflict error. Resolution options: (1) Update one of the conflicting pods — newer versions often relax their dependency constraints. (2) Use <code>:git</code> with a <code>:commit</code> or <code>:tag</code> pointing to a fork that widens the constraint. (3) Remove one of the conflicting pods and find an alternative. (4) Use <code>pod deintegrate</code> and migrate the conflicting pods to SPM where binary targets or forks are more manageable. Unlike npm, CocoaPods cannot include two versions of the same pod simultaneously — all consumers must agree on a single version.</p>
+
+<p><strong>Q: Why is Carthage's approach of pre-built frameworks faster for CI than CocoaPods building from source?</strong></p>
+
+<p>A: CocoaPods rebuilds all pods from source on every clean build (and after <code>DerivedData</code> is cleared, which CI often does). For large dependency graphs (10–20 pods), this can add 5–15 minutes to every CI build. Carthage builds frameworks once and caches them in <code>Carthage/Build/</code>. CI can cache the <code>Carthage/Build/</code> directory between runs — if <code>Cartfile.resolved</code> hasn't changed, no rebuild is needed. The tradeoff: Carthage requires manual integration (drag-drop into Xcode), doesn't handle transitive dependencies automatically (each dependency and its dependencies must be built separately), and building <code>--use-xcframeworks</code> for multi-architecture targets on every developer machine on first setup can take considerable time.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: You have a CocoaPods-based app that you want to migrate to SPM. What is your strategy for a codebase with 30 pods, some of which don't have SPM support?</strong></p>
+
+<p>A: A phased migration reduces risk: (1) <strong>Audit</strong>: list all 30 pods; check if each has a <code>Package.swift</code> (most popular pods added SPM support by 2021–2022). Categorise as: SPM-ready, SPM-in-progress (may need a fork), or SPM-incompatible (likely binary-only pods like Firebase, proprietary SDKs). (2) <strong>Hybrid phase</strong>: add SPM packages for SPM-ready pods while keeping the remaining ones in CocoaPods. Both can coexist in the same Xcode project. (3) <strong>Binary targets</strong>: for SDKs with no source (Firebase provides XCFrameworks), use SPM <code>.binaryTarget</code> pointing to their pre-built XCFramework ZIP. (4) <strong>Forks</strong>: for libraries that need minor fixes to support SPM, fork and add <code>Package.swift</code>. Submit a PR upstream. (5) <strong>Remaining CocoaPods</strong>: last resort — keep a minimal Podfile for truly incompatible dependencies. (6) <strong>Validate</strong>: run <code>pod install</code> from scratch on a clean clone; run all tests; check no duplicate symbols (mixing static and dynamic linking of the same library). (7) <strong>Remove CocoaPods entirely</strong> once all pods are migrated. Commit <code>Package.resolved</code> and remove <code>Pods/</code>, <code>Podfile.lock</code>, <code>.xcworkspace</code> (if generated solely by CocoaPods) from the repo.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>[!] Unable to find a specification for 'PodName'</code> after <code>pod install</code>.<em></em></p>
+
+<p>Solution: Run <code>pod repo update</code> to refresh the local CocoaPods spec repo cache. The pod may have been published after your last cache update. For private pods, ensure the private spec repo is added: <code>pod repo add MySpecs https://...</code>.</p>
+
+<p><em></em>Issue: Carthage <code>Build Failed</code> with "Module compiled with Swift X cannot be imported by Swift Y."<em></em></p>
+
+<p>Solution: Carthage builds frameworks using the current Xcode's Swift toolchain. If the pre-built framework was built with a different Swift version than your app, the binary is incompatible. Run <code>carthage update</code> to rebuild from source with the current Swift version. Enable <code>BUILD_LIBRARY_FOR_DISTRIBUTION = YES</code> in the library's Xcode scheme to generate a <code>.swiftinterface</code> file — this enables binary compatibility across Swift versions.</p>
+
+<p><strong>Issue: Duplicate symbols linker error after migrating a pod to SPM.</strong></p>
+
+<p>Solution: The library is being included twice — once via CocoaPods and once via SPM. Remove it from one source. Also check for CocoaPods subspecs that may pull in the same dependency as an SPM transitive dependency.</p>
+
+<p><em></em>Issue: CocoaPods <code>post_install</code> hook is too slow on CI.<em></em></p>
+
+<p>Solution: Cache the entire <code>Pods/</code> directory keyed on <code>Podfile.lock</code>'s SHA-256. If the hash hasn't changed, skip <code>pod install</code> entirely. Use <code>--clean-install</code> flag only on cache miss.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="swift-package-manager.md">Swift Package Manager</a> — the preferred modern alternative</li>
+<li><a href="xcframeworks.md">XCFrameworks</a> — Carthage <code>--use-xcframeworks</code> output; binary pod distribution</li>
+<li><a href="static-dynamic-frameworks.md">Static Libraries &amp; Dynamic Frameworks</a> — <code>use_frameworks!</code> linkage choice</li>
+<li><a href="../06-architecture/modularization.md">Modularization</a> — replacing pods with local SPM packages</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

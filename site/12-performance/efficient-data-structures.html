@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Efficient Data Structures — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../12-performance/index.html">Performance</a></span>
+    <span>Efficient Data Structures</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html" class="active">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="efficient-data-structures">Efficient Data Structures</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Choosing the right data structure is the highest-leverage algorithmic optimisation available on iOS. The standard library provides <code>Array</code>, <code>Set</code>, <code>Dictionary</code>, and their ordered/sorted variants — each with fundamentally different time complexity for lookup, insertion, deletion, and iteration. Beyond choosing the right abstraction, iOS and Swift offer several performance-specialised types: <code>ContiguousArray</code> (guaranteed contiguous storage for non-Objective-C-bridgeable types), <code>NSCache</code> (memory-pressure-aware key-value store), lazy sequences (defer computation until elements are consumed), and <code>ArraySlice</code> / <code>Substring</code> (zero-copy views into existing storage). Understanding when to use each — and what operations are O(1) vs O(n) — prevents algorithmic bottlenecks that no amount of threading can fix.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>A data structure is a filing cabinet. An <code>Array</code> is a single drawer where files are ordered left-to-right — finding a file by position is instant (open drawer, count to slot 3), but finding a file by name means reading every file from the beginning. A <code>Dictionary</code> is a cabinet with alphabetic dividers — finding a file by name is near-instant (go to the right divider), but the files aren't in any meaningful order. A <code>Set</code> is a cabinet where duplicate files are simply rejected — checking "does this file exist?" is instant, and you're guaranteed uniqueness. Choosing the wrong cabinet for the job means doing unnecessary work on every operation.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="complexity-comparison">Complexity Comparison</h3>
+
+<table>
+<tr><td>Operation</td><td>Array</td><td>Set</td><td>Dictionary</td><td>Sorted Array</td></tr>
+<tr><td>Lookup by index</td><td>O(1)</td><td>—</td><td>—</td><td>O(1)</td></tr>
+<tr><td>Lookup by value/key</td><td>O(n)</td><td>O(1) avg</td><td>O(1) avg</td><td>O(log n)</td></tr>
+<tr><td>Insert at end</td><td>O(1) amortised</td><td>O(1) avg</td><td>O(1) avg</td><td>O(log n)</td></tr>
+<tr><td>Insert at index</td><td>O(n)</td><td>—</td><td>—</td><td>O(n)</td></tr>
+<tr><td>Delete by index</td><td>O(n)</td><td>—</td><td>—</td><td>O(n)</td></tr>
+<tr><td>Delete by value/key</td><td>O(n)</td><td>O(1) avg</td><td>O(1) avg</td><td>O(log n)</td></tr>
+<tr><td>Iteration</td><td>O(n)</td><td>O(n)</td><td>O(n)</td><td>O(n)</td></tr>
+<tr><td>Contains</td><td>O(n)</td><td>O(1) avg</td><td>O(1) avg</td><td>O(log n)</td></tr>
+</table>
+
+<h3 id="array">Array</h3>
+
+<p><code>Array&lt;T&gt;</code> stores elements contiguously in heap memory (one allocation). This makes sequential access cache-friendly — the CPU prefetcher loads the next elements automatically. Strengths: O(1) indexed access, O(1) amortised append, excellent cache locality for iteration.</p>
+
+<p>Weaknesses: O(n) <code>contains</code>, O(n) insert/delete in the middle.</p>
+
+<p><code>ContiguousArray&lt;T&gt;</code>: identical to <code>Array</code> but guarantees contiguous storage even for <code>AnyObject</code> (regular <code>Array&lt;AnyObject&gt;</code> can fall back to <code>NSArray</code> internally). Use <code>ContiguousArray</code> for arrays of protocol types or class instances in hot paths where you need the contiguity guarantee:</p>
+
+<pre><code class="language-swift">var items: ContiguousArray&lt;Renderable&gt; = []   // guaranteed contiguous, no NSArray bridge</code></pre>
+
+<p><code>ArraySlice&lt;T&gt;</code>: a zero-copy window into an <code>Array</code>'s storage. Create with <code>array[2..&lt;10]</code>. Avoids copying a sub-array for algorithms that only read a range. Note: <code>ArraySlice</code> retains the backing <code>Array</code> — release it when done to avoid keeping the full array alive.</p>
+
+<h3 id="set">Set</h3>
+
+<p><code>Set&lt;T: Hashable&gt;</code> uses a hash table internally. Average O(1) for <code>insert</code>, <code>remove</code>, and <code>contains</code>. Use <code>Set</code> whenever you need: (1) fast membership testing, (2) deduplication, (3) set operations (<code>union</code>, <code>intersection</code>, <code>subtracting</code>).</p>
+
+<p>Hash collisions degrade <code>Set</code> to O(n) in the worst case — use well-distributed hash functions. The Swift standard library types (<code>String</code>, <code>Int</code>, <code>UUID</code>) have good hash distributions.</p>
+
+<h3 id="dictionary">Dictionary</h3>
+
+<p><code>Dictionary&lt;Key: Hashable, Value&gt;</code> maps keys to values with O(1) average for all keyed operations. Use it for: lookup tables, memoisation/caching, grouping, and any "find by identifier" pattern.</p>
+
+<p>Performance tip: pre-size a <code>Dictionary</code> when the capacity is known: <code>Dictionary(minimumCapacity: 1000)</code>. This avoids multiple rehash/reallocation cycles during bulk insertion.</p>
+
+<h3 id="nscache">NSCache</h3>
+
+<p><code>NSCache&lt;KeyType, ObjectType&gt;</code> is a thread-safe, memory-pressure-aware dictionary for caches. It automatically evicts objects when the system is under memory pressure (unlike <code>Dictionary</code>, which never evicts). Use <code>NSCache</code> for any in-memory cache of recomputable or re-fetchable data.</p>
+
+<pre><code class="language-swift">let cache = NSCache&lt;NSString, UIImage&gt;()
+cache.countLimit = 100          // max 100 objects
+cache.totalCostLimit = 50 * 1024 * 1024   // 50 MB</code></pre>
+
+<p>Note: <code>NSCache</code> does not call <code>copy</code> on keys (unlike <code>NSDictionary</code>) and its entries can be removed at any time — do not store authoritative state in it.</p>
+
+<h3 id="lazy-sequences">Lazy Sequences</h3>
+
+<p>Swift's <code>LazySequence</code> (via <code>.lazy</code>) defers element computation until iteration. Each element is computed on demand rather than materialising the full transformed collection upfront.</p>
+
+<pre><code class="language-swift">let heavy = largeArray
+    .lazy
+    .filter { $0.isEligible }   // no allocation yet
+    .map { $0.expensiveTransform() }   // no computation yet
+
+for item in heavy.prefix(10) {
+    process(item)   // only 10 elements computed and allocated
+}</code></pre>
+
+<p>Use lazy when: the downstream consumer doesn't need all elements (e.g., <code>.first(where:)</code>, <code>.prefix(n)</code>), when the transformation is expensive, or when the source is infinite.</p>
+
+<h3 id="ordered-collections-swift-collections-package">Ordered Collections (Swift Collections package)</h3>
+
+<p>Apple's <code>swift-collections</code> package provides:</p>
+
+<ul>
+<li><code>OrderedSet&lt;T&gt;</code>: maintains insertion order + O(1) <code>contains</code>. Use for a deduplicated, ordered list (e.g., recently-viewed items).</li>
+<li><code>OrderedDictionary&lt;Key, Value&gt;</code>: insertion-order dictionary.</li>
+<li><code>Deque&lt;T&gt;</code>: double-ended queue — O(1) prepend and append. Use instead of <code>Array</code> when you frequently insert at the front.</li>
+</ul>
+
+<h3 id="choosing-for-common-ios-patterns">Choosing for Common iOS Patterns</h3>
+
+<table>
+<tr><td>Pattern</td><td>Recommended structure</td></tr>
+<tr><td>Feed posts list</td><td><code>Array&lt;PostViewModel&gt;</code> — ordered, indexed by position</td></tr>
+<tr><td>Selected items tracking</td><td><code>Set&lt;PostID&gt;</code> — O(1) toggle + contains</td></tr>
+<tr><td>User profile lookup by ID</td><td><code>[UserID: User]</code> Dictionary</td></tr>
+<tr><td>Recent searches (dedup + order)</td><td><code>OrderedSet&lt;String&gt;</code></td></tr>
+<tr><td>In-memory image cache</td><td><code>NSCache&lt;NSString, UIImage&gt;</code></td></tr>
+<tr><td>Front-of-queue notification</td><td><code>Deque&lt;Notification&gt;</code></td></tr>
+<tr><td>Read-only sub-range processing</td><td><code>ArraySlice&lt;Post&gt;</code></td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Collections   // swift-collections package
+
+// ── Wrong: O(n) lookup in a hot path ──────────────────────────
+let selectedIDs: [String] = ["1", "3", "7"]
+
+func isSelected(_ id: String) -&gt; Bool {
+    selectedIDs.contains(id)   // O(n) — scans entire array each call
+}
+
+// ── Right: O(1) lookup with Set ───────────────────────────────
+var selectedIDSet: Set&lt;String&gt; = ["1", "3", "7"]
+
+func isSelected(_ id: String) -&gt; Bool {
+    selectedIDSet.contains(id)   // O(1) hash lookup
+}
+
+// ── Grouping posts by category (Dictionary) ───────────────────
+struct Post { let id: String; let category: String; let title: String }
+
+func groupByCategory(_ posts: [Post]) -&gt; [String: [Post]] {
+    // Dictionary(grouping:by:) — single pass, O(n)
+    Dictionary(grouping: posts, by: \.category)
+}
+
+// ── Lazy filtering of a large dataset ─────────────────────────
+func firstMatchingPost(in posts: [Post], predicate: (Post) -&gt; Bool) -&gt; Post? {
+    // .lazy stops after first match — no full array transformation
+    posts.lazy.first(where: predicate)
+}
+
+// ── ContiguousArray for protocol-type collections ─────────────
+protocol Renderable { func render() }
+
+// Guaranteed contiguous; avoids Array&lt;AnyObject&gt; NSArray bridging overhead
+var renderables: ContiguousArray&lt;any Renderable&gt; = []
+
+func renderAll() {
+    renderables.withUnsafeBufferPointer { buffer in
+        for item in buffer { item.render() }   // hot loop — contiguous memory
+    }
+}
+
+// ── NSCache with cost-based eviction ──────────────────────────
+final class ThumbnailCache {
+    private let cache = NSCache&lt;NSString, UIImage&gt;()
+
+    init() {
+        cache.totalCostLimit = 30 * 1024 * 1024   // 30 MB
+    }
+
+    func store(_ image: UIImage, for key: String) {
+        let pixelCount = Int(image.size.width * image.size.height * image.scale * image.scale)
+        let byteCost = pixelCount * 4   // 4 bytes per RGBA pixel
+        cache.setObject(image, forKey: key as NSString, cost: byteCost)
+    }
+
+    func image(for key: String) -&gt; UIImage? {
+        cache.object(forKey: key as NSString)
+    }
+}
+
+// ── Deque for a bounded recent-actions buffer ─────────────────
+var recentActions: Deque&lt;UserAction&gt; = []
+let maxHistory = 50
+
+func record(_ action: UserAction) {
+    recentActions.prepend(action)   // O(1) — Deque, not Array
+    if recentActions.count &gt; maxHistory {
+        recentActions.removeLast()  // O(1)
+    }
+}
+
+// vs. Array: prepend is O(n) because all elements shift right
+
+// ── Pre-sized Dictionary for bulk operations ───────────────────
+func buildLookup(from posts: [Post]) -&gt; [String: Post] {
+    var lookup = Dictionary&lt;String, Post&gt;(minimumCapacity: posts.count)
+    for post in posts { lookup[post.id] = post }
+    return lookup   // no rehashing during build
+}
+
+// ── ArraySlice for divide-and-conquer without copying ─────────
+func mergeSort(_ array: inout [Int]) {
+    guard array.count &gt; 1 else { return }
+    let mid = array.count / 2
+    var left = Array(array[..&lt;mid])    // copy only at recursion base
+    var right = Array(array[mid...])
+    mergeSort(&amp;left); mergeSort(&amp;right)
+    array = merge(left, right)
+}
+
+func processInBatches(_ items: [Post], batchSize: Int) {
+    var index = items.startIndex
+    while index &lt; items.endIndex {
+        let end = items.index(index, offsetBy: batchSize, limitedBy: items.endIndex) ?? items.endIndex
+        let batch: ArraySlice&lt;Post&gt; = items[index..&lt;end]   // zero-copy view
+        processBatch(batch)
+        index = end
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: When should you use a <code>Set</code> instead of an <code>Array</code> in Swift?<em></em></p>
+
+<p>A: Use <code>Set&lt;T&gt;</code> when (1) you need O(1) <code>contains</code> checks — testing membership in a <code>Set</code> is a hash lookup whereas <code>Array.contains</code> is a linear scan; (2) you want uniqueness guaranteed — <code>Set</code> silently ignores duplicate insertions; (3) you need set algebra — <code>union</code>, <code>intersection</code>, <code>subtracting</code>, <code>symmetricDifference</code> are built in and efficient. Use <code>Array</code> when order matters, when elements are accessed by index, or when you need duplicate elements. A common performance mistake: using an <code>Array</code> as a "list of selected IDs" and calling <code>contains</code> inside a <code>cellForRow</code> — O(n) per cell. Replace with <code>Set&lt;ID&gt;</code> for O(1) per cell.</p>
+
+<p><em></em>Q: What is <code>NSCache</code> and how does it differ from a <code>Dictionary</code> used as a cache?<em></em></p>
+
+<p>A: <code>NSCache</code> is a thread-safe, memory-pressure-aware collection. It differs from <code>Dictionary</code> in three ways: (1) <strong>Auto-eviction</strong>: <code>NSCache</code> automatically removes objects when the system is under memory pressure — <code>Dictionary</code> never evicts. (2) <strong>Thread safety</strong>: <code>NSCache</code> can be read and written concurrently without a lock — <code>Dictionary</code> is not thread-safe. (3) <strong>Cost-based eviction</strong>: you can assign a cost to each object (e.g., byte size) and set a <code>totalCostLimit</code>; eviction removes high-cost objects first. The downside: <code>NSCache</code> may evict any object at any time — treat its contents as ephemeral and always be prepared to recompute or re-fetch.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: What is the performance difference between <code>Array&lt;AnyObject&gt;</code> and <code>ContiguousArray&lt;AnyObject&gt;</code>, and when does it matter?<em></em></p>
+
+<p>A: <code>Array&lt;T&gt;</code> in Swift can bridge to <code>NSArray</code> when <code>T</code> is a class type or <code>AnyObject</code>, which may store elements in a non-contiguous, Objective-C-managed buffer. <code>ContiguousArray&lt;T&gt;</code> always stores elements in a Swift-managed contiguous buffer — no Objective-C bridging, no <code>NSArray</code> overhead. In practice, for pure Swift code accessing elements in a tight loop, <code>ContiguousArray</code> can be measurably faster (avoiding bridge overhead on each element access) when <code>T</code> is a class or protocol type. For <code>Array&lt;Int&gt;</code> or <code>Array&lt;String&gt;</code>, there's no difference because these are not <code>AnyObject</code>. The difference matters in rendering pipelines or physics engines where you're iterating over thousands of protocol-typed objects per frame.</p>
+
+<p><strong>Q: How does lazy evaluation in Swift sequences improve performance, and what are its limitations?</strong></p>
+
+<p>A: Lazy sequences (<code>array.lazy.filter { }.map { }</code>) defer computation — elements are produced and transformed only when consumed by the terminal operation (<code>forEach</code>, <code>first(where:)</code>, <code>prefix(n)</code>, <code>reduce</code>). Benefits: (1) <strong>No intermediate allocations</strong>: a non-lazy <code>filter</code> + <code>map</code> chain allocates two intermediate arrays; lazy allocates none. (2) <strong>Early termination</strong>: <code>array.lazy.filter { }.first</code> stops at the first match; non-lazy <code>filter</code> processes the entire array first. (3) <strong>Infinite sequences</strong>: lazy enables working with <code>sequence(first:next:)</code> infinite generators. Limitations: (1) Lazy sequences are re-evaluated on each iteration — if you iterate twice, the transformations run twice. Store the result if you need it multiple times. (2) Lazy is not always faster for full iterations — the per-element function call overhead can exceed the allocation savings for small arrays. (3) Debugging is harder — breakpoints inside lazy closures behave unexpectedly.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design the data model and lookup strategy for a real-time messaging app that displays 10,000 messages in a thread, supports instant "has user X reacted to message Y?" lookups, and supports O(1) append of new messages.</strong></p>
+
+<p>A: Three-layer data model: (1) <strong>Primary storage</strong>: <code>[Message]</code> array (ordered by timestamp, O(1) append, O(1) indexed access for <code>cellForRow</code>). This is the source of truth for the table view's data source. (2) <strong>Reaction index</strong>: <code>[MessageID: [ReactionType: Set&lt;UserID&gt;]]</code> dictionary. "Has user X reacted with emoji E to message Y?" is a three-level lookup: O(1) message lookup, O(1) reaction type lookup, O(1) <code>Set.contains</code>. Without this index, checking reactions during <code>cellForRow</code> for 10,000 messages would be O(n × r) per render. (3) <strong>Reverse index for user reactions</strong>: <code>[UserID: Set&lt;MessageID&gt;]</code> dictionary — "which messages has user X reacted to?" is O(1). Insertion of a new message: O(1) append to the array. Insertion of a new reaction: O(1) <code>Set.insert</code> in both reaction index and reverse index. For diffable data source snapshots, hash the <code>Message</code> struct efficiently by including only the <code>id</code> and <code>updatedAt</code> timestamp in <code>hashValue</code>, not the full content. This makes snapshot diffing O(n) instead of O(n × message_length).</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>cellForRow</code> is slow — Time Profiler shows <code>Array.contains</code> with high self-time.<em></em></p>
+
+<p>Solution: The cell configuration is calling <code>selectedItems.contains(item.id)</code> where <code>selectedItems</code> is an <code>Array</code>. Replace with <code>Set&lt;ItemID&gt;</code>. With 500 selected items, this changes from 500 comparisons per cell to 1 hash lookup, eliminating the bottleneck entirely.</p>
+
+<p><strong>Issue: Building a lookup Dictionary from an API response takes 200ms on the main thread.</strong></p>
+
+<p>Solution: Move the <code>Dictionary</code> construction to a <code>Task.detached</code>. Also pre-size: <code>Dictionary(minimumCapacity: response.count)</code> and use <code>Dictionary(uniqueKeysWithValues: response.map { ($0.id, $0) })</code> — this builds the dictionary in a single pass without repeated resizing.</p>
+
+<p><em></em>Issue: <code>NSCache</code> evicts objects too aggressively — frequent cache misses cause visible image reloads.<em></em></p>
+
+<p>Solution: Set <code>totalCostLimit</code> to a larger value proportional to available device memory: <code>ProcessInfo.processInfo.physicalMemory / 10</code> (10% of device RAM). Also set <code>countLimit</code> to a reasonable cap (e.g., 300 for thumbnails). Provide accurate <code>cost</code> values per object (pixel area × 4 bytes); NSCache evicts based on cost, not count, when both limits are set.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="memory-optimization.md">Memory Optimization</a> — ARC traffic, NSCache tuning, allocation reduction</li>
+<li><a href="lazy-loading.md">Lazy Loading</a> — lazy var and lazy sequence patterns</li>
+<li><a href="main-thread-optimization.md">Main Thread Optimization</a> — offloading Dictionary/Set construction</li>
+<li><a href="../04-ui-frameworks/uitableview-uicollectionview.md">UITableView &amp; UICollectionView</a> — diffable data source and efficient cell configuration</li>
+<li><a href="../03-concurrency/async-await.md">Concurrency — async/await</a> — offloading data structure construction</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

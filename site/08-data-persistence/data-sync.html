@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Synchronization — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../08-data-persistence/index.html">Data Persistence</a></span>
+    <span>Data Sync</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html" class="active">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="data-synchronization">Data Synchronization</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Data synchronization addresses the hard problems that arise when local device state must stay consistent with a server — or with other devices — in the face of offline usage, concurrent edits, and schema evolution. Three concerns dominate: <strong>offline-first architecture</strong> (local data is the source of truth; the network is a transport, not a prerequisite), <strong>conflict resolution</strong> (what happens when two clients edit the same record simultaneously), and <strong>data migration</strong> (how schemas evolve without data loss as the app ships new versions). These topics are interconnected: an offline-first architecture forces you to confront conflicts; schema evolution requires migration strategies for both local stores and the server API.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine a shared Google Doc that you can also edit offline. <strong>Offline-first</strong> means your changes save instantly to your local copy — you don't wait for the internet. When you reconnect, the app tries to merge your changes with what others wrote while you were offline. <strong>Conflict resolution</strong> is the set of rules for handling overlapping edits: "last write wins", "merge character by character" (like Git), or "ask the user". <strong>Data migration</strong> is what happens when the document's format changes — new columns, renamed fields — and you need to convert all existing documents to the new format without losing anything.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="offline-first-architecture">Offline-First Architecture</h3>
+
+<p>The core principle: <strong>local persistence is the primary source of truth; network is an optimistic sync layer</strong>.</p>
+
+<pre><code>User Action
+    │
+    ▼
+Local Store (Core Data / SQLite / Realm)  ← immediate read/write
+    │
+    ▼
+Sync Engine (background)  ← uploads local changes, downloads remote changes
+    │
+    ▼
+Server / CloudKit / Realm Atlas</code></pre>
+
+<p><strong>Benefits</strong>: zero-latency UI (reads/writes are local), works completely offline, network failures are transparent.</p>
+
+<p><strong>Components required</strong>:</p>
+<ol>
+<li><strong>Change tracking</strong>: know which local records have been created, updated, or deleted since the last sync.</li>
+<li><strong>Sync queue</strong>: persist pending mutations so they survive app termination.</li>
+<li><strong>Merge strategy</strong>: reconcile local and remote changes when connectivity is restored.</li>
+<li><strong>Conflict detection</strong>: identify when two versions of the same record have diverged.</li>
+</ol>
+
+<h3 id="change-tracking-strategies">Change Tracking Strategies</h3>
+
+<table>
+<tr><td>Strategy</td><td>How it works</td><td>Complexity</td></tr>
+<tr><td>Timestamp-based</td><td><code>updatedAt</code> column; sync records with <code>updatedAt &gt; lastSyncTime</code></td><td>Low</td></tr>
+<tr><td>Version vector</td><td>Each record carries a version counter per device</td><td>Medium</td></tr>
+<tr><td>Event log / CRDT</td><td>Append-only log of operations; merge by replaying</td><td>High</td></tr>
+<tr><td>CloudKit <code>CKServerChangeToken</code></td><td>CloudKit returns a change token; fetch changes since token</td><td>Platform-specific</td></tr>
+</table>
+
+<p><strong>Soft deletes</strong>: instead of deleting records, set <code>isDeleted = true</code> and sync the tombstone. Hard deletes are untrackable once the row is gone.</p>
+
+<h3 id="conflict-resolution-strategies">Conflict Resolution Strategies</h3>
+
+<p>A conflict occurs when the same record is modified locally and remotely since the last sync.</p>
+
+<table>
+<tr><td>Strategy</td><td>Description</td><td>Best for</td></tr>
+<tr><td>Last-write-wins (LWW)</td><td>Server timestamp wins; local changes are discarded</td><td>Simple scalars, preferences</td></tr>
+<tr><td>Client-wins</td><td>Local version always wins</td><td>Offline-first apps with strong local ownership</td></tr>
+<tr><td>Server-wins</td><td>Server version always wins</td><td>Read-heavy apps with authoritative server</td></tr>
+<tr><td>Field-level merge</td><td>Merge non-overlapping field changes; flag overlapping fields as conflicts</td><td>Documents, rich records</td></tr>
+<tr><td>User-resolved</td><td>Present conflict to user; let them choose or merge manually</td><td>Document editors (like iCloud Drive)</td></tr>
+<tr><td>CRDT (Conflict-free Replicated Data Type)</td><td>Data structure designed so all merge orders produce the same result</td><td>Collaborative real-time editing</td></tr>
+</table>
+
+<p><strong>Practical pattern</strong>: use <strong>last-write-wins on individual fields</strong> (not whole records): compare timestamps per field, take the newer value. This resolves most conflicts automatically — two people editing different fields of the same record is not a true conflict.</p>
+
+<h3 id="cloudkit-sync-with-nspersistentcloudkitcontainer">CloudKit Sync with NSPersistentCloudKitContainer</h3>
+
+<p>Apple's built-in sync layer pairs Core Data with iCloud CloudKit:</p>
+
+<pre><code class="language-swift">let container = NSPersistentCloudKitContainer(name: "MyApp")
+// All Core Data entities automatically sync to CloudKit private database
+container.loadPersistentStores { _, error in
+    if let error { fatalError(error.localizedDescription) }
+}
+container.viewContext.automaticallyMergesChangesFromParent = true</code></pre>
+
+<p><strong>Constraints</strong>:</p>
+<ul>
+<li>All attributes must be optional (CloudKit records can have missing fields).</li>
+<li>Ordered relationships not supported.</li>
+<li>Conflict resolution is last-write-wins per CloudKit record (not field-level).</li>
+<li>Sync is best-effort — no explicit conflict resolution hooks are provided.</li>
+</ul>
+
+<h3 id="data-migration">Data Migration</h3>
+
+<p><strong>Local store migration</strong> (Core Data):</p>
+<ul>
+<li><strong>Lightweight</strong>: automatic for additive changes (new optional attributes, entity renames with renaming identifier). Enable via <code>shouldMigrateStoreAutomatically = true</code>.</li>
+<li><strong>Heavyweight</strong>: for type changes, required attributes, or entity restructuring. Requires <code>NSMappingModel</code> and custom <code>NSEntityMigrationPolicy</code>.</li>
+<li><strong>Progressive migration</strong>: for multi-version upgrades, chain migrations through intermediate versions (v1→v2→v3) rather than jumping directly.</li>
+</ul>
+
+<p><strong>Local store migration</strong> (GRDB/SQLite):</p>
+<ul>
+<li><code>DatabaseMigrator</code> applies numbered migrations in sequence, tracking applied migrations in a system table.</li>
+<li>Each migration is a SQL transaction — atomic; failure rolls back cleanly.</li>
+<li>Support for destructive migration on Simulator (for development reset): <code>migrator.eraseDatabaseOnSchemaChange = true</code> (development only).</li>
+</ul>
+
+<p><strong>API versioning and model evolution</strong>:</p>
+<ul>
+<li>Additive API changes (new optional fields): handled by <code>decodeIfPresent</code> in <code>Codable</code> — missing keys become <code>nil</code>.</li>
+<li>Renamed fields: decode with a custom <code>init(from:)</code> trying new key first, old key as fallback.</li>
+<li>Removed fields: ignore gracefully — the <code>Codable</code> synthesised decoder ignores unknown JSON keys.</li>
+<li>Breaking changes: version the API (<code>/v2/endpoint</code>) and maintain parallel support during a transition window.</li>
+</ul>
+
+<h3 id="icloud-key-value-store">iCloud Key-Value Store</h3>
+
+<p>For lightweight sync of small preferences across the user's devices (like UserDefaults, but synced):</p>
+
+<pre><code class="language-swift">let store = NSUbiquitousKeyValueStore.default
+store.set("dark", forKey: "theme")
+store.synchronize()
+
+// Observe changes from other devices
+NotificationCenter.default.addObserver(
+    self,
+    selector: #selector(kvStoreChanged),
+    name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+    object: store
+)</code></pre>
+
+<p>Limits: 1 MB total storage, 1024 keys. Best for settings, user preferences. Not a database.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import Combine
+
+// ── Change tracking with timestamps ──────────────────────────
+// Assumes Post has: id, title, body, updatedAt, serverUpdatedAt, isSyncPending
+// isSyncPending = true means local change not yet uploaded
+
+// ── Sync engine (actor for thread safety) ─────────────────────
+actor SyncEngine {
+    private let apiClient: APIClient
+    private let repository: PostRepository
+    private var isSyncing = false
+
+    init(apiClient: APIClient, repository: PostRepository) {
+        self.apiClient = apiClient
+        self.repository = repository
+    }
+
+    func sync() async throws {
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+
+        try await uploadPendingChanges()
+        try await downloadRemoteChanges()
+    }
+
+    // ── Upload local changes to server ────────────────────────
+    private func uploadPendingChanges() async throws {
+        let pending = try await repository.fetchPending()       // WHERE isSyncPending = true
+        for post in pending {
+            do {
+                let serverPost = try await apiClient.upsert(post)
+                try await repository.markSynced(post.id, serverUpdatedAt: serverPost.updatedAt)
+            } catch let error as NetworkError where error.isConflict {
+                try await resolveConflict(localPost: post)
+            }
+        }
+    }
+
+    // ── Download remote changes ───────────────────────────────
+    private func downloadRemoteChanges() async throws {
+        let lastSync = try await repository.lastSuccessfulSyncDate()
+        let remotePosts = try await apiClient.fetchChanges(since: lastSync)  // server-side filtering
+        for remote in remotePosts {
+            let local = try await repository.find(id: remote.id)
+            if let local {
+                try await merge(local: local, remote: remote)
+            } else {
+                try await repository.insert(remote)
+            }
+        }
+        try await repository.recordSyncDate(Date())
+    }
+
+    // ── Field-level merge ─────────────────────────────────────
+    private func merge(local: Post, remote: Post) async throws {
+        // If no local pending changes, remote wins unconditionally
+        guard local.isSyncPending else {
+            try await repository.update(remote)
+            return
+        }
+
+        // Field-level: take the newer value per field
+        var merged = local
+        if remote.titleUpdatedAt &gt; local.titleUpdatedAt { merged.title = remote.title }
+        if remote.bodyUpdatedAt  &gt; local.bodyUpdatedAt  { merged.body  = remote.body  }
+        merged.isSyncPending = true    // merged result still needs upload
+        try await repository.update(merged)
+    }
+
+    // ── Conflict resolution ───────────────────────────────────
+    private func resolveConflict(localPost: Post) async throws {
+        let serverPost = try await apiClient.fetch(id: localPost.id)
+
+        // Strategy: last-write-wins by updatedAt
+        if localPost.updatedAt &gt; serverPost.updatedAt {
+            // Local is newer — retry upload with force flag
+            let updated = try await apiClient.upsert(localPost, force: true)
+            try await repository.markSynced(localPost.id, serverUpdatedAt: updated.updatedAt)
+        } else {
+            // Server is newer — discard local changes
+            try await repository.update(serverPost)
+        }
+    }
+}
+
+// ── Connectivity-driven sync trigger ─────────────────────────
+import Network
+
+class SyncCoordinator {
+    private let syncEngine: SyncEngine
+    private let monitor = NWPathMonitor()
+    private var cancellables = Set&lt;AnyCancellable&gt;()
+
+    init(syncEngine: SyncEngine) {
+        self.syncEngine = syncEngine
+        monitor.pathUpdateHandler = { [weak self] path in
+            if path.status == .satisfied {
+                Task { try? await self?.syncEngine.sync() }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "SyncCoordinator.monitor"))
+    }
+}
+
+// ── GRDB progressive migration ────────────────────────────────
+import GRDB
+
+var migrator = DatabaseMigrator()
+
+migrator.registerMigration("v1_initial") { db in
+    try db.create(table: "post") { t in
+        t.column("id", .text).primaryKey()
+        t.column("title", .text).notNull()
+        t.column("updatedAt", .datetime).notNull()
+        t.column("isSyncPending", .boolean).notNull().defaults(to: false)
+    }
+}
+
+migrator.registerMigration("v2_add_body") { db in
+    try db.alter(table: "post") { t in
+        t.add(column: "body", .text).defaults(to: "")
+    }
+}
+
+migrator.registerMigration("v3_add_field_timestamps") { db in
+    // Non-nullable column with default backfill
+    try db.alter(table: "post") { t in
+        t.add(column: "titleUpdatedAt", .datetime)
+        t.add(column: "bodyUpdatedAt", .datetime)
+    }
+    // Backfill existing rows
+    try db.execute(sql: "UPDATE post SET titleUpdatedAt = updatedAt, bodyUpdatedAt = updatedAt")
+}
+
+// ── NSPersistentCloudKitContainer sync ───────────────────────
+import CoreData
+
+class CloudSyncController {
+    let container: NSPersistentCloudKitContainer
+
+    init() {
+        container = NSPersistentCloudKitContainer(name: "MyApp")
+
+        // Configure for CloudKit sync
+        guard let description = container.persistentStoreDescriptions.first else { return }
+        description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
+            containerIdentifier: "iCloud.com.myapp"
+        )
+
+        container.loadPersistentStores { _, error in
+            if let error { print("CloudKit load error: \(error)") }
+        }
+        container.viewContext.automaticallyMergesChangesFromParent = true
+        container.viewContext.mergePolicy = NSMergeByPropertyStoreTrumpMergePolicy
+
+        // Observe sync events
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncEventChanged),
+            name: NSPersistentCloudKitContainer.eventChangedNotification,
+            object: container
+        )
+    }
+
+    @objc private func syncEventChanged(_ notification: Notification) {
+        guard let event = notification.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
+                as? NSPersistentCloudKitContainer.Event else { return }
+        if let error = event.error {
+            print("CloudKit sync error: \(error)")
+        }
+    }
+}
+
+// ── Soft delete pattern ───────────────────────────────────────
+// Instead of DELETE FROM post WHERE id = ?, mark as deleted:
+// UPDATE post SET isDeleted = 1, updatedAt = CURRENT_TIMESTAMP WHERE id = ?
+// Sync engine propagates the tombstone to the server
+// Server-side cleanup job permanently deletes records older than 30 days</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is an offline-first architecture and how does it differ from a network-first approach?</strong></p>
+
+<p>A: In a <strong>network-first</strong> architecture, the app fetches data from the server before displaying it — the UI waits for the network. Offline means no content. In an <strong>offline-first</strong> architecture, the local database is the primary source of truth. The UI reads from and writes to local storage immediately — the network is used to sync changes in the background. The result: zero-latency UI, full functionality offline, and transparent error recovery when the network is unreliable. The tradeoff is implementation complexity: you must handle change tracking, conflict resolution, and merge logic. Offline-first is appropriate for apps where users regularly operate in poor connectivity (travel, field work) or where responsiveness is critical. It is not necessary for simple read-only API consumers where stale data is unacceptable.</p>
+
+<p><strong>Q: What is a soft delete and why is it necessary for sync?</strong></p>
+
+<p>A: A soft delete marks a record as deleted (<code>isDeleted = true</code>, <code>deletedAt = timestamp</code>) rather than removing its row. This is necessary for sync because a hard-deleted row leaves no trace — when the sync engine asks "what changed since last sync?", it has no way to discover that a record was deleted. With soft deletes, the tombstone row is included in the change set and synced to other clients/the server, which then cascade-delete from their own stores. Tombstones must be retained for long enough that all clients have had an opportunity to sync (typically 30–90 days), after which a server-side cleanup job permanently removes them. Soft deletes also enable undo and audit logs as a side benefit.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: Compare last-write-wins, field-level merge, and CRDTs for conflict resolution. When is each appropriate?</strong></p>
+
+<p>A: <strong>Last-write-wins (LWW)</strong>: the record with the most recent <code>updatedAt</code> timestamp replaces the other. Simple to implement but loses data — if Alice updates the <code>title</code> and Bob updates the <code>body</code> simultaneously, one edit is discarded. Appropriate for settings, preferences, and records where one canonical value is always correct. <strong>Field-level merge</strong>: compare timestamps per field; take the newer value for each field independently. Alice's <code>title</code> and Bob's <code>body</code> both survive. Appropriate for structured records with independent fields edited by multiple users — covers the majority of real-world conflicts. Requires per-field <code>updatedAt</code> timestamps. <strong>CRDTs (Conflict-free Replicated Data Types)</strong>: mathematical data structures (G-Counter, OR-Set, Logoot for text) designed so concurrent updates from any order of merge always produce the same result — no conflicts by construction. Appropriate for collaborative real-time editing (shared text documents, whiteboards). High implementation complexity; typically use a library (Automerge, Yjs). For most iOS apps, field-level merge is the right balance of correctness and complexity.</p>
+
+<p><strong>Q: How does Core Data's lightweight migration know which version to migrate from?</strong></p>
+
+<p>A: Core Data inspects the metadata stored in the SQLite file's <code>Z_METADATA</code> table, which contains a hash of the <code>NSManagedObjectModel</code> that was used to create the store. At load time, Core Data compares this hash against the current model. If they differ, it searches for a migration path by enumerating the <code>.xcdatamodeld</code> version bundle — each <code>.xcdatamodel</code> file inside corresponds to one schema version. The system constructs an <code>NSMappingModel</code> by comparing consecutive versions and applies lightweight migration rules (new optional attributes, renamed entities with renaming identifiers). If no lightweight migration path can be inferred, loading fails with "The model used to open the store is incompatible." This is why <code>shouldInferMappingModelAutomatically = true</code> must be paired with <code>shouldMigrateStoreAutomatically = true</code>, and why skipping versions requires progressive migration through intermediate models.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a sync architecture for an iOS app that supports multi-device offline editing with conflict resolution and periodic CloudKit sync.</strong></p>
+
+<p>A: The architecture has five layers: (1) <strong>Local store</strong> (Core Data with <code>NSPersistentCloudKitContainer</code> or GRDB) as the source of truth. Every write goes here first and is immediately reflected in the UI. (2) <strong>Change log</strong>: a separate <code>PendingChange</code> table records every mutation (insert/update/delete) with a UUID, entity type, record ID, field deltas, and device timestamp. This is the upload queue. (3) <strong>Sync engine</strong> (an <code>actor</code>): on connectivity or foreground, uploads the <code>PendingChange</code> queue to the server in order; downloads remote changes since a stored change token (<code>CKServerChangeToken</code> for CloudKit or a cursor for a custom backend); applies downloads to the local store. (4) <strong>Conflict resolver</strong>: detects conflicts (local record has <code>isSyncPending = true</code> AND remote has a newer <code>serverUpdatedAt</code>) and applies field-level merge. Unresolvable conflicts (same field, both modified) surface to the user as a "choose version" sheet. (5) <strong>Migration layer</strong>: both the local schema (Core Data lightweight migrations or GRDB migrator) and the API schema (versioned endpoints + <code>Codable</code> with <code>decodeIfPresent</code> fallbacks) handle evolution independently. Key invariants: mutations are idempotent (server accepts re-sent changes gracefully via idempotency keys); tombstones are retained for 90 days; sync is triggered on foreground, on connectivity restoration, and via a background task (BGAppRefreshTask).</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: After a sync, duplicate records appear in the UI.</strong></p>
+
+<p>Solution: The insert path doesn't check for existing records with the same server ID. Use an <strong>upsert</strong> (INSERT OR REPLACE in SQLite, or <code>NSBatchInsertRequest</code> with a unique constraint in Core Data) keyed on the server-assigned ID. Define a unique constraint on the <code>serverId</code> column and set <code>mergePolicy = NSMergeByPropertyStoreTrumpMergePolicy</code> on the import context.</p>
+
+<p><strong>Issue: CloudKit sync stops working silently — no error, no updates.</strong></p>
+
+<p>Solution: Observe <code>NSPersistentCloudKitContainer.eventChangedNotification</code> and log sync event errors. Common causes: iCloud account signed out, CKErrorAccountTemporarilyUnavailable, schema mismatch (required attributes block CloudKit which requires all optional). Also check that the CloudKit container identifier matches the app's entitlement and that the CloudKit schema has been "deployed to production" in the CloudKit dashboard.</p>
+
+<p><strong>Issue: GRDB migration fails on app update — users' databases are corrupted.</strong></p>
+
+<p>Solution: Each migration must be a self-contained SQL transaction. Verify every migration runs cleanly on a fresh build before shipping. Test migrations against production-representative data sizes. If a migration is irreversible or has run partially, implement a <strong>recovery path</strong>: detect the corrupted schema version (GRDB stores this in <code>grdb_migrations</code>), show a "database repair" UI, and offer to re-download data from the server after clearing the store.</p>
+
+<p><strong>Issue: Sync conflicts cause data loss — remote edits overwrite local changes silently.</strong></p>
+
+<p>Solution: Implement soft deletes and per-field timestamps. Before applying a remote record, check <code>isSyncPending</code> — if <code>true</code>, apply field-level merge rather than a blanket overwrite. Log all conflict resolutions for debugging. Consider surfacing a "changes from another device" indicator in the UI so users are aware of merges.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="core-data.md">Core Data</a> — NSPersistentCloudKitContainer for CloudKit sync; lightweight migration</li>
+<li><a href="sqlite-realm.md">SQLite &amp; Realm</a> — GRDB DatabaseMigrator; Realm Atlas Device Sync</li>
+<li><a href="userdefaults.md">UserDefaults</a> — NSUbiquitousKeyValueStore for lightweight multi-device preference sync</li>
+<li><a href="../07-networking/advanced-networking.md">Advanced Networking</a> — offline request queue, NWPathMonitor, sync triggers</li>
+<li><a href="../03-concurrency/actors.md">Actors</a> — actor-based sync engine for safe concurrent access</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

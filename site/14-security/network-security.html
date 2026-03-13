@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Security — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../14-security/index.html">Security</a></span>
+    <span>Network Security</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html" class="active">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="network-security">Network Security</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Network security on iOS protects data in transit — preventing eavesdropping, man-in-the-middle (MITM) attacks, and traffic interception. Apple's App Transport Security (ATS) enforces a minimum TLS 1.2 with strong cipher suites for all <code>URLSession</code> connections by default, rejecting connections to HTTP endpoints and servers with weak TLS configurations. Certificate pinning and public-key pinning go beyond ATS: instead of trusting any certificate signed by any CA in the system trust store, the app explicitly specifies which certificate or public key it trusts for a given domain, preventing attacks where a rogue or compromised CA issues a fraudulent certificate for your server. The tradeoff: pinning requires a rotation strategy — a misconfigured pin can break the app for all users until an update ships.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>TLS without pinning is like accepting any government-issued ID at the door — you check the signature is genuine, but any country's government can issue an ID for any person. Certificate pinning is like accepting only IDs from a specific city's DMV — even if a rogue government issues a fake ID that looks valid, you won't accept it because it's not from your trusted source. Public-key pinning is even stricter: you accept only IDs with this specific face photo, regardless of who issued them. The risk: if you lose your only trusted ID (certificate expiry) and the backup isn't ready, no one gets through the door.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="app-transport-security-ats">App Transport Security (ATS)</h3>
+
+<p>ATS is a networking policy system enforced at the <code>URLSession</code> level. By default:</p>
+<ul>
+<li>HTTP connections are blocked.</li>
+<li>TLS 1.2+ is required.</li>
+<li>Forward Secrecy cipher suites only (ECDHE key exchange).</li>
+<li>Certificates must not use SHA-1.</li>
+</ul>
+
+<p>Exceptions are configured in <code>Info.plist</code> under <code>NSAppTransportSecurity</code>. Common exceptions (each requires justification in App Store review):</p>
+
+<pre><code class="language-xml">&lt;key&gt;NSAppTransportSecurity&lt;/key&gt;
+&lt;dict&gt;
+    &lt;!-- Allow specific HTTP domain (e.g., for CDN without HTTPS) --&gt;
+    &lt;key&gt;NSExceptionDomains&lt;/key&gt;
+    &lt;dict&gt;
+        &lt;key&gt;legacy-cdn.example.com&lt;/key&gt;
+        &lt;dict&gt;
+            &lt;key&gt;NSExceptionAllowsInsecureHTTPLoads&lt;/key&gt;&lt;true/&gt;
+            &lt;key&gt;NSExceptionMinimumTLSVersion&lt;/key&gt;&lt;string&gt;TLSv1.2&lt;/string&gt;
+        &lt;/dict&gt;
+    &lt;/dict&gt;
+    &lt;!-- Disable ATS entirely (for developer tools, not production) --&gt;
+    &lt;!-- &lt;key&gt;NSAllowsArbitraryLoads&lt;/key&gt;&lt;true/&gt; --&gt;
+&lt;/dict&gt;</code></pre>
+
+<p><strong>Never</strong> set <code>NSAllowsArbitraryLoads = true</code> in production — it disables all ATS protections.</p>
+
+<h3 id="tls-certificate-chain-validation">TLS Certificate Chain Validation</h3>
+
+<p>The default <code>URLSession</code> validation:</p>
+<ol>
+<li>The certificate chain is verified to a trusted root CA in the iOS system trust store.</li>
+<li>The hostname in the certificate matches the request hostname.</li>
+<li>The certificate is not expired or revoked (OCSP checking).</li>
+</ol>
+
+<p>This is strong against general MITM but not against a rogue CA or a compromised CA that signs a certificate for your domain.</p>
+
+<h3 id="certificate-pinning">Certificate Pinning</h3>
+
+<p>Certificate pinning replaces (or supplements) the default CA verification with a check that the server presents a specific certificate. The pin is typically the <code>SubjectPublicKeyInfo</code> hash (public key pin) — more robust than the full certificate hash because the public key remains the same when a certificate is renewed.</p>
+
+<p><em></em>Implementation via <code>URLSessionDelegate</code>:<em></em></p>
+
+<pre><code class="language-swift">// URLSession(configuration:delegate:delegateQueue:) — delegate receives auth challenges
+func urlSession(_ session: URLSession,
+                didReceive challenge: URLAuthenticationChallenge,
+                completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -&gt; Void) {
+    // Only pin for server trust challenges
+    guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+          let serverTrust = challenge.protectionSpace.serverTrust
+    else {
+        completionHandler(.performDefaultHandling, nil)
+        return
+    }
+
+    // Evaluate the default chain first
+    var error: CFError?
+    guard SecTrustEvaluateWithError(serverTrust, &amp;error) else {
+        completionHandler(.cancelAuthenticationChallenge, nil)
+        return
+    }
+
+    // Extract the leaf certificate's public key hash
+    guard let leafCert = SecTrustGetCertificateAtIndex(serverTrust, 0) else {
+        completionHandler(.cancelAuthenticationChallenge, nil)
+        return
+    }
+    let publicKeyHash = publicKeySHA256(of: leafCert)
+
+    // Compare against pinned hashes
+    let pinnedHashes: Set&lt;String&gt; = [
+        "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",   // current cert
+        "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC="    // backup cert (rotation)
+    ]
+
+    if pinnedHashes.contains(publicKeyHash) {
+        completionHandler(.useCredential, URLCredential(trust: serverTrust))
+    } else {
+        completionHandler(.cancelAuthenticationChallenge, nil)
+    }
+}</code></pre>
+
+<h3 id="computing-the-public-key-hash">Computing the Public Key Hash</h3>
+
+<pre><code class="language-swift">import CryptoKit
+
+func publicKeySHA256(of certificate: SecCertificate) -&gt; String {
+    // Extract the public key data
+    guard let publicKey = SecCertificateCopyKey(certificate),
+          let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as Data?
+    else { return "" }
+
+    // Prepend the SubjectPublicKeyInfo header for RSA-2048 or EC keys
+    // (required to match OpenSSL/browser pin format)
+    let rsaHeader = Data([
+        0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09,
+        0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01,
+        0x01, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00
+    ])
+    let spki = rsaHeader + publicKeyData
+    let hash = SHA256.hash(data: spki)
+    return Data(hash).base64EncodedString()
+}</code></pre>
+
+<h3 id="generating-pins">Generating Pins</h3>
+
+<p>Use OpenSSL on your certificate:</p>
+<pre><code class="language-bash"># From PEM certificate:
+openssl x509 -in cert.pem -pubkey -noout | \
+    openssl pkey -pubin -outform DER | \
+    openssl dgst -sha256 -binary | \
+    base64</code></pre>
+
+<h3 id="pin-rotation-strategy">Pin Rotation Strategy</h3>
+
+<p>Pinning with a single certificate is a deployment risk — if the certificate expires or is revoked before you ship an update, the app breaks for all users. Best practices:</p>
+<ol>
+<li><strong>Always pin two keys</strong>: the current certificate and the backup (next certificate, already generated and stored securely).</li>
+<li><strong>Set certificate validity to match your update cadence</strong> — if your app updates every 3–4 months, certificates should be valid for at least 6 months.</li>
+<li><strong>Host a pin transparency log</strong>: a JSON endpoint (fetched infrequently) listing current + upcoming pins, signed by your code signing key. The app validates the signature before updating its local pin set.</li>
+<li><strong>Grace period fallback</strong>: if the pinned hash doesn't match and the device is online, optionally fetch the updated pin set from the transparency log endpoint before hard-failing.</li>
+</ol>
+
+<h3 id="nsurlsession-and-proxies">NSURLSession and Proxies</h3>
+
+<p>Debugging tools (Charles Proxy, mitmproxy) work by installing their root CA into the device trust store, then presenting their own certificate for your server's hostname. Certificate pinning defeats this — the proxy's certificate won't match the pinned hash. For testing in a pinned app: add the proxy's hash to the pinned set in debug builds using <code>#if DEBUG</code>. Never include the proxy CA in the app bundle for release builds.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import CryptoKit
+
+// ── Pinning-aware URLSession ───────────────────────────────────
+final class PinnedURLSession: NSObject, URLSessionDelegate {
+
+    static let shared: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        return URLSession(
+            configuration: config,
+            delegate: PinnedURLSession(),
+            delegateQueue: nil
+        )
+    }()
+
+    // MARK: - URLSessionDelegate
+
+    func urlSession(_ session: URLSession,
+                    didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -&gt; Void) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let serverTrust = challenge.protectionSpace.serverTrust
+        else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+
+        // Step 1: validate standard chain
+        var cfError: CFError?
+        guard SecTrustEvaluateWithError(serverTrust, &amp;cfError) else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+
+        // Step 2: check public key hash
+        guard let leaf = SecTrustGetCertificateAtIndex(serverTrust, 0) else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+
+        let computedHash = PinnedURLSession.spkiHash(of: leaf)
+
+        #if DEBUG
+        // Allow Charles/mitmproxy in debug builds
+        let debugAllowed: Set&lt;String&gt; = ["YOUR_PROXY_HASH="]
+        if debugAllowed.contains(computedHash) {
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            return
+        }
+        #endif
+
+        let pinnedHashes: Set&lt;String&gt; = PinnedURLSession.loadPins()
+        if pinnedHashes.contains(computedHash) {
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        } else {
+            // Log pin failure (without crashing) for monitoring
+            Logger.security.error("Pin mismatch for \(challenge.protectionSpace.host)")
+            completionHandler(.cancelAuthenticationChallenge, nil)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private static func spkiHash(of certificate: SecCertificate) -&gt; String {
+        guard let pubKey = SecCertificateCopyKey(certificate),
+              let keyData = SecKeyCopyExternalRepresentation(pubKey, nil) as Data?
+        else { return "" }
+        let hash = SHA256.hash(data: keyData)
+        return Data(hash).base64EncodedString()
+    }
+
+    /// Load pins from a bundled JSON file (updatable via OTA config in production)
+    private static func loadPins() -&gt; Set&lt;String&gt; {
+        guard let url = Bundle.main.url(forResource: "Pins", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let pins = try? JSONDecoder().decode([String].self, from: data)
+        else {
+            return ["BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB="]   // fallback
+        }
+        return Set(pins)
+    }
+}
+
+// ── ATS Info.plist configuration ──────────────────────────────
+// In Info.plist (for development environment only):
+// &lt;key&gt;NSAppTransportSecurity&lt;/key&gt;
+// &lt;dict&gt;
+//     &lt;key&gt;NSExceptionDomains&lt;/key&gt;
+//     &lt;dict&gt;
+//         &lt;key&gt;localhost&lt;/key&gt;
+//         &lt;dict&gt;
+//             &lt;key&gt;NSExceptionAllowsInsecureHTTPLoads&lt;/key&gt;&lt;true/&gt;
+//         &lt;/dict&gt;
+//     &lt;/dict&gt;
+// &lt;/dict&gt;
+
+// ── Forcing TLS 1.3 (recommendation for new APIs) ─────────────
+extension URLSessionConfiguration {
+    static var secure: URLSessionConfiguration {
+        let config = URLSessionConfiguration.ephemeral
+        // ATS already enforces TLS 1.2 minimum; TLS 1.3 is negotiated automatically
+        // when both client and server support it (iOS 12+, modern servers)
+        config.tlsMinimumSupportedProtocolVersion = .TLSv13
+        return config
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is App Transport Security and what does it protect against?</strong></p>
+
+<p>A: App Transport Security (ATS) is a security feature built into iOS that enforces minimum security standards for all outbound network connections made by <code>URLSession</code> (and APIs built on top of it). It requires: HTTPS (no plaintext HTTP), TLS 1.2 or higher, Forward Secrecy cipher suites (ECDHE), and certificates signed by a trusted CA. ATS protects against passive eavesdropping (an attacker reading HTTP traffic on the same network), downgrade attacks (forcing TLS to a weaker version with exploitable vulnerabilities), and weak encryption. It does not protect against MITM attacks from a rogue CA or a compromised CA — that requires certificate or public-key pinning on top of ATS.</p>
+
+<p><strong>Q: What is the difference between certificate pinning and public-key pinning?</strong></p>
+
+<p>A: Both techniques extend the default CA-based trust model by comparing a server-specific value against a locally pinned reference. <strong>Certificate pinning</strong> compares the full X.509 certificate — the entire DER-encoded bytes (or its hash). It is most specific but breaks when the certificate is renewed, even if the underlying key pair remains the same. <strong>Public-key pinning</strong> compares only the <code>SubjectPublicKeyInfo</code> (SPKI) portion — the public key itself and its algorithm identifier. It survives certificate renewals as long as the server keeps the same key pair, which is common with automated certificate management (Let's Encrypt, ACM). In practice, SPKI pinning (with two pins — current + backup) is recommended because it is robust through normal certificate renewal cycles while still blocking rogue-CA attacks.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you implement certificate pinning without breaking the app when a certificate needs to be rotated?</strong></p>
+
+<p>A: Four-step rotation strategy: (1) <strong>Two-pin policy</strong>: always embed two SPKI hashes in the app — the current certificate's public key and the next certificate's public key (generated in advance). When deploying the new certificate, the backup pin matches it, so clients that haven't updated yet still connect successfully. (2) <strong>Pin update mechanism</strong>: host a signed JSON document at a well-known endpoint listing the current + upcoming pins. The app fetches this infrequently (daily, cached) and verifies the document's signature against a public key compiled into the app binary. This allows pin updates without an app store release. (3) <strong>Expiry monitoring</strong>: alert your infrastructure team when a certificate is within 60 days of expiry. Generate the replacement key pair and prepare the updated pin document at 90 days. Ship an app update with the new backup pin before rotating the live certificate. (4) <strong>Hard-fail vs soft-fail</strong>: the app should hard-fail (reject the connection) on a pin mismatch — soft-failing (falling back to CA validation) defeats the purpose. Log pin failures to your security monitoring system — a spike in failures may indicate a MITM attack in progress.</p>
+
+<p><strong>Q: How can an attacker intercept a pinned HTTPS connection, and how do you defend against it?</strong></p>
+
+<p>A: Three attack vectors: (1) <strong>SSL stripping with a proxy + system trust store manipulation</strong>: if the attacker convinces the user to install their proxy CA into the device's trust store (via MDM or manual installation), and your pinning only checks the chain without verifying the leaf, the attacker's certificate may pass. Defend: verify the leaf certificate or SPKI, not just the chain. (2) <strong>Jailbreak-based SSL bypass</strong>: tools like <code>SSL Kill Switch 2</code> patch <code>SecTrustEvaluateWithError</code> to always return success on jailbroken devices, bypassing your delegate entirely. Defend: detect jailbreaks before making network calls; terminate sensitive sessions if jailbreak is detected. (3) <strong>Repackaged app with modified pins</strong>: an attacker repackages the app with different pinned hashes. Defend: use <code>AppAttest</code> to verify the app is the authentic signed version before trusting its network calls; verify binary integrity with the App Attest assertion on each request.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a network security architecture for a financial app that requires zero tolerance for MITM attacks and must not break during certificate rotation.</strong></p>
+
+<p>A: Five-layer architecture: (1) <strong>ATS as baseline</strong>: enforce in <code>Info.plist</code> with no exceptions — TLS 1.2+ required. (2) <strong>SPKI pinning with three pins</strong>: current key, backup key (next rotation), and an emergency backup key stored offline in an HSM. Implement in <code>URLSession</code> delegate with hard-fail on mismatch. (3) <strong>Dynamic pin updates</strong>: a <code>/api/security/pins</code> endpoint, signed with ECDSA using a key compiled into the binary (not derived from any server certificate). The app fetches this endpoint daily, verifies the signature, and caches the result with a 7-day TTL. Pin updates are pushed here before certificate rotation. (4) <strong>Certificate Transparency enforcement</strong>: require <code>SCTValidationResult</code> on all connections (Apple enforces this since iOS 16). This prevents issuance of rogue certificates without public audit trail visibility. (5) <strong>AppAttest for API requests</strong>: all financial API requests include an <code>AppAttest</code> assertion header. The backend verifies the assertion using Apple's API before processing the request — this prevents bots and script-based attacks even if they somehow obtain valid TLS. Add anomaly detection: if a device sends 100 failed attestations, block it.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: App crashes or shows a network error after certificate rotation.</strong></p>
+
+<p>Solution: The pinned hash no longer matches the new certificate's public key. Immediate fix: ship an emergency app update with the new certificate's SPKI hash in the pins. For future rotation: follow the two-pin + dynamic pin update strategy described above. If the old certificate is still valid, re-deploy the old certificate temporarily to restore service while the update propagates.</p>
+
+<p><strong>Issue: Certificate pinning is blocking legitimate connections during development (Charles Proxy).</strong></p>
+
+<p>Solution: Add <code>#if DEBUG</code> conditional logic in the <code>URLSessionDelegate</code> that either allows all connections (no pinning) or includes the Charles root CA hash in the accepted set. Never include this in release builds — use <code>CONFIGURATION</code> build setting checks or a <code>DEBUG</code> flag. Alternatively, use a development-only backend subdomain with a different certificate that has a development pin, keeping the production pin list clean.</p>
+
+<p><em></em>Issue: <code>SecTrustEvaluateWithError</code> returns success but the server presents an expired certificate.<em></em></p>
+
+<p>Solution: <code>SecTrustEvaluateWithError</code> evaluates the certificate chain including expiry. If it's returning success for an expired cert, it may be using a pinned/test certificate with <code>SecTrustSetAnchorCertificates</code> overriding the default evaluation. Review the trust evaluation code — ensure you're not calling <code>SecTrustSetVerifyDate</code> with a past date or <code>SecTrustSetAnchorCertificates</code> with a self-signed test cert that bypasses date validation.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="data-security.md">Data Security</a> — CryptoKit for encrypting data before transmission</li>
+<li><a href="app-security.md">App Security</a> — jailbreak detection affecting network trust</li>
+<li><a href="../07-networking/advanced-networking.md">Advanced Networking</a> — URLSession configuration and interceptors</li>
+<li><a href="../08-data-persistence/keychain.md">Keychain</a> — storing private keys used in network authentication</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

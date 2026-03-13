@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Testable Architecture — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../11-testing/index.html">Testing</a></span>
+    <span>Testable Architecture</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="testable-architecture">Testable Architecture</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Testable architecture is the set of design choices that make code easy to test in isolation: constructor injection so dependencies can be replaced, protocol-based types so real implementations can be swapped for fakes, and clear layer separation so business logic has no dependency on UIKit or the network. The canonical test double taxonomy — <strong>stub</strong> (returns hardcoded values), <strong>mock</strong> (verifies calls were made), <strong>spy</strong> (wraps real implementation + records calls), <strong>fake</strong> (lightweight working alternative) — provides a vocabulary for choosing the right double for each test scenario. Beyond XCTest, <strong>Quick</strong> and <strong>Nimble</strong> provide BDD-style spec syntax and an expressive assertion library that makes test intent clearer.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Testable architecture is like building a car with removable, standardised parts. The engine (business logic) connects to the fuel system (network) via a standardised fuel connector (protocol). In the real car, a real fuel pump fulfils the connector. In the test garage, a test rig (fake or stub) uses the same connector to provide controlled fuel. You can then test the engine's behaviour at 50%, 100%, and 0% fuel without needing a real pump. If the engine is welded directly to the real pump (tight coupling), you can't test it without starting the whole car — slow, brittle, and dangerous.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="test-double-taxonomy">Test Double Taxonomy</h3>
+
+<table>
+<tr><td>Type</td><td>Behaviour</td><td>Records calls?</td><td>Working implementation?</td><td>Use for</td></tr>
+<tr><td><strong>Stub</strong></td><td>Returns hardcoded values</td><td>No</td><td>No</td><td>Providing input data</td></tr>
+<tr><td><strong>Mock</strong></td><td>Verifies specific calls were made</td><td>Yes</td><td>No</td><td>Verifying interactions</td></tr>
+<tr><td><strong>Spy</strong></td><td>Wraps real implementation + records</td><td>Yes</td><td>Yes (delegates)</td><td>Observing side effects</td></tr>
+<tr><td><strong>Fake</strong></td><td>Simplified working implementation</td><td>No</td><td>Yes (simplified)</td><td>In-memory stores, fast replacements</td></tr>
+<tr><td><strong>Dummy</strong></td><td>Satisfies type requirements, not used</td><td>No</td><td>No</td><td>Filling parameter slots</td></tr>
+</table>
+
+<h3 id="dependency-injection-for-testability">Dependency Injection for Testability</h3>
+
+<p>Constructor injection is the most testable pattern — all dependencies are explicit and replaceable:</p>
+
+<pre><code class="language-swift">// Tight coupling — not testable
+class FeedViewModel {
+    private let service = NetworkService()    // hard-coded; cannot replace
+}
+
+// Constructor injection — testable
+class FeedViewModel {
+    private let service: FeedServiceProtocol   // protocol = seam for test double
+    init(service: FeedServiceProtocol) { self.service = service }
+}</code></pre>
+
+<h3 id="protocol-seams">Protocol Seams</h3>
+
+<p>A <strong>seam</strong> is a point where the implementation can be replaced without changing the calling code. Protocols are the primary seam mechanism in Swift:</p>
+
+<pre><code class="language-swift">// Protocol defines the contract
+protocol FeedServiceProtocol {
+    func fetchPosts() async throws -&gt; [Post]
+    func deletePost(id: String) async throws
+}
+
+// Production implementation
+class FeedService: FeedServiceProtocol { /* real URLSession calls */ }
+
+// Test stub
+class StubFeedService: FeedServiceProtocol {
+    var stubbedPosts: [Post] = []
+    func fetchPosts() async throws -&gt; [Post] { stubbedPosts }
+    func deletePost(id: String) async throws { }
+}
+
+// Test mock (also verifies interactions)
+class MockFeedService: FeedServiceProtocol {
+    var fetchCallCount = 0
+    var deleteCallCount = 0
+    var deletedIDs: [String] = []
+    var postsToReturn: [Post] = []
+    var errorToThrow: Error?
+
+    func fetchPosts() async throws -&gt; [Post] {
+        fetchCallCount += 1
+        if let error = errorToThrow { throw error }
+        return postsToReturn
+    }
+
+    func deletePost(id: String) async throws {
+        deleteCallCount += 1
+        deletedIDs.append(id)
+    }
+}</code></pre>
+
+<h3 id="fake-implementations">Fake Implementations</h3>
+
+<p>A fake has real (simplified) behaviour — suitable when the production implementation is too slow or has side effects:</p>
+
+<pre><code class="language-swift">// Fake in-memory repository (real behaviour, no disk I/O)
+class FakeUserRepository: UserRepositoryProtocol {
+    private var store: [String: User] = [:]
+
+    func save(_ user: User) async throws { store[user.id] = user }
+    func fetch(id: String) async throws -&gt; User? { store[id] }
+    func fetchAll() async throws -&gt; [User] { Array(store.values) }
+    func delete(id: String) async throws { store.removeValue(forKey: id) }
+}</code></pre>
+
+<h3 id="quick--nimble">Quick / Nimble</h3>
+
+<p><strong>Quick</strong> provides BDD-style spec syntax (<code>describe</code>, <code>context</code>, <code>it</code>). <strong>Nimble</strong> provides expressive matchers.</p>
+
+<pre><code class="language-swift">import Quick
+import Nimble
+
+class FeedViewModelSpec: QuickSpec {
+    override func spec() {
+        describe("FeedViewModel") {
+            var sut: FeedViewModel!
+            var mockService: MockFeedService!
+
+            beforeEach {
+                mockService = MockFeedService()
+                sut = FeedViewModel(service: mockService)
+            }
+
+            afterEach {
+                sut = nil
+                mockService = nil
+            }
+
+            describe("loadPosts") {
+                context("when the service succeeds") {
+                    beforeEach {
+                        mockService.postsToReturn = [Post(id: "1", title: "Hello")]
+                        await sut.loadPosts()
+                    }
+                    it("publishes the posts") {
+                        expect(sut.posts).to(haveCount(1))
+                        expect(sut.posts.first?.title).to(equal("Hello"))
+                    }
+                    it("sets isLoading to false") {
+                        expect(sut.isLoading).to(beFalse())
+                    }
+                }
+
+                context("when the service throws an error") {
+                    beforeEach {
+                        mockService.errorToThrow = NetworkError.unauthorized
+                        await sut.loadPosts()
+                    }
+                    it("sets an error message") {
+                        expect(sut.errorMessage).toNot(beNil())
+                    }
+                    it("does not publish posts") {
+                        expect(sut.posts).to(beEmpty())
+                    }
+                }
+            }
+        }
+    }
+}</code></pre>
+
+<p><strong>Nimble matchers</strong>:</p>
+<pre><code class="language-swift">expect(value).to(equal(42))
+expect(array).to(haveCount(3))
+expect(string).to(beginWith("Hello"))
+expect(string).to(contain("world"))
+expect(optional).to(beNil())
+expect(optional).toNot(beNil())
+expect(value).to(beGreaterThan(0))
+expect { try throwingFn() }.to(throwError())
+expect { try throwingFn() }.to(throwError(NetworkError.unauthorized))
+// Async:
+await expect { try await asyncFn() }.to(equal("result"))</code></pre>
+
+<h3 id="test-driven-development-tdd">Test-Driven Development (TDD)</h3>
+
+<p>TDD follows a Red-Green-Refactor cycle:</p>
+<ol>
+<li><strong>Red</strong> — write a failing test for the next behaviour.</li>
+<li><strong>Green</strong> — write the minimum code to make it pass.</li>
+<li><strong>Refactor</strong> — clean up without breaking tests.</li>
+</ol>
+
+<p>Benefits: forces small, focused changes; design emerges naturally (code is designed to be testable from the start); provides a regression safety net. In practice, many iOS engineers use TDD for pure logic (ViewModel, business rules) and test-after for UI components.</p>
+
+<h3 id="testing-mainactor-viewmodels">Testing @MainActor ViewModels</h3>
+
+<pre><code class="language-swift">@MainActor
+final class FeedViewModelTests: XCTestCase {
+    var sut: FeedViewModel!
+
+    override func setUp() async throws {
+        sut = FeedViewModel(service: MockFeedService())
+    }
+
+    func test_loadPosts() async throws {
+        await sut.loadPosts()
+        XCTAssertFalse(sut.isLoading)
+    }
+}</code></pre>
+
+<p>Mark the test class <code>@MainActor</code> when the SUT is <code>@MainActor</code> — prevents "actor-isolated property can only be accessed on the main actor" warnings.</p>
+
+<h3 id="verifying-no-unexpected-interactions">Verifying No Unexpected Interactions</h3>
+
+<p>Mocks should assert that only the expected calls were made:</p>
+
+<pre><code class="language-swift">// At end of test:
+XCTAssertEqual(mockService.fetchCallCount, 1, "Should fetch exactly once")
+XCTAssertEqual(mockService.deleteCallCount, 0, "Should not delete anything")
+XCTAssertTrue(mockService.deletedIDs.isEmpty)</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import XCTest
+import Quick
+import Nimble
+@testable import FeedFeature
+
+// ── Mock with interaction verification ───────────────────────
+class MockAnalyticsService: AnalyticsProtocol {
+    struct Event: Equatable {
+        let name: String
+        let properties: [String: String]
+    }
+    private(set) var trackedEvents: [Event] = []
+
+    func track(_ name: String, properties: [String: String]) {
+        trackedEvents.append(Event(name: name, properties: properties))
+    }
+
+    func verify(event: String, properties: [String: String] = [:],
+                file: StaticString = #file, line: UInt = #line) {
+        XCTAssertTrue(
+            trackedEvents.contains(Event(name: event, properties: properties)),
+            "Expected event '\(event)' was not tracked. Tracked: \(trackedEvents)",
+            file: file, line: line
+        )
+    }
+}
+
+// ── Spy wrapping real implementation ─────────────────────────
+class SpyFeedRepository: FeedRepositoryProtocol {
+    private let wrapped: FeedRepositoryProtocol
+    private(set) var fetchCallCount = 0
+    private(set) var lastFetchedPage: Int?
+
+    init(wrapping: FeedRepositoryProtocol) { self.wrapped = wrapping }
+
+    func fetchPosts(page: Int) async throws -&gt; [Post] {
+        fetchCallCount += 1
+        lastFetchedPage = page
+        return try await wrapped.fetchPosts(page: page)
+    }
+}
+
+// ── Fake in-memory keychain ───────────────────────────────────
+class FakeKeychain: KeychainProtocol {
+    private var store: [String: String] = [:]
+
+    func save(_ value: String, for key: String) throws { store[key] = value }
+    func read(for key: String) throws -&gt; String {
+        guard let value = store[key] else { throw KeychainError.itemNotFound }
+        return value
+    }
+    func delete(for key: String) throws { store.removeValue(forKey: key) }
+}
+
+// ── Quick / Nimble spec ───────────────────────────────────────
+class AuthViewModelSpec: QuickSpec {
+    override func spec() {
+        describe("AuthViewModel") {
+            var sut: AuthViewModel!
+            var mockAuthService: MockAuthService!
+            var fakeKeychain: FakeKeychain!
+            var mockAnalytics: MockAnalyticsService!
+
+            beforeEach {
+                mockAuthService = MockAuthService()
+                fakeKeychain = FakeKeychain()
+                mockAnalytics = MockAnalyticsService()
+                sut = AuthViewModel(
+                    authService: mockAuthService,
+                    keychain: fakeKeychain,
+                    analytics: mockAnalytics
+                )
+            }
+
+            describe("login") {
+                context("with valid credentials") {
+                    let email = "alice@example.com"
+                    let password = "secure123"
+
+                    beforeEach {
+                        mockAuthService.tokenToReturn = "jwt-token-abc"
+                        await sut.login(email: email, password: password)
+                    }
+
+                    it("calls auth service with correct credentials") {
+                        expect(mockAuthService.lastLoginEmail).to(equal(email))
+                        expect(mockAuthService.lastLoginPassword).to(equal(password))
+                    }
+
+                    it("stores token in keychain") {
+                        let stored = try? fakeKeychain.read(for: "access_token")
+                        expect(stored).to(equal("jwt-token-abc"))
+                    }
+
+                    it("tracks login event") {
+                        mockAnalytics.verify(event: "user_login",
+                                             properties: ["method": "email"])
+                    }
+
+                    it("sets isAuthenticated to true") {
+                        expect(sut.isAuthenticated).to(beTrue())
+                    }
+                }
+
+                context("with invalid credentials") {
+                    beforeEach {
+                        mockAuthService.errorToThrow = AuthError.invalidCredentials
+                        await sut.login(email: "bad@test.com", password: "wrong")
+                    }
+
+                    it("sets error message") {
+                        expect(sut.errorMessage).toNot(beNil())
+                    }
+
+                    it("does not store a token") {
+                        let stored = try? fakeKeychain.read(for: "access_token")
+                        expect(stored).to(beNil())
+                    }
+
+                    it("tracks login failure") {
+                        mockAnalytics.verify(event: "login_failed")
+                    }
+
+                    it("does not authenticate") {
+                        expect(sut.isAuthenticated).to(beFalse())
+                    }
+                }
+            }
+
+            describe("logout") {
+                beforeEach {
+                    try? fakeKeychain.save("existing-token", for: "access_token")
+                    await sut.logout()
+                }
+
+                it("removes token from keychain") {
+                    let stored = try? fakeKeychain.read(for: "access_token")
+                    expect(stored).to(beNil())
+                }
+
+                it("sets isAuthenticated to false") {
+                    expect(sut.isAuthenticated).to(beFalse())
+                }
+            }
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between a stub and a mock?</strong></p>
+
+<p>A: A <strong>stub</strong> is a test double that returns hardcoded values — it provides pre-programmed responses to method calls. It answers the question "what should this dependency return?" A <strong>mock</strong> is a test double that records the calls made to it and allows the test to verify that specific interactions occurred — it answers the question "was this method called with the right arguments?" A stub is sufficient when you only need to control what the dependency returns. A mock is needed when the test wants to assert on side effects — "did the analytics service receive the correct event?" or "was the cache invalidated exactly once?" Many test doubles are hybrids that both return stubbed values and record interactions (sometimes called "mocking stubs" or simply mocks in practice).</p>
+
+<p><strong>Q: Why should constructor injection be preferred over property injection for test doubles?</strong></p>
+
+<p>A: Constructor injection makes dependencies explicit and mandatory — the object cannot be created without its dependencies, making it impossible to accidentally use a real dependency in a test. It also enforces immutability (dependencies can be stored as <code>let</code> constants). Property injection (setting <code>viewModel.service = mockService</code> after creation) allows the object to exist in an uninitialised state, can be missed (test forgets to inject the mock), and makes <code>let</code> constants impossible — the dependency must be <code>var</code>. The only legitimate use of property injection is for optional dependencies (delegates, notification targets) or for <code>@AppDelegate</code>-accessible services that can't be injected at construction time.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you test a ViewModel that has side effects only observable via a published state change, without introducing timing dependencies?</strong></p>
+
+<p>A: Two patterns: (1) <em></em>Async test with <code>await</code><em></em>: if the ViewModel method is <code>async</code>, <code>await</code> it directly in the test — the <code>@Published</code> property is updated synchronously on the main actor when the async function completes. Assert after the <code>await</code>. (2) <strong>Synchronous mock delivery</strong>: if the ViewModel triggers a Combine pipeline, configure the mock dependency to deliver responses synchronously (call its completion handler immediately in the test). For <code>@Published</code> properties driven by synchronous operations, assertions are immediate — no wait needed. Avoid <code>XCTestExpectation</code> with <code>waitForExpectations(timeout: 1)</code> — this introduces a 1-second wall-clock dependency that makes the test suite slow and can hide race conditions. Reserve <code>XCTestExpectation</code> for genuinely asynchronous observations (NotificationCenter, delegate callbacks) that cannot be made synchronous.</p>
+
+<p><strong>Q: When should you choose Quick/Nimble over plain XCTest?</strong></p>
+
+<p>A: Quick/Nimble excel when: (1) Tests have complex setup hierarchies — <code>context</code> blocks allow shared setup for groups of related tests without duplicating <code>setUp</code> code. (2) The team has a BDD background and finds <code>it("sets isLoading to false")</code> more readable than <code>func test_loadPosts_whenServiceSucceeds_setsIsLoadingFalse</code>. (3) Nimble matchers (<code>haveCount</code>, <code>beginWith</code>, <code>throwError</code>) produce more informative failure messages than XCTest's <code>XCTAssertEqual</code>. Prefer plain XCTest when: the team is primarily Apple-ecosystem engineers (XCTest is deeply integrated with Xcode's test navigator and coverage); the project already has a large XCTest suite (mixing is confusing); or the simplicity of <code>func test_X()</code> is sufficient for the test complexity. Both are valid — choose consistently within a project.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design the test double infrastructure for a feature module that has five dependencies: a network service, a database repository, an analytics tracker, a keychain, and a user session provider.</strong></p>
+
+<p>A: The infrastructure has three layers: (1) <strong>Protocol layer</strong>: each dependency is defined by a protocol (<code>NetworkServiceProtocol</code>, <code>PostRepositoryProtocol</code>, <code>AnalyticsProtocol</code>, <code>KeychainProtocol</code>, <code>SessionProtocol</code>). The production composition root creates the concrete types; test targets use test doubles. (2) <strong>Test double library</strong> (a separate <code>ModuleTests</code> SPM target or folder): <code>MockNetworkService</code> (records requests, returns configurable responses), <code>MockPostRepository</code> (in-memory <code>[String: Post]</code> dictionary, real behaviour), <code>MockAnalyticsService</code> (records events for verification), <code>FakeKeychain</code> (in-memory dictionary, real Keychain logic), <code>StubSession</code> (returns a fixed user). These are shared across unit tests and integration tests. (3) <strong>Factory helpers</strong>: <code>ModuleTestFactory.makeSUT(network:repository:analytics:keychain:session:)</code> with sensible defaults (all mocks) that individual tests override only for the dependency they're testing. This prevents tests from coupling to all five dependencies when they're testing one. The pattern reduces boilerplate from 5 lines of setup per test to 1, and makes it immediately clear which dependency a test actually exercises.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Test double must conform to a protocol with <code>associatedtype</code> — Swift won't allow it as a variable type.<em></em></p>
+
+<p>Solution: Use <code>any ProtocolName</code> (existential) in Swift 5.7+, or create a concrete generic wrapper (<code>AnyRepository&lt;T&gt;</code>). For test doubles, the simplest fix is to make the protocol non-generic — separate protocol methods by specialisation rather than using <code>associatedtype</code>. If the associatedtype is unavoidable, create a type-erased wrapper class.</p>
+
+<p><strong>Issue: Mock verification at the end of the test is too granular — small refactors break tests.</strong></p>
+
+<p>Solution: Over-specified mocks (asserting exact call count and argument values for every interaction) are brittle. Only assert on interactions that are the <strong>subject of the test</strong>. Move secondary interaction assertions into separate tests with clear names. For most tests, a stub (no interaction assertions) is sufficient — save mocks for tests specifically about side effects.</p>
+
+<p><strong>Issue: Quick tests run correctly in Xcode but fail on CI with "QuickSpec subclass not found."</strong></p>
+
+<p>Solution: Quick discovers specs via Objective-C runtime registration. Ensure the test target links Quick and Nimble correctly (not just the app target). In SPM, add Quick and Nimble to the <code>.testTarget</code>'s dependencies, not the main target. Also check that the test bundle is loaded — add <code>@testable import YourModule</code> even if not strictly needed, to ensure the bundle registers with the Objective-C runtime.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="unit-testing.md">Unit Testing</a> — applying test doubles in XCTest</li>
+<li><a href="integration-testing.md">Integration Testing</a> — fakes and real components together</li>
+<li><a href="../06-architecture/dependency-injection.md">Dependency Injection</a> — constructor injection enables test doubles</li>
+<li><a href="../06-architecture/solid-principles.md">SOLID Principles</a> — Interface Segregation = small, mockable protocols</li>
+<li><a href="../06-architecture/mvvm.md">MVVM</a> — ViewModel with protocol-injected services is the canonical testable unit</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XCFrameworks — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../10-dependency-management/index.html">Dependency Management</a></span>
+    <span>Xcframeworks</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html" class="active">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="xcframeworks">XCFrameworks</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>An XCFramework (<code>.xcframework</code>) is Apple's binary distribution format for frameworks that must run on multiple platforms and architectures simultaneously. It replaces the older "fat binary" (universal) framework approach, which could not accommodate architectures with the same name on different platforms — specifically the collision between <code>arm64</code> on physical devices and <code>arm64</code> on Apple Silicon Macs running iOS Simulator. An XCFramework is a directory bundle containing one pre-built framework or static library per platform/architecture slice, with an <code>Info.plist</code> manifest that tells Xcode which slice to use when building. XCFrameworks are the correct format for distributing closed-source SDKs, Carthage dependencies, and SPM binary targets.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine you're shipping a piece of furniture that must work in both left-hand and right-hand homes. A fat binary is like packing a single piece that tries to accommodate both configurations inside itself — but if both configurations happen to use the same bolt size (arm64), it becomes impossible to tell them apart when unpacking. An XCFramework is like shipping the furniture in two clearly labelled boxes — "Left-Hand Home" and "Right-Hand Home" — with a guide card (Info.plist) telling the installer which box to open. Xcode reads the guide card and uses exactly the right variant for the current build target.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="xcframework-bundle-structure">XCFramework Bundle Structure</h3>
+
+<pre><code>MyFramework.xcframework/
+├── Info.plist                              ← manifest: maps platforms to slices
+├── ios-arm64/                              ← physical iOS devices (arm64)
+│   └── MyFramework.framework/
+│       ├── MyFramework                     ← dylib or static archive
+│       ├── Headers/
+│       ├── Modules/
+│       │   ├── module.modulemap
+│       │   └── MyFramework.swiftmodule/
+│       └── Info.plist
+├── ios-arm64_x86_64-simulator/             ← iOS Simulator (arm64 + x86_64)
+│   └── MyFramework.framework/
+│       └── ...
+└── macos-arm64_x86_64/                     ← macOS (optional)
+    └── MyFramework.framework/
+        └── ...</code></pre>
+
+<p>The slice directory names encode <code>&lt;platform&gt;-&lt;arch&gt;[-&lt;variant&gt;]</code>. Common slices:</p>
+
+<table>
+<tr><td>Slice directory</td><td>Platform</td></tr>
+<tr><td><code>ios-arm64</code></td><td>iOS physical device</td></tr>
+<tr><td><code>ios-arm64_x86_64-simulator</code></td><td>iOS Simulator (Apple Silicon + Intel Mac)</td></tr>
+<tr><td><code>macos-arm64_x86_64</code></td><td>macOS universal</td></tr>
+<tr><td><code>tvos-arm64</code></td><td>tvOS device</td></tr>
+<tr><td><code>watchos-arm64_arm64_32</code></td><td>watchOS device</td></tr>
+</table>
+
+<h3 id="why-fat-binaries-failed-for-simulator">Why Fat Binaries Failed for Simulator</h3>
+
+<p>Before XCFramework, vendors shipped "fat" (universal) frameworks containing multiple architecture slices merged with <code>lipo</code>. This worked when device = <code>arm64</code> and Simulator = <code>x86_64</code>. After Apple Silicon Macs introduced <code>arm64</code> for the Simulator, a fat framework would contain two <code>arm64</code> slices — indistinguishable by <code>lipo</code>. XCFramework solves this by keeping slices in separate directories with platform metadata.</p>
+
+<h3 id="creating-an-xcframework">Creating an XCFramework</h3>
+
+<p><strong>Step 1 — Archive each platform slice</strong>:</p>
+
+<pre><code class="language-bash"># Device slice
+xcodebuild archive \
+  -scheme MyFramework \
+  -destination "generic/platform=iOS" \
+  -archivePath "build/MyFramework-iOS.xcarchive" \
+  SKIP_INSTALL=NO \
+  BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+
+# Simulator slice
+xcodebuild archive \
+  -scheme MyFramework \
+  -destination "generic/platform=iOS Simulator" \
+  -archivePath "build/MyFramework-Sim.xcarchive" \
+  SKIP_INSTALL=NO \
+  BUILD_LIBRARY_FOR_DISTRIBUTION=YES</code></pre>
+
+<p><strong>Step 2 — Combine into XCFramework</strong>:</p>
+
+<pre><code class="language-bash">xcodebuild -create-xcframework \
+  -framework "build/MyFramework-iOS.xcarchive/Products/Library/Frameworks/MyFramework.framework" \
+  -framework "build/MyFramework-Sim.xcarchive/Products/Library/Frameworks/MyFramework.framework" \
+  -output "output/MyFramework.xcframework"</code></pre>
+
+<p>For static libraries (<code>.a</code>), use <code>-library</code> and <code>-headers</code> flags instead of <code>-framework</code>.</p>
+
+<h3 id="code-signing-xcframeworks">Code Signing XCFrameworks</h3>
+
+<p>Xcode 12+ requires XCFrameworks to be signed when distributed. Sign with a Developer ID certificate (for direct distribution) or let Xcode re-sign with the app's certificate at embed time.</p>
+
+<pre><code class="language-bash"># Sign the xcframework:
+codesign --timestamp -s "Developer ID Application: Company Name (TEAMID)" \
+  output/MyFramework.xcframework</code></pre>
+
+<p>For XCFrameworks embedded in an app via SPM binary target, Xcode signs all embedded binaries during the archive step — you do not need to pre-sign.</p>
+
+<h3 id="spm-binary-targets">SPM Binary Targets</h3>
+
+<p>XCFrameworks are the distribution format for SPM <code>.binaryTarget</code>:</p>
+
+<pre><code class="language-swift">// Remote (downloaded from URL):
+.binaryTarget(
+    name: "MyFramework",
+    url: "https://releases.example.com/MyFramework-2.1.0.xcframework.zip",
+    checksum: "sha256-hash-of-zip-file"
+)
+
+// Local (path relative to Package.swift):
+.binaryTarget(
+    name: "MyFramework",
+    path: "Frameworks/MyFramework.xcframework"
+)</code></pre>
+
+<p>The remote variant must point to a <code>.zip</code> containing the <code>.xcframework</code> at its root. The checksum is the SHA-256 of the zip archive (not the xcframework directory).</p>
+
+<pre><code class="language-bash"># Compute checksum for Package.swift:
+swift package compute-checksum MyFramework-2.1.0.xcframework.zip</code></pre>
+
+<h3 id="including-resources-in-xcframeworks">Including Resources in XCFrameworks</h3>
+
+<p>XCFrameworks themselves cannot contain resource bundles. The standard pattern is to ship a separate <code>MyFramework_Resources.bundle</code> alongside the XCFramework and reference it in the SPM target's <code>resources</code> array, or instruct CocoaPods consumers to include the bundle via <code>resource_bundles</code> in the Podspec.</p>
+
+<h3 id="verifying-an-xcframework">Verifying an XCFramework</h3>
+
+<pre><code class="language-bash"># Inspect the Info.plist:
+cat MyFramework.xcframework/Info.plist
+
+# Check architectures in each slice:
+lipo -info "MyFramework.xcframework/ios-arm64/MyFramework.framework/MyFramework"
+# → architecture: arm64
+
+lipo -info "MyFramework.xcframework/ios-arm64_x86_64-simulator/MyFramework.framework/MyFramework"
+# → architectures: arm64 x86_64
+
+# Verify code signature:
+codesign -dv --verbose=4 MyFramework.xcframework</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-bash">#!/bin/bash
+# ── Full XCFramework build script ─────────────────────────────
+set -e
+
+SCHEME="NetworkKit"
+FRAMEWORK_NAME="NetworkKit"
+OUTPUT_DIR="build"
+XCFRAMEWORK_PATH="$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
+
+# Clean previous build
+rm -rf "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR"
+
+# ── Step 1: Archive iOS device ────────────────────────────────
+xcodebuild archive \
+  -scheme "$SCHEME" \
+  -destination "generic/platform=iOS" \
+  -archivePath "$OUTPUT_DIR/${FRAMEWORK_NAME}-iOS.xcarchive" \
+  SKIP_INSTALL=NO \
+  BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+  | xcpretty
+
+# ── Step 2: Archive iOS Simulator ────────────────────────────
+xcodebuild archive \
+  -scheme "$SCHEME" \
+  -destination "generic/platform=iOS Simulator" \
+  -archivePath "$OUTPUT_DIR/${FRAMEWORK_NAME}-Sim.xcarchive" \
+  SKIP_INSTALL=NO \
+  BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+  | xcpretty
+
+# ── Step 3: Create XCFramework ────────────────────────────────
+xcodebuild -create-xcframework \
+  -framework "$OUTPUT_DIR/${FRAMEWORK_NAME}-iOS.xcarchive/Products/Library/Frameworks/${FRAMEWORK_NAME}.framework" \
+  -framework "$OUTPUT_DIR/${FRAMEWORK_NAME}-Sim.xcarchive/Products/Library/Frameworks/${FRAMEWORK_NAME}.framework" \
+  -output "$XCFRAMEWORK_PATH"
+
+echo "✓ Created $XCFRAMEWORK_PATH"
+
+# ── Step 4: Sign ──────────────────────────────────────────────
+SIGN_IDENTITY="Developer ID Application: My Company (ABCDE12345)"
+codesign --timestamp -s "$SIGN_IDENTITY" "$XCFRAMEWORK_PATH"
+echo "✓ Signed $XCFRAMEWORK_PATH"
+
+# ── Step 5: Zip for SPM distribution ─────────────────────────
+ZIP_PATH="$OUTPUT_DIR/${FRAMEWORK_NAME}-2.1.0.xcframework.zip"
+pushd "$OUTPUT_DIR" &gt; /dev/null
+zip -r "../${ZIP_PATH}" "${FRAMEWORK_NAME}.xcframework"
+popd &gt; /dev/null
+
+# ── Step 6: Compute checksum for Package.swift ───────────────
+CHECKSUM=$(swift package compute-checksum "$ZIP_PATH")
+echo "✓ Checksum: $CHECKSUM"
+echo ""
+echo "Add to Package.swift:"
+echo ".binaryTarget("
+echo "    name: \"$FRAMEWORK_NAME\","
+echo "    url: \"https://cdn.example.com/${FRAMEWORK_NAME}-2.1.0.xcframework.zip\","
+echo "    checksum: \"$CHECKSUM\""
+echo ")"</code></pre>
+
+<pre><code class="language-swift">// ── Package.swift with binary target + wrapper target ─────────
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "AnalyticsPackage",
+    platforms: [.iOS(.v16)],
+    products: [
+        // Expose a Swift wrapper (not the binary directly) so
+        // consumers import a stable public API we control:
+        .library(name: "Analytics", targets: ["Analytics"])
+    ],
+    targets: [
+        // The binary xcframework:
+        .binaryTarget(
+            name: "AnalyticsCore",
+            url: "https://cdn.example.com/AnalyticsCore-3.0.0.xcframework.zip",
+            checksum: "a3f8e9..."
+        ),
+        // A thin Swift wrapper providing a stable public API:
+        .target(
+            name: "Analytics",
+            dependencies: ["AnalyticsCore"],   // depends on binary
+            path: "Sources/Analytics"
+        )
+    ]
+)
+
+// ── Wrapper source (Sources/Analytics/Analytics.swift) ────────
+import AnalyticsCore
+
+// Re-export only the stable parts of the binary SDK
+public struct Analytics {
+    public static func track(_ event: String, properties: [String: Any] = [:]) {
+        AnalyticsCore.AnalyticsSDK.track(event: event, properties: properties)
+    }
+
+    public static func identify(userID: String) {
+        AnalyticsCore.AnalyticsSDK.setUserID(userID)
+    }
+}</code></pre>
+
+<pre><code class="language-swift">// ── Consuming an XCFramework directly (CocoaPods/Carthage) ────
+// In Podfile:
+// pod 'MyFramework', :vendored_frameworks =&gt; 'Frameworks/MyFramework.xcframework'
+
+// In Xcode directly:
+// Target → General → Frameworks, Libraries, and Embedded Content
+// → + → Add Files → select MyFramework.xcframework
+// → Set to "Embed &amp; Sign" for dynamic, "Do Not Embed" for static
+
+// ── Checking which slice Xcode selected ───────────────────────
+// Product → Show Build Log → search "MyFramework.xcframework"
+// Should show the selected slice directory name</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What problem does XCFramework solve that a fat (universal) binary cannot?</strong></p>
+
+<p>A: A fat binary (created with <code>lipo</code>) merges multiple architecture slices into a single file. Before Apple Silicon Macs, device = <code>arm64</code> and Simulator = <code>x86_64</code> — two distinct architectures, distinguishable in a fat binary. Apple Silicon Macs run the iOS Simulator as <code>arm64</code>, colliding with the device's <code>arm64</code>. A fat binary cannot contain two <code>arm64</code> slices without ambiguity. XCFramework solves this by storing slices in separate platform-labelled directories (<code>ios-arm64/</code> for device, <code>ios-arm64_x86_64-simulator/</code> for Simulator) with an <code>Info.plist</code> manifest that tells Xcode which directory to use based on the build target. This also enables including macOS, tvOS, and watchOS variants in a single distributable.</p>
+
+<p><em></em>Q: What is <code>BUILD_LIBRARY_FOR_DISTRIBUTION</code> and why is it required for XCFrameworks?<em></em></p>
+
+<p>A: <code>BUILD_LIBRARY_FOR_DISTRIBUTION = YES</code> instructs the Swift compiler to generate a <code>.swiftinterface</code> file — a stable, text-based module interface — alongside the binary <code>.swiftmodule</code>. A <code>.swiftmodule</code> is tied to the exact Swift compiler version that produced it; a consumer using a different Swift version cannot import it. A <code>.swiftinterface</code> is forward-compatible — future Swift compilers can parse it and reconstruct the module interface. Without it, an XCFramework is unusable as soon as the consumer updates to a new Xcode/Swift version. For any XCFramework you plan to distribute (publicly or internally), always build with <code>BUILD_LIBRARY_FOR_DISTRIBUTION = YES</code>.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you distribute an XCFramework via Swift Package Manager and what security measure must you implement?</strong></p>
+
+<p>A: Declare a <code>.binaryTarget</code> in <code>Package.swift</code> with: <code>name</code> (the module name importable in Swift), <code>url</code> (HTTPS URL to a <code>.zip</code> containing the <code>.xcframework</code> at its root), and <code>checksum</code> (SHA-256 hash of the <code>.zip</code> file, computed with <code>swift package compute-checksum</code>). When SPM resolves the package, it downloads the zip, hashes it, and compares against the declared checksum — refusing to proceed if they differ. This prevents supply-chain attacks where the file at the URL is replaced maliciously. Security requirements: (1) Use HTTPS only (SPM rejects HTTP). (2) Host on infrastructure you control — do not depend on third-party CDNs you cannot audit. (3) Tag each release, update the URL and checksum in <code>Package.swift</code> for every release. (4) Optionally sign the XCFramework with a Developer ID certificate before zipping, and document the signing identity so consumers can verify.</p>
+
+<p><strong>Q: What is the difference between embedding an XCFramework as "Embed &amp; Sign" vs "Do Not Embed"?</strong></p>
+
+<p>A: This choice mirrors the static vs dynamic distinction. If the XCFramework's slice contains a <strong>dynamic framework</strong> (<code>.dylib</code>), it must be embedded — set to "Embed &amp; Sign." The framework is copied into <code>YourApp.app/Frameworks/</code> and <code>dyld</code> loads it at runtime. If the slice is a <strong>static library</strong> (<code>.a</code>), the code is linked into the app binary at build time — "Do Not Embed" is correct. Embedding a static XCFramework wastes space (the code is already in the binary) and may cause App Store upload errors. Xcode's "Embed &amp; Sign" also re-signs the binary with the app's distribution certificate, which is required for App Store submission.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you set up a CI pipeline to build and distribute an XCFramework for an internal SDK, ensuring reproducible builds and version traceability?</strong></p>
+
+<p>A: A robust pipeline has five stages: (1) <strong>Version tagging</strong>: every release is tagged in Git (<code>git tag 2.1.0 &amp;&amp; git push origin 2.1.0</code>). The CI pipeline triggers on tags. (2) <strong>Build</strong>: archive both slices (<code>xcodebuild archive</code> for device and Simulator) with <code>SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES</code>. Create the XCFramework with <code>xcodebuild -create-xcframework</code>. (3) <strong>Sign</strong>: code-sign with a stable Developer ID certificate stored in CI's secrets store (Keychain or CI vault). (4) <strong>Distribute</strong>: zip the XCFramework, compute the SHA-256 checksum, upload to a versioned CDN path (<code>https://cdn.internal/sdk/2.1.0/SDK.xcframework.zip</code>). Never overwrite an existing release URL — use immutable versioned URLs. (5) <strong>Update Package.swift</strong>: create a PR in the consuming app's repository that bumps the binary target's <code>url</code> and <code>checksum</code> to the new version. Automating step 5 with a bot (GitHub Actions creating a PR) ensures the consuming team reviews and tests before merging, maintaining version traceability in the app's git history.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: "Framework 'MyFramework' not found" when running on Simulator after adding XCFramework.</strong></p>
+
+<p>Solution: The XCFramework does not include a Simulator slice. Verify <code>Info.plist</code> lists <code>ios-arm64_x86_64-simulator</code>. Rebuild by running both archives and re-creating the XCFramework. Also check <code>lipo -info</code> on the Simulator slice — it should list both <code>arm64</code> and <code>x86_64</code>.</p>
+
+<p><strong>Issue: Xcode warns "MyFramework.xcframework is not signed" at build time.</strong></p>
+
+<p>Solution: Sign the XCFramework with <code>codesign --timestamp -s "Developer ID Application: ..."</code> before distribution. On App Store builds, Xcode will re-sign embedded binaries with the distribution certificate — the pre-signature is mainly for Notarisation and CI verification.</p>
+
+<p><strong>Issue: SPM checksum mismatch error when team members resolve the package.</strong></p>
+
+<p>Solution: The zip file at the URL changed (different contents, different compression) between the time the checksum was computed and when team members resolved. Re-download the zip, recompute the checksum with <code>swift package compute-checksum</code>, update <code>Package.swift</code>, and commit. Use immutable CDN URLs (include version in path) to prevent this.</p>
+
+<p><strong>Issue: "Module compiled with Swift X.Y cannot be imported by Swift X.Z" for binary target.</strong></p>
+
+<p>Solution: The XCFramework was built without <code>BUILD_LIBRARY_FOR_DISTRIBUTION = YES</code>, so no <code>.swiftinterface</code> was generated. Rebuild with the flag, replace the distribution artifact, and update <code>Package.swift</code> with the new checksum.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="static-dynamic-frameworks.md">Static Libraries &amp; Dynamic Frameworks</a> — XCFramework slices are static or dynamic</li>
+<li><a href="swift-package-manager.md">Swift Package Manager</a> — <code>.binaryTarget</code> in Package.swift</li>
+<li><a href="cocoapods-carthage.md">CocoaPods &amp; Carthage</a> — Carthage <code>--use-xcframeworks</code>; vendored frameworks in Podspecs</li>
+<li><a href="../06-architecture/modularization.md">Modularization</a> — XCFramework as a pre-built module in a modular architecture</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

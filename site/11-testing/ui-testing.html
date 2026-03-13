@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UI Testing — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../11-testing/index.html">Testing</a></span>
+    <span>Ui Testing</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="ui-testing">UI Testing</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>UI tests (XCUITest) drive the app through the accessibility layer — the same way VoiceOver interacts with the UI — simulating real user input: taps, swipes, text entry, device rotation. They provide the highest confidence level: a passing UI test means the full app stack (network, database, business logic, navigation, rendering) worked end-to-end. The tradeoff is cost: UI tests are 10–100x slower than unit tests, are inherently flaky (timing, animation, device state), and break on unrelated UI changes. Production suites use UI tests sparingly — typically a critical path (login → main feature → logout) and a handful of regression tests for previously-broken flows. <code>XCUIApplication</code>, <code>XCUIElement</code>, and <code>XCUIElementQuery</code> are the primary APIs.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>XCUITest is a robot that uses your app exactly like a real user, but it's blind — it navigates by labels and accessibility identifiers, not by pixel positions. You tell the robot: "Tap the button labelled 'Sign In'", "Type 'alice@email.com' in the text field with identifier 'emailField'", "Wait until the label 'Welcome, Alice' appears." The robot drives a real app process (a separate process from the test) and reports pass/fail based on whether the expected elements appeared and actions succeeded.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="xcuitest-architecture">XCUITest Architecture</h3>
+
+<p>XCUITest runs the test code in a <strong>separate process</strong> from the app under test. Communication happens through the accessibility service:</p>
+
+<pre><code>XCUITest process              App process
+(test code)         ←IPC→    (your app)
+XCUIApplication            UIApplication
+XCUIElement               UIView / UIControl</code></pre>
+
+<p>This means: test code cannot access app objects directly (no <code>@testable import</code>). State is communicated via launch arguments, launch environment, accessibility labels, and the accessibility tree.</p>
+
+<h3 id="xcuiapplication">XCUIApplication</h3>
+
+<pre><code class="language-swift">let app = XCUIApplication()
+
+// Configure before launch
+app.launchArguments = ["--uitesting", "--reset-state"]
+app.launchEnvironment = ["MOCK_NETWORK": "1"]
+
+// Launch / terminate
+app.launch()           // launch fresh
+app.activate()         // bring to foreground if already running
+app.terminate()
+
+// Query elements
+app.buttons["Sign In"]                          // by label
+app.textFields["emailField"]                    // by accessibility identifier
+app.staticTexts.matching(identifier: "title").firstMatch
+app.tables.cells.element(boundBy: 0)            // first cell in any table</code></pre>
+
+<h3 id="xcuielement-interactions">XCUIElement Interactions</h3>
+
+<pre><code class="language-swift">let button = app.buttons["Submit"]
+button.tap()
+button.doubleTap()
+button.press(forDuration: 1.0)    // long press
+
+let field = app.textFields["username"]
+field.tap()
+field.typeText("alice@example.com")
+field.clearAndTypeText("new text")    // custom extension
+
+// Swipe
+app.swipeUp()
+app.tables.swipeDown()
+
+// Scroll to element
+app.tables.cells["TargetCell"].scrollIntoView()</code></pre>
+
+<h3 id="existence-and-waiting">Existence and Waiting</h3>
+
+<pre><code class="language-swift">// Check existence (does not wait)
+XCTAssertTrue(app.buttons["Submit"].exists)
+
+// Wait for element (recommended — handles animation delays)
+let predicate = NSPredicate(format: "exists == true")
+let button = app.buttons["Submit"]
+expectation(for: predicate, evaluatedWith: button)
+waitForExpectations(timeout: 5)
+
+// Cleaner: XCTNSPredicateExpectation via waitForExistence
+XCTAssertTrue(app.buttons["Submit"].waitForExistence(timeout: 5))</code></pre>
+
+<h3 id="accessibility-identifiers">Accessibility Identifiers</h3>
+
+<p>Accessibility labels are for VoiceOver users and change with localisation. Accessibility identifiers are stable, non-localised, and specifically for testing:</p>
+
+<pre><code class="language-swift">// In production UIKit code:
+button.accessibilityIdentifier = "loginButton"
+emailField.accessibilityIdentifier = "emailTextField"
+
+// In SwiftUI:
+Button("Sign In") { login() }
+    .accessibilityIdentifier("loginButton")
+
+TextField("Email", text: $email)
+    .accessibilityIdentifier("emailTextField")</code></pre>
+
+<p><strong>Never use accessibility labels for test queries</strong> — they change with localisation.</p>
+
+<h3 id="page-object-pattern">Page Object Pattern</h3>
+
+<p>Encapsulate element access in page objects to avoid duplicated element queries and to isolate UI tests from layout changes:</p>
+
+<pre><code class="language-swift">struct LoginPage {
+    let app: XCUIApplication
+
+    var emailField: XCUIElement { app.textFields["emailTextField"] }
+    var passwordField: XCUIElement { app.secureTextFields["passwordTextField"] }
+    var signInButton: XCUIElement { app.buttons["signInButton"] }
+    var errorLabel: XCUIElement { app.staticTexts["errorLabel"] }
+
+    @discardableResult
+    func login(email: String, password: String) -&gt; FeedPage {
+        emailField.tap()
+        emailField.typeText(email)
+        passwordField.tap()
+        passwordField.typeText(password)
+        signInButton.tap()
+        return FeedPage(app: app)
+    }
+
+    var isDisplayed: Bool { signInButton.exists }
+}
+
+struct FeedPage {
+    let app: XCUIApplication
+    var postCells: XCUIElementQuery { app.tables.cells }
+    var isDisplayed: Bool { app.navigationBars["Feed"].exists }
+}</code></pre>
+
+<h3 id="launch-arguments-for-test-configuration">Launch Arguments for Test Configuration</h3>
+
+<p>Use launch arguments to put the app in a known state:</p>
+
+<pre><code class="language-swift">// In test:
+app.launchArguments = ["--uitesting", "--reset-keychain", "--mock-api"]
+
+// In app (AppDelegate / App):
+if CommandLine.arguments.contains("--uitesting") {
+    // Disable animations for faster, more reliable tests
+    UIView.setAnimationsEnabled(false)
+}
+if CommandLine.arguments.contains("--reset-keychain") {
+    Credentials.clearAll()
+}
+if CommandLine.arguments.contains("--mock-api") {
+    // Use MockURLProtocol globally
+    URLSessionConfiguration.default.protocolClasses = [MockURLProtocol.self]
+}</code></pre>
+
+<h3 id="disabling-animations">Disabling Animations</h3>
+
+<p>Animations cause flakiness in UI tests — elements appear and disappear asynchronously. Disable them in the app when launched for testing:</p>
+
+<pre><code class="language-swift">// In production AppDelegate:
+override func application(_ app: UIApplication,
+                           didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]?) -&gt; Bool {
+    if ProcessInfo.processInfo.arguments.contains("--uitesting") {
+        UIView.setAnimationsEnabled(false)
+    }
+    return true
+}</code></pre>
+
+<h3 id="xcuitest-reliability-tips">XCUITest Reliability Tips</h3>
+
+<ul>
+<li>Prefer <code>waitForExistence(timeout:)</code> over <code>exists</code> for elements that appear after transitions.</li>
+<li>Use <code>isHittable</code> (not just <code>exists</code>) before tapping — an element can exist but be covered by another view.</li>
+<li>Avoid hardcoded <code>sleep</code> — replace with element existence waits.</li>
+<li>Use stable <code>accessibilityIdentifier</code>s, not localised text.</li>
+<li>Isolate tests: launch fresh app, reset state via launch arguments.</li>
+<li>Run UI tests on a dedicated physical device or consistent simulator configuration in CI.</li>
+</ul>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import XCTest
+
+// ── Login flow UI test ────────────────────────────────────────
+final class LoginUITests: XCTestCase {
+    var app: XCUIApplication!
+    var loginPage: LoginPage!
+
+    override func setUp() async throws {
+        continueAfterFailure = false    // stop after first failure
+        app = XCUIApplication()
+        app.launchArguments = ["--uitesting", "--reset-state", "--mock-api"]
+        app.launch()
+        loginPage = LoginPage(app: app)
+    }
+
+    override func tearDown() async throws {
+        app.terminate()
+        app = nil
+    }
+
+    func test_login_withValidCredentials_showsFeed() {
+        // Given: mock API returns success for these credentials
+        XCTAssertTrue(loginPage.isDisplayed)
+
+        // When
+        let feedPage = loginPage.login(email: "user@test.com", password: "password123")
+
+        // Then
+        XCTAssertTrue(feedPage.isDisplayed, "Feed should be visible after login")
+        XCTAssertFalse(loginPage.isDisplayed, "Login screen should be dismissed")
+    }
+
+    func test_login_withInvalidCredentials_showsErrorMessage() {
+        // Given: mock API returns 401 for invalid credentials
+        loginPage.emailField.tap()
+        loginPage.emailField.typeText("bad@test.com")
+        loginPage.passwordField.tap()
+        loginPage.passwordField.typeText("wrongpassword")
+        loginPage.signInButton.tap()
+
+        // Then
+        XCTAssertTrue(loginPage.errorLabel.waitForExistence(timeout: 3))
+        XCTAssertEqual(loginPage.errorLabel.label, "Invalid email or password")
+        XCTAssertTrue(loginPage.isDisplayed, "Should stay on login screen")
+    }
+
+    func test_login_emptyEmail_disablesSignInButton() {
+        // Sign in button should be disabled when email is empty
+        XCTAssertFalse(loginPage.signInButton.isEnabled)
+
+        loginPage.emailField.tap()
+        loginPage.emailField.typeText("user@test.com")
+        loginPage.passwordField.tap()
+        loginPage.passwordField.typeText("pass")
+
+        XCTAssertTrue(loginPage.signInButton.isEnabled)
+    }
+}
+
+// ── Feed flow UI test ─────────────────────────────────────────
+final class FeedUITests: XCTestCase {
+    var app: XCUIApplication!
+    var feedPage: FeedPage!
+
+    override func setUp() async throws {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments = ["--uitesting", "--skip-login", "--mock-api"]
+        app.launch()
+        feedPage = FeedPage(app: app)
+    }
+
+    override func tearDown() async throws { app.terminate() }
+
+    func test_feedLoads_displaysPostCells() {
+        XCTAssertTrue(feedPage.isDisplayed)
+        XCTAssertGreaterThan(feedPage.postCells.count, 0,
+                             "Feed should display at least one post")
+    }
+
+    func test_tapPost_navigatesToDetail() {
+        let firstCell = feedPage.postCells.element(boundBy: 0)
+        XCTAssertTrue(firstCell.waitForExistence(timeout: 3))
+        firstCell.tap()
+
+        let detailPage = PostDetailPage(app: app)
+        XCTAssertTrue(detailPage.isDisplayed, "Post detail should open")
+    }
+
+    func test_pullToRefresh_reloadsContent() {
+        let table = app.tables.element
+        table.swipeDown()   // pull-to-refresh gesture
+        // Wait for loading indicator to disappear
+        let spinner = app.activityIndicators.element
+        XCTAssertFalse(spinner.waitForExistence(timeout: 5) &amp;&amp; spinner.exists,
+                       "Spinner should disappear after refresh")
+    }
+}
+
+// ── Page objects ──────────────────────────────────────────────
+struct LoginPage {
+    let app: XCUIApplication
+    var emailField: XCUIElement    { app.textFields["emailTextField"] }
+    var passwordField: XCUIElement { app.secureTextFields["passwordTextField"] }
+    var signInButton: XCUIElement  { app.buttons["signInButton"] }
+    var errorLabel: XCUIElement    { app.staticTexts["authErrorLabel"] }
+    var isDisplayed: Bool          { signInButton.waitForExistence(timeout: 2) }
+
+    @discardableResult
+    func login(email: String, password: String) -&gt; FeedPage {
+        emailField.tap(); emailField.typeText(email)
+        passwordField.tap(); passwordField.typeText(password)
+        signInButton.tap()
+        return FeedPage(app: app)
+    }
+}
+
+struct FeedPage {
+    let app: XCUIApplication
+    var postCells: XCUIElementQuery { app.tables.cells }
+    var isDisplayed: Bool           { app.navigationBars["Feed"].waitForExistence(timeout: 5) }
+}
+
+struct PostDetailPage {
+    let app: XCUIApplication
+    var isDisplayed: Bool { app.navigationBars["Post Detail"].waitForExistence(timeout: 3) }
+}
+
+// ── XCUIElement helper ────────────────────────────────────────
+extension XCUIElement {
+    func clearAndTypeText(_ text: String) {
+        guard let currentValue = value as? String, !currentValue.isEmpty else {
+            typeText(text); return
+        }
+        // Select all + delete existing text
+        tap()
+        let selectAllMenu = XCUIApplication().menuItems["Select All"]
+        if selectAllMenu.waitForExistence(timeout: 1) {
+            selectAllMenu.tap()
+            typeText(text)
+        } else {
+            // Fallback: triple-tap to select all
+            tap(withNumberOfTaps: 3, numberOfTouches: 1)
+            typeText(text)
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>accessibilityLabel</code> and <code>accessibilityIdentifier</code> and which should you use for UI tests?<em></em></p>
+
+<p>A: <code>accessibilityLabel</code> is the human-readable description of a UI element read aloud by VoiceOver — it changes with localisation (different languages have different labels). <code>accessibilityIdentifier</code> is a programmer-defined string that identifies an element for testing and automation; it is not localised and does not change. Always use <code>accessibilityIdentifier</code> for UI test element queries. Using <code>accessibilityLabel</code> makes tests brittle — they break when the app is localised or when copy is edited. Also avoid querying by element index (<code>cells.element(boundBy: 0)</code>) for anything other than the first item in a known-size list — indices are fragile when the list reorders.</p>
+
+<p><em></em>Q: What does <code>continueAfterFailure = false</code> do and why should you set it in UI tests?<em></em></p>
+
+<p>A: By default (<code>continueAfterFailure = true</code>), XCTest continues running assertions after one fails, potentially causing subsequent assertions to crash or produce misleading errors. For UI tests, a failure in the first step (e.g., "Sign In button not found") means all subsequent steps are invalid — the test is navigating a different state than expected. Setting <code>continueAfterFailure = false</code> stops the test at the first failure, producing a cleaner, more actionable error message. It also prevents cascading failures that are hard to diagnose. Set it in <code>setUp</code> for all UI test classes.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you use launch arguments to make UI tests deterministic when the app normally fetches from a remote API?</strong></p>
+
+<p>A: Pass a launch argument (e.g., <code>--mock-api</code>) that the app reads in <code>didFinishLaunchingWithOptions</code>. When the flag is present, the app installs <code>MockURLProtocol</code> on <code>URLSessionConfiguration.default.protocolClasses</code> globally, or switches to an in-memory mock repository. The mock returns fixture data from bundled JSON files or hard-coded responses. This ensures every UI test run sees the same data regardless of network availability, server state, or API changes. A complementary pattern: use <code>--reset-state</code> to clear UserDefaults and Keychain so each test starts from a known (logged-out, empty) state. Combining both produces fully deterministic, repeatable UI tests. The app code that reads launch arguments should be guarded (<code>#if DEBUG</code>) to ensure it cannot execute in production builds.</p>
+
+<p><strong>Q: How do you structure UI tests to minimise flakiness caused by animations and async loading?</strong></p>
+
+<p>A: Four techniques: (1) <strong>Disable animations</strong>: set <code>UIView.setAnimationsEnabled(false)</code> in the app when launched with <code>--uitesting</code>. This eliminates the most common source of flakiness — transitions that temporarily hide elements. (2) <em></em>Use <code>waitForExistence(timeout:)</code><em></em>: never assert <code>element.exists</code> directly for elements that appear after a navigation or network call. Always wait with a reasonable timeout (2–5s for animations, 10s for network-dependent elements). (3) <strong>Mock the network</strong>: as above — synchronous mock delivery means UI elements appear without any real network delay. (4) <em></em><code>isHittable</code> before <code>tap()</code><em></em>: an element can exist but be obscured by an animation overlay. Check <code>element.isHittable</code> before tapping — if not hittable, wait or scroll. Page objects can encapsulate this retry logic.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you structure a UI test suite for a large app with 50+ screens to keep it maintainable and fast?</strong></p>
+
+<p>A: Five principles: (1) <strong>Critical path only</strong>: UI tests cover only the most important user journeys (onboarding, login, core purchase flow, logout). Detailed edge cases belong in unit/integration tests. Aim for 20–50 UI tests total, not 500. (2) <strong>Page object pattern</strong> for every screen: encapsulate element access in structs. Changes to an element's identifier require updating one place (the page object), not every test. (3) <strong>Shared setup via base classes</strong>: a <code>LoggedInUITestCase</code> base class launches the app in a logged-in state; a <code>OnboardingUITestCase</code> launches in a fresh state. Tests inherit the appropriate base. (4) <strong>Parallel execution</strong>: Xcode Cloud and most CI systems support running UI test suites on multiple simulators in parallel. Structure tests so they are stateless (reset via launch arguments) and can run in any order. (5) <strong>Test result bundles and screenshots on failure</strong>: configure <code>recordFailure</code> or enable automatic screenshots on test failure for faster post-failure debugging without re-running.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>element.waitForExistence(timeout: 5)</code> always returns <code>false</code> even though the element is visible.<em></em></p>
+
+<p>Solution: The element's <code>accessibilityIdentifier</code> doesn't match what the test queries. Use Xcode's Accessibility Inspector or the UI test recording feature to discover the actual identifier. Also check that the element is in the accessibility tree — some custom views need <code>isAccessibilityElement = true</code>.</p>
+
+<p><strong>Issue: UI tests pass on local machine but fail intermittently on CI.</strong></p>
+
+<p>Solution: Likely causes: animations not disabled (CI devices may be slower), hardcoded timeouts too short for CI hardware, or test state not reset between runs. Add <code>--uitesting</code> argument to disable animations, increase wait timeouts from 2s to 5s for CI, and ensure each test resets to a known state via <code>--reset-state</code>.</p>
+
+<p><em></em>Issue: Tapping a button with <code>app.buttons["Submit"].tap()</code> fails with "Element is not hittable."<em></em></p>
+
+<p>Solution: The button exists but is not in the visible, tappable area — it may be behind a keyboard, an overlay, or off-screen. Dismiss the keyboard first (<code>app.keyboards.buttons["Return"].tap()</code>), scroll the button into view (<code>button.scrollIntoView()</code>), or wait for any covering overlay to dismiss before tapping.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="unit-testing.md">Unit Testing</a> — fast, isolated tests that complement UI tests</li>
+<li><a href="integration-testing.md">Integration Testing</a> — middle layer; test network+DB without full UI</li>
+<li><a href="snapshot-testing.md">Snapshot Testing</a> — visual regression testing complementing UI tests</li>
+<li><a href="../09-ios-platform/app-lifecycle.md">App Lifecycle</a> — launch arguments read in <code>didFinishLaunchingWithOptions</code></li>
+<li><a href="../09-ios-platform/deep-links-universal-links.md">Deep Links &amp; Universal Links</a> — test deep link routing via <code>app.open(url)</code> in XCUITest</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

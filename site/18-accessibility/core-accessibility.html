@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Core Accessibility — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../18-accessibility/index.html">Accessibility</a></span>
+    <span>Core Accessibility</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html" class="active">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="core-accessibility">Core Accessibility</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Core accessibility on iOS is built around the <strong>UIAccessibility informal protocol</strong> — a set of properties and methods on <code>UIView</code> and <code>UIAccessibilityElement</code> that describe elements to assistive technologies. VoiceOver, the iOS screen reader, traverses the accessibility tree (a flattened view of the UI) and reads each element's <code>accessibilityLabel</code>, then optionally its <code>accessibilityValue</code> and <code>accessibilityHint</code>. It uses <code>accessibilityTraits</code> to determine the element's role (button, image, header, link) and state (selected, enabled, adjustable). Getting these properties right requires understanding how VoiceOver constructs its reading for each element and how it navigates through the accessibility tree. The goal: every interactive element must have a meaningful label, the correct traits, and a logical reading order without requiring any element to be visible on screen.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>VoiceOver is a blind user's eyes — it reads the screen aloud as the user swipes through elements. For VoiceOver to say something useful, every element must have a label that describes its purpose. An icon-only button (a trash icon) is silent to VoiceOver unless you give it <code>accessibilityLabel = "Delete"</code>. Traits tell VoiceOver the element's nature: "this is a button" (it can be double-tapped), "this is an image" (it's decorative), "this is a header" (it marks a section). The reading order is determined by the element's position on screen — elements are read left-to-right, top-to-bottom unless you override with a custom order. If your UI has custom interaction (a star rating by swiping), you must implement <code>accessibilityIncrement</code>/<code>Decrement</code> so VoiceOver can drive it with the same gestures.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="accessibilitylabel">accessibilityLabel</h3>
+
+<p>The primary text VoiceOver reads for an element. Rules:</p>
+<ul>
+<li><strong>Don't include the element type</strong> — VoiceOver appends the trait automatically ("Submit, button").</li>
+<li><strong>Be concise but meaningful</strong> — "Delete" not "Delete message item".</li>
+<li><strong>Localise</strong> — always use <code>NSLocalizedString</code>.</li>
+<li><strong>UILabel and UIButton</strong> synthesise <code>accessibilityLabel</code> from their <code>text</code>/<code>title</code> — only override when the synthesised label is wrong.</li>
+<li><strong>UIImageView</strong> has no synthesised label — always set <code>accessibilityLabel</code> for meaningful images; set <code>isAccessibilityElement = false</code> for decorative images.</li>
+</ul>
+
+<pre><code class="language-swift">// UIKit
+trashButton.accessibilityLabel = NSLocalizedString("Delete post", comment: "")
+
+// SwiftUI
+Button(action: delete) { Image(systemName: "trash") }
+    .accessibilityLabel("Delete post")</code></pre>
+
+<h3 id="accessibilitytraits">accessibilityTraits</h3>
+
+<p>A bitmask describing the element's role and state. The most important:</p>
+
+<table>
+<tr><td>Trait</td><td>Use</td></tr>
+<tr><td><code>.button</code></td><td>Tappable element that triggers an action</td></tr>
+<tr><td><code>.link</code></td><td>Opens a URL or navigates</td></tr>
+<tr><td><code>.header</code></td><td>Section heading (VoiceOver navigation via Headings rotor)</td></tr>
+<tr><td><code>.image</code></td><td>A visual image</td></tr>
+<tr><td><code>.selected</code></td><td>The element is currently selected (tab, radio button)</td></tr>
+<tr><td><code>.notEnabled</code></td><td>The element is disabled and cannot be interacted with</td></tr>
+<tr><td><code>.adjustable</code></td><td>Can be adjusted via VoiceOver swipe up/down (sliders, pickers)</td></tr>
+<tr><td><code>.staticText</code></td><td>Plain non-interactive text</td></tr>
+<tr><td><code>.updatesFrequently</code></td><td>The value changes often (timer, stock price)</td></tr>
+<tr><td><code>.playsSound</code></td><td>Playing this element makes a sound</td></tr>
+</table>
+
+<pre><code class="language-swift">// UIKit — combine multiple traits
+ratingControl.accessibilityTraits = [.adjustable, .button]
+
+// SwiftUI
+Text("Top Stories")
+    .accessibilityAddTraits(.isHeader)
+
+Toggle("Dark Mode", isOn: $isDark)
+    .accessibilityAddTraits(isDark ? .isSelected : [])</code></pre>
+
+<h3 id="accessibilityvalue">accessibilityValue</h3>
+
+<p>Dynamic, current-state information that changes at runtime (as opposed to the static label). Use for: slider position, toggle state, star rating count, progress percentage.</p>
+
+<pre><code class="language-swift">// For a custom star rating view:
+ratingView.accessibilityLabel = "Rating"
+ratingView.accessibilityValue = "\(selectedStars) of 5 stars"
+ratingView.accessibilityTraits = .adjustable
+
+override func accessibilityIncrement() {
+    selectedStars = min(selectedStars + 1, 5)
+    accessibilityValue = "\(selectedStars) of 5 stars"
+}
+
+override func accessibilityDecrement() {
+    selectedStars = max(selectedStars - 1, 0)
+    accessibilityValue = "\(selectedStars) of 5 stars"
+}</code></pre>
+
+<h3 id="accessibilityhint">accessibilityHint</h3>
+
+<p>Optional supplementary context, spoken after a brief pause following the label. Use sparingly — it adds verbosity. Only add when the action is non-obvious.</p>
+
+<pre><code class="language-swift">deleteButton.accessibilityHint = NSLocalizedString("Double tap to permanently delete this post.", comment: "")
+// VoiceOver reads: "Delete post. Button. Double tap to permanently delete this post."</code></pre>
+
+<h3 id="grouping-elements">Grouping Elements</h3>
+
+<p>If a cell contains an image, a title, and a subtitle that are logically one element, VoiceOver should read them as a group — not three separate swipes.</p>
+
+<pre><code class="language-swift">// UIKit — container becomes the accessible element
+cell.isAccessibilityElement = true
+cell.accessibilityLabel = "\(post.title), by \(post.author)"
+// All subviews are ignored by VoiceOver; the cell itself is the element</code></pre>
+
+<p>For containers with multiple distinct interactive elements (like a card with a "Like" button and a "Share" button), set <code>accessibilityElements</code> to define the order:</p>
+
+<pre><code class="language-swift">// Explicit VoiceOver reading order
+cell.isAccessibilityElement = false
+cell.accessibilityElements = [titleLabel, likeButton, shareButton]</code></pre>
+
+<h3 id="custom-actions">Custom Actions</h3>
+
+<p>For elements with secondary actions (swipe to delete, long-press to share), expose them as <code>UIAccessibilityCustomAction</code>:</p>
+
+<pre><code class="language-swift">cell.accessibilityCustomActions = [
+    UIAccessibilityCustomAction(
+        name: NSLocalizedString("Delete", comment: ""),
+        target: self,
+        selector: #selector(deletePost)
+    ),
+    UIAccessibilityCustomAction(
+        name: NSLocalizedString("Share", comment: ""),
+        target: self,
+        selector: #selector(sharePost)
+    )
+]
+// VoiceOver: user swipes up/down to cycle through custom actions</code></pre>
+
+<h3 id="modal-accessibility">Modal Accessibility</h3>
+
+<p>When presenting a modal, post <code>.screenChanged</code> to move VoiceOver focus to the new content:</p>
+
+<pre><code class="language-swift">UIAccessibility.post(notification: .screenChanged, argument: modalViewController.view)
+// VoiceOver: announces the modal and moves focus to its first element
+
+// On dismiss:
+UIAccessibility.post(notification: .screenChanged, argument: triggerButton)
+// VoiceOver: moves focus back to the button that opened the modal</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+import SwiftUI
+
+// ── UIKit: Fully accessible post cell ────────────────────────
+final class PostCell: UITableViewCell {
+    private let titleLabel = UILabel()
+    private let authorLabel = UILabel()
+    private let timestampLabel = UILabel()
+    private let likeButton = UIButton()
+    private let shareButton = UIButton()
+
+    func configure(with post: Post) {
+        titleLabel.text = post.title
+        authorLabel.text = post.author
+        timestampLabel.text = post.relativeDate
+
+        // ── Merge title + author + date into one accessible element ──
+        isAccessibilityElement = false   // container is not the element
+        accessibilityElements = [cellSummaryElement(), likeButton, shareButton]
+
+        // ── Like button ───────────────────────────────────────────
+        likeButton.accessibilityLabel = post.isLiked
+            ? NSLocalizedString("Unlike post", comment: "")
+            : NSLocalizedString("Like post", comment: "")
+        likeButton.accessibilityTraits = post.isLiked ? [.button, .selected] : .button
+        likeButton.accessibilityValue = "\(post.likeCount) likes"
+
+        // ── Share button ──────────────────────────────────────────
+        shareButton.accessibilityLabel = NSLocalizedString("Share post", comment: "")
+
+        // ── Swipe-to-delete via custom action ─────────────────────
+        accessibilityCustomActions = [
+            UIAccessibilityCustomAction(
+                name: NSLocalizedString("Delete", comment: ""),
+                target: self, selector: #selector(handleDelete)
+            )
+        ]
+    }
+
+    // Virtual element grouping title + author + date
+    private func cellSummaryElement() -&gt; UIAccessibilityElement {
+        let element = UIAccessibilityElement(accessibilityContainer: self)
+        element.accessibilityLabel = "\(titleLabel.text ?? ""), by \(authorLabel.text ?? "")"
+        element.accessibilityValue = timestampLabel.text
+        element.accessibilityFrameInContainerSpace = titleLabel.frame.union(authorLabel.frame).union(timestampLabel.frame)
+        return element
+    }
+
+    @objc private func handleDelete() -&gt; Bool {
+        // Notify delegate to delete
+        return true   // return true = action succeeded
+    }
+}
+
+// ── SwiftUI: Accessible rating view ──────────────────────────
+struct StarRatingView: View {
+    @Binding var rating: Int
+    let maxRating: Int = 5
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(1...maxRating, id: \.self) { star in
+                Image(systemName: star &lt;= rating ? "star.fill" : "star")
+                    .foregroundStyle(star &lt;= rating ? Color.yellow : Color.gray)
+            }
+        }
+        // Group the HStack as one accessible, adjustable element
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rating")
+        .accessibilityValue("\(rating) of \(maxRating) stars")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: rating = min(rating + 1, maxRating)
+            case .decrement: rating = max(rating - 1, 0)
+            @unknown default: break
+            }
+        }
+    }
+}
+
+// ── Posting accessibility notifications ──────────────────────
+final class FeedViewController: UIViewController {
+    private var loadingView: UIView?
+
+    func showLoading() {
+        let loading = LoadingSpinnerView()
+        view.addSubview(loading)
+        loadingView = loading
+        UIAccessibility.post(notification: .announcement,
+                              argument: NSLocalizedString("Loading feed", comment: ""))
+    }
+
+    func hideLoadingAndShowFeed() {
+        loadingView?.removeFromSuperview()
+        loadingView = nil
+        // Move VoiceOver focus to the first post
+        UIAccessibility.post(notification: .screenChanged,
+                              argument: tableView.visibleCells.first)
+    }
+}
+
+// Placeholder types:
+struct Post { let title: String; let author: String; let relativeDate: String; let isLiked: Bool; let likeCount: Int }
+final class LoadingSpinnerView: UIView {}
+var tableView = UITableView()</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What is the difference between <code>accessibilityLabel</code>, <code>accessibilityHint</code>, and <code>accessibilityValue</code>?<em></em></p>
+
+<p>A: <em></em><code>accessibilityLabel</code><strong> is the primary description of the element — the static name VoiceOver reads first (e.g., "Delete post"). It should describe the element's purpose, not its type (VoiceOver appends the trait — "button" — automatically). </strong><code>accessibilityValue</code><strong> is the dynamic, current state that changes at runtime (e.g., "3 of 5 stars" for a rating control, "On" for a toggle). Use it when the meaningful content of the element changes during the session. </strong><code>accessibilityHint</code><em></em> is optional supplementary context, read after a pause, that explains what will happen when the user activates the element (e.g., "Double-tap to permanently delete"). Use hints sparingly — they add verbosity and users can turn them off in VoiceOver settings. The typical VoiceOver reading order is: label → value → traits → hint.</p>
+
+<p><em></em>Q: What is <code>accessibilityTraits</code> and which traits are most commonly needed?<em></em></p>
+
+<p>A: <code>accessibilityTraits</code> is a bitmask that describes the element's role (what kind of UI element it is) and state (its current condition). The most commonly needed: <code>.button</code> — tells VoiceOver the element can be double-tapped to activate (use for any tappable control that isn't a link). <code>.header</code> — marks a section heading; VoiceOver users can navigate between headings using the Headings rotor without swiping through every element. <code>.selected</code> — indicates the element is currently selected (use on tab bar items, segmented control segments). <code>.notEnabled</code> — indicates the element is disabled; VoiceOver reads it but tells the user it can't be interacted with. <code>.adjustable</code> — tells VoiceOver this element can be adjusted via swipe-up/swipe-down (use for sliders, star ratings, and custom pickers — pair with <code>accessibilityIncrement</code>/<code>Decrement</code> method overrides).</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you make a complex custom control (e.g., a circular progress ring with a label inside) fully accessible?</strong></p>
+
+<p>A: Four steps: (1) <strong>Identify the semantic unit</strong>: the ring + label together communicate one piece of information (e.g., "Step counter: 7,000 of 10,000 steps, 70%"). This should be one accessible element, not two. (2) <strong>Make the view element</strong>: set <code>isAccessibilityElement = true</code> on the container view. Set all child views' <code>isAccessibilityElement = false</code>. (3) <strong>Set label and value</strong>: <code>accessibilityLabel = "Daily steps"</code>, <code>accessibilityValue = "7,000 of 10,000 steps, 70% complete"</code>. (4) <strong>Set traits</strong>: <code>.image</code> if it's purely informational; add <code>.adjustable</code> if the user can interact with it (e.g., set a goal by rotating). For adjustable: implement <code>accessibilityIncrement()</code> and <code>accessibilityDecrement()</code> to modify the goal, and update <code>accessibilityValue</code> after each change. Announce dynamic value changes using <code>UIAccessibility.post(notification: .announcement, argument: newValue)</code> for real-time updates (e.g., as a timer ticks).</p>
+
+<p><strong>Q: How does VoiceOver reading order work and how do you fix it for a non-standard layout?</strong></p>
+
+<p>A: VoiceOver's default reading order is geometric — elements are sorted by their <code>accessibilityFrame</code> on screen, top-to-bottom, then left-to-right within each row. For most standard layouts this is correct. Problems arise with: (1) <strong>Custom layouts</strong> where elements are positioned out of reading order (e.g., a column header that's visually between two columns it labels). (2) <strong>Container views</strong> where child elements should be read as a group but are ordered differently. (3) <strong>Overlapping frames</strong> where the geometric sort is ambiguous. Fix: implement <code>accessibilityElements</code> on the container view (as an <code>[Any]</code>) — this completely overrides the geometric sort with your explicit order. Alternatively, use <code>UIAccessibility.post(notification: .layoutChanged, ...)</code> after a layout change to force VoiceOver to re-evaluate the order.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a fully accessible date picker implemented as a custom UIView (wheel-style) that works with VoiceOver, Switch Control, and Dynamic Type.</strong></p>
+
+<p>A: Six-component design: (1) <strong>VoiceOver control</strong>: set <code>accessibilityTraits = .adjustable</code> on the picker view. Implement <code>accessibilityIncrement()</code> (swipe up = next value) and <code>accessibilityDecrement()</code> (swipe down = previous value). Set <code>accessibilityLabel = "Date picker"</code> and <code>accessibilityValue = DateFormatter.localizedString(from: selectedDate, dateStyle: .full, timeStyle: .none)</code>. After each increment/decrement, update <code>accessibilityValue</code> and post <code>UIAccessibility.post(notification: .announcement, argument: accessibilityValue)</code>. (2) <strong>Switch Control</strong>: the picker must respond to single-switch "next item" scanning. Ensure the picker is a single <code>isAccessibilityElement = true</code> element (not exposing its internal scroll subviews). The increment/decrement methods double as the Switch Control activation actions. (3) <strong>Keyboard navigation</strong>: support arrow keys when a hardware keyboard is connected. Override <code>UIKeyCommand</code> to handle up/down arrow → increment/decrement. (4) <strong>Dynamic Type</strong>: the label displaying the selected date inside the picker must use <code>UIFont.preferredFont(forTextStyle: .body)</code> and respond to <code>UIContentSizeCategoryDidChangeNotification</code> to re-layout. The picker's minimum height should increase with larger text sizes — use <code>systemLayoutSizeFitting</code> with the current category. (5) <strong>Reduce Motion</strong>: the wheel-scroll animation should be disabled when <code>UIAccessibility.isReduceMotionEnabled</code> — switch to a direct value change with no animation. (6) <strong>Testing</strong>: test with VoiceOver enabled and verify the full reading; test with Switch Control in scanning mode; run Accessibility Inspector and check for contrast and label issues.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: VoiceOver reads "image" for an icon button with no label.</strong></p>
+
+<p>Solution: The button contains a <code>UIImageView</code> but has no <code>accessibilityLabel</code>. Set <code>button.accessibilityLabel = NSLocalizedString("Delete", comment: "")</code>. Also ensure <code>button.isAccessibilityElement = true</code> (true by default for UIButton) and the imageView's <code>isAccessibilityElement = false</code> (so VoiceOver doesn't focus both).</p>
+
+<p><strong>Issue: VoiceOver reads every item in a table cell separately instead of the cell as one unit.</strong></p>
+
+<p>Solution: Set <code>cell.isAccessibilityElement = true</code> and compose a meaningful <code>cell.accessibilityLabel</code> from its contents. Set <code>isAccessibilityElement = false</code> on all subviews within the cell. If the cell has interactive subviews (like a like button), use <code>cell.accessibilityElements = [virtualGroupElement, likeButton]</code> — a virtual element for the content group and the interactive button separately.</p>
+
+<p><strong>Issue: After dismissing a modal, VoiceOver focus goes to a random element.</strong></p>
+
+<p>Solution: After dismissing, explicitly set focus: <code>UIAccessibility.post(notification: .screenChanged, argument: triggerButton)</code> — this moves VoiceOver focus to the button that originally triggered the modal. Without this, VoiceOver may land on the first element on screen or lose focus entirely.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="ui-support.md">UI Support</a> — Dynamic Type, colour contrast, Reduce Motion</li>
+<li><a href="testing-accessibility.md">Testing Accessibility</a> — Accessibility Inspector and VoiceOver workflow</li>
+<li><a href="../11-testing/ui-testing.md">UI Testing</a> — <code>accessibilityIdentifier</code> vs <code>accessibilityLabel</code></li>
+<li><a href="../04-ui-frameworks/swiftui-view-lifecycle.md">SwiftUI View Lifecycle</a> — SwiftUI accessibility modifiers</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

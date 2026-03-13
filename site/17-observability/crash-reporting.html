@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crash Reporting — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../17-observability/index.html">Observability</a></span>
+    <span>Crash Reporting</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html" class="active">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="crash-reporting">Crash Reporting</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>A crash is an unrecoverable error that causes the OS to terminate the app process. On iOS, crashes originate from three sources: <strong>signal-based crashes</strong> (hardware exceptions translated to Unix signals — <code>EXC_BAD_ACCESS</code>/<code>SIGSEGV</code> for null pointer dereferences or use-after-free; <code>SIGABRT</code> for abort calls; <code>SIGILL</code> for illegal instruction), <strong>ObjC/Swift runtime exceptions</strong> (<code>NSException</code> — unrecognised selector, index out of range, forced unwrap of nil), and <strong>watchdog kills</strong> (the OS terminates the app for exceeding time limits in launch, background execution, or UI responsiveness). A crash report (<code>.ips</code> file) contains the exception type, crash address, device info, and the call stack of every thread — but in unsymbolicated form (hexadecimal addresses). <strong>Symbolication</strong> translates those addresses back into function names, file names, and line numbers using the dSYM (debug symbol) file for the exact build. Crashlytics (Firebase), Sentry, and Apple's native crash organizer all provide symbolication and grouping.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>A crash report without symbolication is like a map with GPS coordinates but no street names — you know something happened at <code>0x00000001002a4bc0</code> but not which function. The dSYM file is the legend that translates those coordinates into addresses like <code>FeedViewController.loadPosts() line 47</code>. Without the matching dSYM (exact build, exact UUID), the map is unreadable. Crashlytics uploads the dSYM during your CI build, matches it to incoming crash reports by UUID, and gives you the human-readable stack trace automatically. The same crash occurring 500 times gets grouped into one issue with an "affected users" count — so you know if it's a one-off or a widespread problem.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="crash-types">Crash Types</h3>
+
+<table>
+<tr><td>Exception type</td><td>Common cause</td></tr>
+<tr><td><code>EXC_BAD_ACCESS (SIGSEGV)</code></td><td>Null pointer dereference, use-after-free, stack overflow</td></tr>
+<tr><td><code>EXC_BAD_ACCESS (SIGBUS)</code></td><td>Unaligned memory access</td></tr>
+<tr><td><code>SIGABRT</code></td><td><code>fatalError()</code>, <code>precondition()</code>, <code>assert()</code> failure, NSException</td></tr>
+<tr><td><code>SIGILL</code></td><td>Force unwrap of nil (<code>!</code> on nil Optional) → Swift runtime trap</td></tr>
+<tr><td><code>EXC_CRASH (SIGKILL)</code></td><td>Watchdog kill, OOM, or user force-quit</td></tr>
+<tr><td><code>EXC_ARITHMETIC</code></td><td>Division by zero (integer)</td></tr>
+</table>
+
+<h3 id="reading-a-crash-report">Reading a Crash Report</h3>
+
+<p>A crash report (.ips or .crash file) contains:</p>
+
+<pre><code>Incident Identifier: [UUID]
+Hardware Model:      iPhone14,2
+OS Version:          iPhone OS 17.4 (21E236)
+Exception Type:      EXC_CRASH (SIGABRT)
+Exception Subtype:   SIGABRT
+Triggered by Thread: 0
+
+Thread 0 name: Dispatch queue: com.apple.main-thread
+Thread 0 Crashed:
+0   libswiftCore.dylib          0x00000001974a1234 _assertionFailure + 120
+1   MyApp                       0x0000000100234bc0 0x100000000 + 0x234bc0
+2   MyApp                       0x00000001002289a4 0x100000000 + 0x2289a4
+...</code></pre>
+
+<p>After symbolication, frame 1 becomes:</p>
+<pre><code>1   MyApp   FeedViewModel.loadPosts() + 47   FeedViewModel.swift:89</code></pre>
+
+<p><strong>Key fields:</strong></p>
+<ul>
+<li><strong>Exception Type + Subtype</strong>: the crash category.</li>
+<li><strong>Triggered by Thread</strong>: which thread crashed.</li>
+<li><strong>Thread 0 Crashed</strong>: the stack trace. Frame 0 is the crash site; higher frames are callers.</li>
+<li><strong>Binary Images</strong>: the load addresses of all binaries — needed for symbolication.</li>
+</ul>
+
+<h3 id="watchdog-kills-0x8badf00d">Watchdog Kills (0x8badf00d)</h3>
+
+<p>The exception code <code>0x8badf00d</code> ("ate bad food") means the watchdog killed the app for exceeding time limits:</p>
+<ul>
+<li>Launch: ~20 seconds to call <code>applicationDidFinishLaunching</code> return.</li>
+<li>Background task: exceeding the allowed background execution time.</li>
+<li>Foreground responsiveness: main thread unresponsive for too long.</li>
+</ul>
+
+<p>These appear in crash reports as <code>EXC_CRASH (SIGKILL)</code> with exception subtype <code>0x8badf00d</code>. They do not have a useful stack trace — the crash address is the watchdog kill, not the hung code. Use Time Profiler to find what was blocking the main thread.</p>
+
+<h3 id="oom-terminations">OOM Terminations</h3>
+
+<p>Out-of-memory kills do not produce a crash report. The OS sends <code>SIGKILL</code> with no exception code visible to crash reporters. Detect via:</p>
+<ul>
+<li>MetricKit's <code>MXCrashDiagnostic</code> with <code>terminationReason = .applicationNotResponding</code> or <code>.outOfMemory</code>.</li>
+<li>Checking <code>didReceiveMemoryWarning</code> — if the app is killed after warnings, peak memory exceeded the device limit.</li>
+</ul>
+
+<h3 id="dsym-management">dSYM Management</h3>
+
+<p>Every release build generates a dSYM folder at build time. The dSYM must match the exact binary UUID — different builds, even from the same source, have different UUIDs.</p>
+
+<p><strong>Uploading dSYMs:</strong></p>
+
+<p>For App Store builds, Xcode uploads dSYMs to Apple when <code>DWARF_WITH_DSYM</code> is enabled. Crashlytics fetches them via the Apple Developer API if you enable "Debug Information Format = DWARF with dSYM File" and configure the dSYM upload run script.</p>
+
+<p>Manual upload:</p>
+<pre><code class="language-bash"># Crashlytics CLI
+./FirebaseCrashlytics/run upload-symbols -gsp GoogleService-Info.plist -p ios MyApp.app.dSYM
+
+# Or via fastlane
+fastlane run upload_symbols_to_crashlytics dsym_path:"./build/MyApp.app.dSYM"</code></pre>
+
+<p><strong>Finding the UUID of a binary:</strong></p>
+<pre><code class="language-bash">dwarfdump --uuid MyApp.app.dSYM/Contents/Resources/DWARF/MyApp
+# → UUID: A1B2C3D4-... (arm64)</code></pre>
+
+<h3 id="crashlytics-firebase">Crashlytics (Firebase)</h3>
+
+<p>Crashlytics is the most widely used iOS crash reporter. Integration:</p>
+<ol>
+<li>Add <code>FirebaseCrashlytics</code> via SPM or CocoaPods.</li>
+<li>Configure the dSYM upload run script in Build Phases.</li>
+<li>Call <code>FirebaseApp.configure()</code> at the very beginning of <code>didFinishLaunchingWithOptions</code> — before any other SDK.</li>
+<li>Optionally attach custom keys and log messages: <code>Crashlytics.crashlytics().setCustomValue("alice", forKey: "username")</code>.</li>
+</ol>
+
+<p>Crashlytics groups crashes by stack trace similarity (not by exact address) — crashes at different addresses but with the same call path are grouped together.</p>
+
+<h3 id="metrickit-crash-diagnostics">MetricKit Crash Diagnostics</h3>
+
+<p><code>MXCrashDiagnostic</code> (iOS 14+) delivers crash reports from MetricKit's daily diagnostic payload — these are post-symbolicated by the system and include hang diagnostics and OOM information that third-party reporters miss.</p>
+
+<pre><code class="language-swift">func didReceive(_ payloads: [MXDiagnosticPayload]) {
+    for payload in payloads {
+        for crash in payload.crashDiagnostics ?? [] {
+            let stackTrace = crash.callStackTree
+            // log or upload stackTrace
+        }
+    }
+}</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Firebase
+import FirebaseCrashlytics
+
+// ── Crash reporter setup — first thing in didFinishLaunching ──
+@main
+final class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    func application(_ app: UIApplication,
+                     didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]?) -&gt; Bool {
+        // Must be first — catches crashes during subsequent setup
+        FirebaseApp.configure()
+
+        // Attach stable, non-PII user context for crash grouping
+        if let userID = AuthService.shared.currentUserID {
+            Crashlytics.crashlytics().setUserID(userID)
+        }
+
+        Crashlytics.crashlytics().setCustomValue(
+            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+            forKey: "app_version"
+        )
+
+        return true
+    }
+}
+
+// ── Recording non-fatal errors (caught exceptions) ─────────────
+func fetchFeed() async {
+    do {
+        let posts = try await repository.fetchPosts()
+        await MainActor.run { viewModel.posts = posts }
+    } catch {
+        // Non-fatal: log to Crashlytics for tracking frequency
+        Crashlytics.crashlytics().record(error: error)
+        await MainActor.run { viewModel.errorMessage = error.userFacingMessage }
+    }
+}
+
+// ── Custom log messages before a crash site ────────────────────
+// These appear in the "Logs" tab of a Crashlytics issue
+func processPayment(order: Order) {
+    Crashlytics.crashlytics().log("Processing payment for order \(order.id)")
+    Crashlytics.crashlytics().setCustomValue(order.total.description, forKey: "order_total")
+    // … payment logic
+}
+
+// ── MetricKit crash diagnostics subscriber ────────────────────
+import MetricKit
+
+final class DiagnosticsSubscriber: NSObject, MXMetricManagerSubscriber {
+    override init() {
+        super.init()
+        MXMetricManager.shared.add(self)
+    }
+
+    func didReceive(_ payloads: [MXDiagnosticPayload]) {
+        for payload in payloads {
+            // Crash diagnostics (including hang and OOM)
+            for crash in payload.crashDiagnostics ?? [] {
+                let report = CrashReport(
+                    reason: crash.terminationReason?.description ?? "unknown",
+                    stackTrace: crash.callStackTree.jsonRepresentation().description
+                )
+                AnalyticsBackend.uploadCrashReport(report)
+            }
+            // Hang diagnostics — main thread unresponsive &gt; 250ms
+            for hang in payload.hangDiagnostics ?? [] {
+                AnalyticsBackend.uploadHangReport(
+                    duration: hang.hangDuration,
+                    stackTrace: hang.callStackTree.jsonRepresentation().description
+                )
+            }
+        }
+    }
+}
+
+// Placeholder:
+struct CrashReport { let reason: String; let stackTrace: String }
+enum AnalyticsBackend {
+    static func uploadCrashReport(_ r: CrashReport) {}
+    static func uploadHangReport(duration: Measurement&lt;UnitDuration&gt;, stackTrace: String) {}
+}
+struct Order { let id: String; let total: Decimal }
+protocol RepositoryProtocol { func fetchPosts() async throws -&gt; [Post] }
+struct Post {}
+final class ViewModel: ObservableObject { @Published var posts: [Post] = []; @Published var errorMessage: String? = nil }
+extension Error { var userFacingMessage: String { localizedDescription } }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is symbolication and why is it necessary for crash reports?</strong></p>
+
+<p>A: Symbolication is the process of translating hexadecimal memory addresses in a crash report into human-readable function names, file names, and line numbers. iOS app binaries in production are compiled with optimisations and stripped of debug symbols — the binary contains only machine code with no embedded source information. The mapping from addresses to symbols lives in the dSYM (debug symbol) file generated at compile time. Without the matching dSYM, a crash report shows only <code>0x0000000100234bc0 + 0x00000001002289a4</code> — undebuggable. With the matching dSYM (UUID must match exactly), Crashlytics/Sentry translates these to <code>FeedViewModel.loadPosts() FeedViewModel.swift:89</code>. The dSYM must be preserved and uploaded for every released build — losing it makes that build's crashes permanently unreadable.</p>
+
+<p><em></em>Q: What does the exception code <code>0x8badf00d</code> mean in a crash report?<em></em></p>
+
+<p>A: <code>0x8badf00d</code> ("ate bad food") is Apple's watchdog kill code. It means the OS terminated the app because it exceeded the allowed time for a specific phase of its lifecycle — most commonly during app launch (<code>application(_:didFinishLaunchingWithOptions:)</code> taking longer than ~20 seconds) or during a background task (exceeding the execution time budget). Unlike typical crashes, watchdog kills don't have a meaningful crash address or stack trace pointing to the problematic code — the OS kills the process externally. To diagnose: use Instruments' Time Profiler to reproduce the scenario and identify what was blocking the main thread or what background task ran over time.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you debug an EXC_BAD_ACCESS crash in production when the stack trace is cryptic?</strong></p>
+
+<p>A: Four-step approach: (1) <strong>Symbolicate properly</strong>: ensure the dSYM for the exact build UUID is uploaded. Use <code>atos -o MyApp.dSYM/Contents/Resources/DWARF/MyApp -arch arm64 -l &lt;load_address&gt; &lt;crash_address&gt;</code> to manually symbolicate suspicious frames. (2) <strong>Enable Zombie Objects in development</strong>: Xcode Scheme → Diagnostics → ✓ Zombie Objects — this catches use-after-free (messages sent to deallocated objects) by leaving a "zombie" in place that logs which class was deallocated. This turns a cryptic <code>EXC_BAD_ACCESS</code> into an explicit log message. (3) <strong>Address Sanitizer</strong>: Xcode Scheme → Diagnostics → Address Sanitizer — catches heap use-after-free, buffer overflows, and stack corruption at the exact point they occur during development. (4) <strong>Add non-fatal breadcrumbs</strong>: add <code>Crashlytics.crashlytics().log(...)</code> calls in the suspected code path before the crash — these appear in the Crashlytics "Logs" tab and show the last actions before the crash, even when the stack trace is unhelpful.</p>
+
+<p><strong>Q: How do you track OOM (out-of-memory) kills when they don't produce crash reports?</strong></p>
+
+<p>A: OOM kills don't produce <code>.ips</code> crash reports — the OS sends <code>SIGKILL</code> with no opportunity for the crash reporter to run. Approaches: (1) <strong>MetricKit</strong>: <code>MXCrashDiagnostic</code> includes OOM terminations in its diagnostic payload. The <code>terminationReason</code> field will indicate OOM. This gives aggregated OOM counts but not per-incident stack traces. (2) <strong>Previous-launch detection</strong>: on next launch, check if <code>UIApplication.shared.applicationState == .background</code> was the state when the previous session ended (saved in <code>UserDefaults</code>). If the app was in foreground and launched fresh (not resumed), and no crash report was filed, it may have been an OOM kill. Libraries like Bugsnag and Sentry implement this heuristic. (3) <strong>Memory pressure monitoring</strong>: log <code>UIApplication.didReceiveMemoryWarningNotification</code> occurrences. High frequency before session terminations correlates with OOM risk. (4) <strong>Instruments VM Tracker</strong>: in development, profile peak dirty memory usage and compare to device RAM limits.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a crash reporting strategy for a financial app where PII must never appear in crash reports, and crash data must be retained for 2 years for compliance.</strong></p>
+
+<p>A: Four-layer strategy: (1) <strong>PII stripping before reporting</strong>: create a <code>CrashContext</code> struct with explicitly safe fields only (<code>userID: String</code> as a hashed opaque identifier, <code>screenName: String</code>, <code>appVersion: String</code>, <code>featureFlags: [String: Bool]</code>). Never include email, name, account numbers, or any raw user input. Use <code>Crashlytics.crashlytics().setUserID(sha256(userID))</code> — a hash is reversible by your server but not by someone reading a crash report dump. (2) <strong>Custom crash reporter integration</strong>: use Crashlytics for real-time alerting and grouping, but simultaneously pipe crash reports to your own backend (using <code>MXDiagnosticPayload</code> via MetricKit and a Crashlytics crash-report listener). Your backend stores them in encrypted storage with 2-year retention. (3) <strong>Compliance audit trail</strong>: log each crash upload event to your compliance system — who accessed the report, when, and why. Implement role-based access control on the crash report storage: only on-call engineers can view raw stack traces during incident response. (4) <strong>Symbolication pipeline</strong>: store dSYMs in a private S3 bucket with lifecycle policies (2-year retention). Run an automated symbolication job on every inbound crash report using <code>atos</code> or <code>symbolicatecrash</code>. Symbolicated reports are stored separately from raw reports — access to unsymbolicated reports is restricted.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Crashlytics shows crashes but the stack traces are unsymbolicated (just hex addresses).</strong></p>
+
+<p>Solution: The dSYM was not uploaded for this build. Check: (1) Is the Build Phase "Run Script" for Crashlytics present and after "Compile Sources"? (2) Was the build made with "Debug Information Format = DWARF with dSYM File" in Release configuration? (3) Is Bitcode enabled? If so, Apple recompiles the binary and a new dSYM is generated — download it from App Store Connect under the build's "Download dSYM" button and upload manually. Use <code>dwarfdump --uuid</code> to verify the dSYM UUID matches the crashing binary's UUID from the crash report.</p>
+
+<p><strong>Issue: Crashes appear grouped together in Crashlytics but are actually different bugs.</strong></p>
+
+<p>Solution: Crashlytics groups by call stack similarity — if two different bugs crash at the same low-level function (e.g., <code>objc_msgSend</code>, <code>malloc</code>), they may be incorrectly grouped. Click into the individual crash reports and look at the full stack trace. Add custom keys that distinguish the crash context. If needed, use Sentry's fingerprinting customisation — you can override the grouping key to include a custom attribute that separates unrelated issues.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="logging.md">Logging</a> — log breadcrumbs before crash sites</li>
+<li><a href="monitoring.md">Monitoring</a> — MetricKit metrics complement crash reports</li>
+<li><a href="../13-app-startup/app-launch-process.md">App Startup — Launch Process</a> — 0x8badf00d watchdog kills</li>
+<li><a href="../12-performance/memory-optimization.md">Memory Optimization</a> — preventing OOM crashes</li>
+<li><a href="../14-security/data-security.md">Security — Data Security</a> — protecting PII in crash reports</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

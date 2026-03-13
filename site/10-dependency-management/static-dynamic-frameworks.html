@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Static Libraries & Dynamic Frameworks — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../10-dependency-management/index.html">Dependency Management</a></span>
+    <span>Static Dynamic Frameworks</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html" class="active">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="static-libraries--dynamic-frameworks">Static Libraries &amp; Dynamic Frameworks</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Every dependency added to an iOS app must be linked into the final binary — either statically (at link time, becoming part of the app executable) or dynamically (at runtime, as a separate <code>.dylib</code> loaded during app launch). This choice affects startup time, binary size, memory footprint, and compatibility with App Extensions. A <strong>static library</strong> (<code>.a</code>) is an archive of compiled object files merged into the app binary at link time — it has zero runtime loading cost. A <strong>dynamic framework</strong> (<code>.framework</code> containing a <code>.dylib</code>) is a separate executable loaded by the dynamic linker (<code>dyld</code>) at app startup — each one adds to the launch time. Understanding linker mechanics is essential for diagnosing slow app launches, duplicate symbol errors, and App Extension compatibility issues.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Imagine you're building a house (app). <strong>Static libraries</strong> are like ordering prefabricated wall panels — they arrive before construction, are cut and merged directly into your walls (the app binary), and once the house is built, there's no trace of where they came from. The house is bigger but self-contained. <strong>Dynamic frameworks</strong> are like ordering appliances that are installed separately — each appliance (<code>.dylib</code>) arrives on moving day (app launch) and must be plugged in by an electrician (the dynamic linker). Every appliance adds a few seconds to move-in day; if you have 20 appliances, move-in takes a while.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="static-libraries-a--o">Static Libraries (<code>.a</code> / <code>.o</code>)</h3>
+
+<p>A static library is an archive of compiled object files created by the archiver (<code>ar</code>). At link time, the linker copies only the object files actually referenced by the app into the final Mach-O binary.</p>
+
+<p><strong>Characteristics</strong>:</p>
+<ul>
+<li>Merged into the app binary at link time.</li>
+<li>No runtime loading cost — symbols are resolved at compile time.</li>
+<li>Each app target that uses the library gets its own copy of the code.</li>
+<li>Cannot be shared between app and App Extension (both get their own copy — this is fine for App Extensions).</li>
+<li>Resources (images, nibs) are NOT included — must be in a separate resource bundle.</li>
+<li>Swift static libraries generate a <code>.swiftmodule</code> for the module interface.</li>
+</ul>
+
+<p><strong>Creating a static library</strong>:</p>
+<pre><code class="language-bash"># Compile to object files:
+swiftc -c Sources/*.swift -module-name NetworkKit -emit-module -O
+# Archive:
+ar rcs libNetworkKit.a *.o
+# Or with Xcode: set "Mach-O Type" to "Static Library"</code></pre>
+
+<h3 id="dynamic-frameworks-framework">Dynamic Frameworks (<code>.framework</code>)</h3>
+
+<p>A dynamic framework is a directory bundle containing:</p>
+<pre><code>NetworkKit.framework/
+├── NetworkKit            ← the dylib (Mach-O dynamic library)
+├── Headers/              ← public headers (ObjC/C)
+├── Modules/
+│   ├── module.modulemap
+│   └── NetworkKit.swiftmodule/
+└── Info.plist</code></pre>
+
+<p>The dylib is linked at runtime by <code>dyld</code>. The linker records a load command in the app binary listing the framework's install name (<code>@rpath/NetworkKit.framework/NetworkKit</code>). At launch, <code>dyld</code> searches the runpath (<code>@rpath</code>) for the framework.</p>
+
+<p><strong>Characteristics</strong>:</p>
+<ul>
+<li>Separate binary on disk; loaded at launch by <code>dyld</code>.</li>
+<li>Every dynamic framework adds ~1–5ms to app startup (measured by <code>DYLD_PRINT_STATISTICS</code>).</li>
+<li>Code is NOT duplicated between app and extension — shared at the OS level within the same app bundle.</li>
+<li><strong>Required for App Extensions</strong>: extensions cannot statically link the same code as the app — they are separate processes.</li>
+<li>Resources bundled inside the <code>.framework</code>.</li>
+<li><code>@rpath</code> must include <code>@executable_path/Frameworks</code> for app-embedded frameworks.</li>
+</ul>
+
+<h3 id="startup-time-impact">Startup Time Impact</h3>
+
+<p><code>dyld</code> measures pre-<code>main()</code> launch time. Each dynamic framework adds:</p>
+<ul>
+<li><strong>Parsing Mach-O headers</strong>: ~0.1ms per framework.</li>
+<li><strong>Symbol binding</strong>: resolving all symbols in the framework — scales with symbol count.</li>
+<li><strong>Initialiser execution</strong>: <code>+load</code> methods, C++ static initialisers.</li>
+</ul>
+
+<p><strong>Apple's recommendation</strong>: fewer than 6 dynamic frameworks for a fast launch. More than 12 measurably slows launches on older devices.</p>
+
+<p><strong>Measuring</strong>: enable <code>DYLD_PRINT_STATISTICS=1</code> in the scheme's environment variables, or use Xcode's App Launch instrument.</p>
+
+<h3 id="module-maps">Module Maps</h3>
+
+<p>A module map (<code>module.modulemap</code>) defines how C/Objective-C headers map to a Swift module:</p>
+
+<pre><code>module NetworkKit {
+    header "NetworkKit.h"
+    export *
+}</code></pre>
+
+<p>Swift uses the module map to allow <code>import NetworkKit</code> from Swift code. SPM generates module maps automatically for C targets. Xcode generates them for framework targets.</p>
+
+<h3 id="symbol-visibility">Symbol Visibility</h3>
+
+<p><strong>Static libraries</strong>: all symbols are visible within the linking binary unless marked hidden with <code>__attribute__((visibility("hidden")))</code> or the <code>-fvisibility=hidden</code> compiler flag. Unexported symbols from a static library can cause duplicate symbol errors if two static libraries both include the same header/implementation.</p>
+
+<p><strong>Dynamic frameworks</strong>: symbols are exported (visible) or unexported (private). Use the <code>EXPORTED_SYMBOLS_FILE</code> build setting to control which symbols are exported. Swift <code>public</code> / <code>open</code> types are exported; <code>internal</code> and <code>private</code> are not.</p>
+
+<h3 id="common-linker-errors">Common Linker Errors</h3>
+
+<table>
+<tr><td>Error</td><td>Cause</td><td>Fix</td></tr>
+<tr><td><code>duplicate symbol _XYZ</code></td><td>Two static libs include the same <code>.o</code> file</td><td>Ensure header is included only once; use <code>@_implementationOnly</code> import</td></tr>
+<tr><td><code>ld: framework not found XYZ</code></td><td>Framework not in search path or not embedded</td><td>Add to "Frameworks, Libraries, and Embedded Content"; check <code>FRAMEWORK_SEARCH_PATHS</code></td></tr>
+<tr><td><code>dyld: Library not loaded</code></td><td>Embedded dynamic framework missing from <code>.app/Frameworks/</code></td><td>Set "Embed &amp; Sign" not "Do Not Embed"</td></tr>
+<tr><td><code>ld: can't open output file</code></td><td>Disk space or permissions</td><td>Check disk space; clean DerivedData</td></tr>
+</table>
+
+<h3 id="build_library_for_distribution">BUILD_LIBRARY_FOR_DISTRIBUTION</h3>
+
+<p>Enabling <code>BUILD_LIBRARY_FOR_DISTRIBUTION = YES</code> generates a <code>.swiftinterface</code> file alongside the <code>.swiftmodule</code>. A <code>.swiftinterface</code> is a stable, text-based interface that allows the framework to be imported by any Swift version, not just the one that compiled it. Required for: distributing binary frameworks, XCFrameworks, and SPM binary targets.</p>
+
+<h3 id="app-extension-safe-apis">App Extension Safe APIs</h3>
+
+<p>App Extensions run in a separate process and cannot use certain APIs (<code>UIApplication.shared</code>, <code>+load</code> with UIKit, etc.). Set <code>APPLICATION_EXTENSION_API_ONLY = YES</code> on frameworks used by extensions — the compiler verifies that no extension-unsafe APIs are called.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Checking linkage in Xcode build settings ──────────────────
+// Target → Build Settings → Linking → Mach-O Type:
+// "Static Library"    → .a
+// "Dynamic Library"   → .dylib (inside .framework)
+// "Relocatable Object File" → .o (rarely used directly)
+
+// ── SPM: explicit static vs dynamic ──────────────────────────
+// In Package.swift:
+products: [
+    .library(name: "NetworkKit", type: .static, targets: ["NetworkKit"]),
+    // or:
+    .library(name: "NetworkKit", type: .dynamic, targets: ["NetworkKit"]),
+    // or (let consumer decide — Xcode chooses static by default):
+    .library(name: "NetworkKit", targets: ["NetworkKit"])
+]
+
+// ── Measuring dyld startup time ───────────────────────────────
+// In Xcode Scheme → Run → Arguments → Environment Variables:
+// DYLD_PRINT_STATISTICS = 1
+// Output in console:
+// Total pre-main time: 312.23 milliseconds (100.0%)
+//   dylib loading time: 176.54 milliseconds (56.5%)
+//   rebase/binding time:  18.22 milliseconds (5.8%)
+//   ObjC setup time:      22.31 milliseconds (7.1%)
+//   initializer time:     95.16 milliseconds (30.4%)
+
+// ── Duplicate symbol resolution ───────────────────────────────
+// If two static libraries both link the same C library:
+// Use @_implementationOnly for imports that should not re-export:
+
+// In NetworkKit's internals:
+@_implementationOnly import zlib   // zlib symbols NOT re-exported to consumers
+
+// ── Checking if a framework is static or dynamic ──────────────
+// In Terminal:
+// file path/to/Framework.framework/Framework
+// → "Mach-O universal binary" → dynamic (for multiple archs)
+// → "current ar archive" → static
+// Or check LOAD_COMMANDS:
+// otool -L path/to/Framework.framework/Framework
+// Dynamic shows @rpath entries; static shows nothing (linked at compile time)
+
+// ── App Extension API safety ──────────────────────────────────
+// In framework target Build Settings:
+// APPLICATION_EXTENSION_API_ONLY = YES
+// Then this will fail to compile in the framework:
+// UIApplication.shared.openURL(...)  → compile error: not available in extensions</code></pre>
+
+<pre><code class="language-bash"># ── Create a universal static library (arm64 + x86_64) ────────
+xcodebuild archive \
+  -scheme NetworkKit \
+  -destination "generic/platform=iOS" \
+  -archivePath build/NetworkKit-iOS.xcarchive \
+  SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+
+xcodebuild archive \
+  -scheme NetworkKit \
+  -destination "generic/platform=iOS Simulator" \
+  -archivePath build/NetworkKit-Sim.xcarchive \
+  SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+
+# Combine into XCFramework (see xcframeworks.md for full steps)</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the main difference between a static library and a dynamic framework in terms of app startup time?</strong></p>
+
+<p>A: A static library's code is merged into the app binary at link time — <code>dyld</code> sees it as part of the main executable and pays no per-framework loading cost at startup. A dynamic framework is a separate <code>.dylib</code> loaded by <code>dyld</code> at app launch. Every dynamic framework adds approximately 1–5ms of pre-<code>main()</code> time for loading, parsing, symbol binding, and running initialisers. An app with 20 dynamic frameworks can add 50–100ms+ to its launch time on older devices — a perceptible delay. Apple recommends fewer than 6 dynamic frameworks for responsive launches. Static linking is preferred for performance; dynamic linking is required when the same binary must be shared between the app and an App Extension.</p>
+
+<p><strong>Q: Why do App Extensions require dynamic frameworks for shared code?</strong></p>
+
+<p>A: An App Extension (widget, share extension, keyboard, etc.) runs as a separate process from the host app. A static library's code is physically compiled into a single executable — you cannot have two separate processes (app and extension) share the same static copy. Each would need its own copy, which is fine for most code, but for a large framework this doubles binary size. More importantly, some code needs to be shared with a live object (e.g., a shared data store using Core Data). Dynamic frameworks solve this: both the app and the extension embed the same <code>.framework</code> in the <code>.app</code> bundle, and the OS loads one shared copy of the code into both processes (sharing the text segment via virtual memory mapping). The extension links against the app's embedded framework using <code>@executable_path/../Frameworks</code>.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: What causes "duplicate symbol" linker errors and how do you resolve them?</strong></p>
+
+<p>A: A duplicate symbol error occurs when the linker finds two object files (from different translation units or static libraries) that define the same symbol. Common causes: (1) A header defines a function or variable without <code>static</code> or <code>inline</code> — including it in multiple <code>.m</code> files creates one definition per <code>.m</code>, and the archiver includes all of them. (2) Two static libraries both embed the same third-party static library (e.g., both embed OpenSSL). (3) A class category or extension is defined in both the app target and a pod. Resolutions: (1) Mark inline/helper functions as <code>static</code> or move them to a <code>.c/.m</code> file with a header declaration only. (2) Use <code>@_implementationOnly import</code> in Swift to avoid re-exporting symbols from implementation dependencies. (3) Ensure each static dependency is included only once in the link graph — use <code>OTHER_LDFLAGS = -ObjC</code> carefully and only where needed. (4) Use dynamic frameworks for shared code when two separate targets must both use it.</p>
+
+<p><em></em>Q: What is <code>BUILD_LIBRARY_FOR_DISTRIBUTION</code> and what does it generate?<em></em></p>
+
+<p>A: <code>BUILD_LIBRARY_FOR_DISTRIBUTION = YES</code> instructs the Swift compiler to generate a <code>.swiftinterface</code> file alongside the <code>.swiftmodule</code>. A <code>.swiftmodule</code> is a binary format tied to the exact Swift compiler version — a framework built with Swift 5.9 cannot be imported by a project using Swift 6.0. A <code>.swiftinterface</code> is a text-based, versioned module interface that the Swift compiler can use to reconstruct the module regardless of the compiler version that produced it. This is required for: distributing pre-built frameworks across Swift releases, XCFrameworks shipped in SPM binary targets, and any framework that must remain compatible as teams upgrade Xcode. Without it, binary framework consumers must recompile from source on every Swift version bump.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: Describe the exact <code>dyld</code> load process for a dynamic framework and what you can do to minimise its impact on app launch.<em></em></p>
+
+<p>A: When the OS launches your app, <code>dyld</code> processes all <code>LC_LOAD_DYLIB</code> load commands in the app's Mach-O binary: (1) <strong>Find</strong>: locate each <code>.dylib</code> by searching <code>@rpath</code> (typically <code>@executable_path/Frameworks</code>). (2) <strong>Map</strong>: memory-map the dylib's TEXT and DATA segments using <code>mmap</code>. (3) <strong>Rebase</strong>: if the dylib was not loaded at its preferred address (ASLR), adjust all internal pointers (rebasing). (4) <strong>Bind</strong>: resolve all external symbol references — find each imported function/class in the providing framework and write its address into the DATA segment. (5) <strong>Initialise</strong>: run <code>+load</code> methods and C++ static initialisers. Steps 3–5 scale with symbol count. Minimisation strategies: (1) Reduce the number of dynamic frameworks — merge small frameworks into one or convert to static. (2) Move initialisation work out of <code>+load</code> into <code>+initialize</code> or lazy loading. (3) Use <code>__attribute__((constructor))</code> only when necessary. (4) Enable <code>DEAD_CODE_STRIPPING = YES</code> to eliminate unused code, reducing the symbol table size. (5) Use the App Launch instrument to identify which framework's initialiser is consuming the most time.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>dyld: Library not loaded: @rpath/NetworkKit.framework/NetworkKit</code> at runtime.<em></em></p>
+
+<p>Solution: The dynamic framework is not embedded in the app bundle. Select the app target → General → Frameworks, Libraries, and Embedded Content → set the framework to "Embed &amp; Sign" (not "Do Not Embed"). The framework must be physically present at <code>YourApp.app/Frameworks/NetworkKit.framework</code> at runtime.</p>
+
+<p><strong>Issue: Static library works in the app but causes a linker error in the App Extension target.</strong></p>
+
+<p>Solution: The static library uses <code>APPLICATION_EXTENSION_API_ONLY = NO</code> (default) but calls extension-unsafe APIs. Set <code>APPLICATION_EXTENSION_API_ONLY = YES</code> on the library target and fix any API violations, or use conditional compilation (<code>#if canImport(UIKit) &amp;&amp; !EXTENSION_BUILD</code>).</p>
+
+<p><strong>Issue: Xcode reports "missing required module 'XYZ'" for a static library.</strong></p>
+
+<p>Solution: The static library's <code>.swiftmodule</code> files are not in the <code>SWIFT_INCLUDE_PATHS</code>. Add the path to the <code>.swiftmodule</code> directory in the consuming target's Swift Include Paths. For SPM, this is handled automatically.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="swift-package-manager.md">Swift Package Manager</a> — <code>.library(type: .static/.dynamic)</code> in Package.swift</li>
+<li><a href="cocoapods-carthage.md">CocoaPods &amp; Carthage</a> — <code>use_frameworks!</code> controls static vs dynamic linkage</li>
+<li><a href="xcframeworks.md">XCFrameworks</a> — wraps static or dynamic slices for multi-platform distribution</li>
+<li><a href="../09-ios-platform/app-lifecycle.md">App Lifecycle</a> — startup time directly affected by dynamic framework count</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

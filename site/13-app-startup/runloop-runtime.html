@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RunLoop & Runtime — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../13-app-startup/index.html">App Startup</a></span>
+    <span>Runloop Runtime</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="runloop--runtime">RunLoop &amp; Runtime</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>The <strong>RunLoop</strong> is the event-processing engine at the heart of iOS's main thread. It is a loop that waits for events (touch inputs, timer fires, network callbacks, display link callbacks), dispatches them to registered handlers, and then sleeps until the next event arrives — preventing the thread from exiting while also never wasting CPU cycles in a busy-wait. Every thread can have a RunLoop, but only the main thread's RunLoop starts automatically; background thread RunLoops must be started manually. The RunLoop operates in <strong>modes</strong> — distinct sets of input sources and observers — that determine which sources are active at a given time. Understanding the RunLoop is essential for diagnosing and fixing hangs, timer misfires, scroll interruption bugs, and <code>CADisplayLink</code> behavior. The <strong>runtime</strong> layer — ObjC message dispatch, Swift dynamic dispatch, and the Swift concurrency cooperative scheduler — overlays the RunLoop and determines how code executes once the RunLoop delivers an event.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>A RunLoop is like a hotel concierge who never leaves the lobby. The concierge stands at the front desk waiting for guests to arrive with requests (events). When a guest arrives (a touch event, a timer fires), the concierge handles the request, then waits again. When the hotel is quiet (no events), the concierge doesn't pace around burning energy — they stand still doing nothing (the thread sleeps). The hotel has different modes: "conference mode" (only conference guests are served — other guests wait) and "normal mode" (everyone is served). A <code>CADisplayLink</code> is like a clock on the wall that triggers a request every 16 ms — the concierge handles it as a regular request each time it fires.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="runloop-structure">RunLoop Structure</h3>
+
+<pre><code>RunLoop
+├── Modes (sets of sources + observers)
+│   ├── .default  — normal operation: timers, custom sources
+│   ├── .tracking — UIScrollView tracking: suppresses .default timers
+│   ├── .common   — meta-mode: runs in both .default and .tracking
+│   └── custom modes (e.g., "NSModalPanelRunLoopMode")
+│
+├── Input Sources
+│   ├── Port-based (mach_msg): network callbacks, inter-thread messages
+│   └── Custom (CFRunLoopSource): manual signal
+│
+├── Timer Sources
+│   └── NSTimer / CFRunLoopTimer — fires after a time interval
+│
+└── Observers
+    ├── kCFRunLoopEntry — about to process events
+    ├── kCFRunLoopBeforeWaiting — about to sleep
+    ├── kCFRunLoopAfterWaiting — woke from sleep
+    └── kCFRunLoopExit — RunLoop about to exit</code></pre>
+
+<h3 id="runloop-iteration">RunLoop Iteration</h3>
+
+<p>A single RunLoop iteration:</p>
+<ol>
+<li><strong>Notify observers</strong>: <code>kCFRunLoopEntry</code> (on first run).</li>
+<li><strong>Process timers</strong>: fire any timers whose fire date has passed.</li>
+<li><strong>Process input sources</strong>: handle all pending mach port messages, CFRunLoopSource signals.</li>
+<li><strong>Notify observers</strong>: <code>kCFRunLoopBeforeWaiting</code>.</li>
+<li><strong>Sleep</strong>: the thread blocks on <code>mach_msg</code> waiting for the next event.</li>
+<li><strong>Notify observers</strong>: <code>kCFRunLoopAfterWaiting</code> (woke up).</li>
+<li><strong>Process the wakeup source</strong>: the timer/port/source that woke the RunLoop.</li>
+<li>Repeat.</li>
+</ol>
+
+<p>The key insight: UIKit touch events arrive as mach port messages that wake the RunLoop. <code>CADisplayLink</code> is a special timer tied to the display's VSYNC signal. <code>DispatchQueue.main.async</code> posts a message to the main queue's port, waking the RunLoop.</p>
+
+<h3 id="runloop-modes-and-scroll">RunLoop Modes and Scroll</h3>
+
+<p><em></em><code>UITrackingRunLoopMode</code><em></em> (<code>.tracking</code>) is active while the user is actively scrolling a <code>UIScrollView</code>. During tracking mode, only tracking-mode sources fire — <em></em><code>NSTimer</code>s registered in <code>.default</code> mode do not fire during scroll<em></em>. This is why a <code>Timer.scheduledTimer(...)</code> may appear to pause during scrolling. To fire during scroll, schedule the timer in <code>.common</code> mode:</p>
+
+<pre><code class="language-swift">RunLoop.main.add(timer, forMode: .common)</code></pre>
+
+<p>This is a common source of bugs in apps that use timers to drive animations or progress updates — the animation freezes during scroll.</p>
+
+<h3 id="nstimer-and-cadisplaylink">NSTimer and CADisplayLink</h3>
+
+<p><code>NSTimer</code>: fires at a specified interval, tolerates coalescing by the system (runs slightly late to optimize power). Not suitable for frame-accurate animation. <code>NSTimer</code> retains its <code>target</code> strongly — a common source of retain cycles.</p>
+
+<p><code>CADisplayLink</code>: synchronised to the display's refresh rate (60 or 120 Hz). Use for smooth frame-by-frame animation, custom drawing, or anything that must update every display frame. Always pair with <code>invalidate()</code> in <code>deinit</code>.</p>
+
+<pre><code class="language-swift">final class CounterAnimation {
+    private var displayLink: CADisplayLink?
+
+    func start() {
+        displayLink = CADisplayLink(target: self, selector: #selector(tick))
+        displayLink?.add(to: .main, forMode: .common)   // fires during scroll too
+    }
+
+    @objc private func tick(_ link: CADisplayLink) {
+        // link.timestamp: time of the current frame
+        // link.duration: time per frame (1/60 or 1/120)
+        updateAnimation(progress: computeProgress(at: link.timestamp))
+    }
+
+    func stop() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    deinit { stop() }
+}</code></pre>
+
+<h3 id="main-thread-scheduling">Main Thread Scheduling</h3>
+
+<p>The main RunLoop processes one event at a time. Heavy work in any event handler blocks subsequent events — this is the source of main thread jank. The key points:</p>
+
+<ul>
+<li><code>DispatchQueue.main.async</code> enqueues a block on the main queue. The RunLoop's next iteration will dequeue and execute it.</li>
+<li><code>DispatchQueue.main.sync</code> (from a background thread) blocks the calling thread until the block runs on the main thread — never call this from the main thread (deadlock).</li>
+<li>Multiple <code>DispatchQueue.main.async</code> calls in a tight loop are batched and processed across multiple RunLoop iterations — each iteration processes all pending items in the queue.</li>
+</ul>
+
+<h3 id="swift-concurrency-and-the-runloop">Swift Concurrency and the RunLoop</h3>
+
+<p>Swift concurrency's <code>@MainActor</code> serialises code on the main actor — conceptually the main thread. Internally, continuations are delivered as work items to the main thread's dispatch queue, which wakes the RunLoop as a normal queue event. <code>Task { @MainActor in }</code> is equivalent to <code>DispatchQueue.main.async { }</code> in scheduling terms, but composable with structured concurrency.</p>
+
+<p>Background tasks run on the <strong>cooperative thread pool</strong> — a fixed-size pool of threads managed by the Swift runtime. The pool size is proportional to the number of CPU cores. <code>Task.detached</code> and <code>actor</code> methods run on this pool. The pool does not use a RunLoop — instead, it uses <code>dispatch_async</code> on concurrent queues.</p>
+
+<h3 id="objc-runtime-message-dispatch">ObjC Runtime: Message Dispatch</h3>
+
+<p><code>objc_msgSend</code> is the entry point for every ObjC method call. It looks up the method implementation in the class's method cache (fast path: hash table lookup, 1–2 ns), or if not cached, traverses the class hierarchy (slow path). Swift methods on <code>@objc</code>-bridged types also go through <code>objc_msgSend</code>. Pure Swift methods use a static vtable dispatch (for <code>class</code> types) or direct call (for <code>struct</code>/<code>final class</code> methods) — faster than ObjC message dispatch.</p>
+
+<h3 id="detecting-hangs">Detecting Hangs</h3>
+
+<p>A <strong>hang</strong> is a period where the main thread is blocked and the RunLoop cannot process new events. iOS measures hangs using MetricKit:</p>
+
+<ul>
+<li><strong>Hang rate</strong>: percentage of seconds the app was hung (main thread blocked &gt; 250 ms).</li>
+<li><strong>Hang duration histogram</strong>: distribution of hang durations.</li>
+</ul>
+
+<p>Hangs show up in Instruments as gaps in the main thread lane of the Time Profiler. Common causes:</p>
+<ul>
+<li><code>DispatchQueue.main.sync</code> called from a queue that the main thread is waiting for (deadlock).</li>
+<li>Semaphore wait on the main thread.</li>
+<li>Synchronous file I/O (<code>Data(contentsOf:)</code>) on the main thread.</li>
+<li>Lock contention — main thread waiting for a lock held by a background thread.</li>
+</ul>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import UIKit
+
+// ── Timer that fires during scroll (.common mode) ─────────────
+final class CountdownTimer {
+    private var timer: Timer?
+    private(set) var remaining: Int = 60
+    var onTick: ((Int) -&gt; Void)?
+
+    func start() {
+        timer = Timer(timeInterval: 1.0,
+                      target: self,
+                      selector: #selector(tick),
+                      userInfo: nil,
+                      repeats: true)
+        // .common = active in both .default AND .tracking (scroll) modes
+        RunLoop.main.add(timer!, forMode: .common)
+    }
+
+    @objc private func tick() {
+        remaining -= 1
+        onTick?(remaining)
+        if remaining == 0 { stop() }
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    deinit { stop() }
+}
+
+// ── CADisplayLink for smooth value animation ──────────────────
+final class SpringAnimator {
+    private var displayLink: CADisplayLink?
+    private var startTime: CFTimeInterval = 0
+    private var duration: Double = 0.4
+    var onUpdate: ((CGFloat) -&gt; Void)?
+    var onComplete: (() -&gt; Void)?
+
+    func animate(duration: Double = 0.4) {
+        self.duration = duration
+        startTime = CACurrentMediaTime()
+        displayLink = CADisplayLink(target: self, selector: #selector(step))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        let elapsed = link.timestamp - startTime
+        let progress = min(elapsed / duration, 1.0)
+        let eased = springEasing(t: CGFloat(progress))
+        onUpdate?(eased)
+        if progress &gt;= 1.0 {
+            displayLink?.invalidate()
+            displayLink = nil
+            onComplete?()
+        }
+    }
+
+    private func springEasing(t: CGFloat) -&gt; CGFloat {
+        // Simple spring approximation
+        let c4 = (2 * .pi) / 3
+        if t == 0 { return 0 }
+        if t == 1 { return 1 }
+        return pow(2, -10 * t) * sin((t * 10 - 0.75) * c4) + 1
+    }
+
+    deinit {
+        displayLink?.invalidate()
+    }
+}
+
+// ── RunLoop observer for pre-sleep bookkeeping ────────────────
+func installRunLoopObserver() {
+    let observer = CFRunLoopObserverCreateWithHandler(
+        kCFAllocatorDefault,
+        CFRunLoopActivity.beforeWaiting.rawValue,
+        true,   // repeats
+        0       // order
+    ) { observer, activity in
+        // Runs just before the main RunLoop sleeps
+        // Useful for: flushing analytics batches, saving drafts
+        Analytics.shared.flushIfNeeded()
+    }
+    CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+}
+
+// ── Detecting main thread blocks ──────────────────────────────
+final class HangDetector {
+    private let threshold: TimeInterval = 0.25   // 250ms = reportable hang
+    private var pingTimer: Timer?
+    private var lastPing: Date = .now
+    private var monitorQueue = DispatchQueue(label: "hang-detector")
+
+    func start() {
+        // Ping the main thread every 100ms
+        pingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.lastPing = Date()   // this line runs on main thread
+        }
+        RunLoop.main.add(pingTimer!, forMode: .common)
+
+        // Check from background: if the main thread hasn't pinged in &gt; threshold, log a hang
+        monitorQueue.async { [weak self] in
+            while true {
+                Thread.sleep(forTimeInterval: 0.1)
+                guard let self else { return }
+                let gap = Date().timeIntervalSince(self.lastPing)
+                if gap &gt; self.threshold {
+                    // Log hang with current main thread stack trace
+                    self.reportHang(duration: gap)
+                }
+            }
+        }
+    }
+
+    private func reportHang(duration: TimeInterval) {
+        // In production: log to Crashlytics/Sentry with main thread backtrace
+        print("⚠️ Main thread hang detected: \(String(format: "%.2f", duration))s")
+    }
+}
+
+// ── Background thread with explicit RunLoop ───────────────────
+// Needed for: NSTimer on a background thread, NSURLConnection (legacy), etc.
+final class BackgroundRunLoopThread: Thread {
+    private var runLoop: RunLoop?
+
+    override func main() {
+        runLoop = RunLoop.current
+        // Add a port-based source to keep the RunLoop alive (otherwise it exits immediately)
+        let port = NSMachPort()
+        runLoop?.add(port, forMode: .default)
+        runLoop?.run()   // blocks until RunLoop is stopped
+    }
+
+    func schedule(timer: Timer) {
+        runLoop?.add(timer, forMode: .default)
+    }
+
+    func stop() {
+        runLoop?.perform { CFRunLoopStop(CFRunLoopGetCurrent()) }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is a RunLoop and why does iOS need one?</strong></p>
+
+<p>A: A RunLoop is a thread-lifecycle mechanism that keeps a thread alive and responsive without busy-waiting. Without a RunLoop, <code>main()</code> would return immediately after setup, terminating the process. The RunLoop puts the thread to sleep (blocking on <code>mach_msg</code>) until an event arrives — a touch input, a timer fire, a dispatch queue item, a network callback — processes it, then sleeps again. This means the main thread uses zero CPU when idle (no spinning). The main thread's RunLoop is started automatically by <code>UIApplicationMain</code>; background threads only have a RunLoop if you explicitly create and run one (needed for <code>NSTimer</code> on a background thread, or for legacy run-loop-based networking).</p>
+
+<p><em></em>Q: Why does an <code>NSTimer</code> pause during UIScrollView scrolling, and how do you fix it?<em></em></p>
+
+<p>A: <code>NSTimer.scheduledTimer(...)</code> schedules the timer in <code>.default</code> RunLoop mode. When the user scrolls a <code>UIScrollView</code>, the RunLoop switches to <code>.tracking</code> mode — only input sources registered in <code>.tracking</code> mode fire. Timers in <code>.default</code> mode are suspended until scrolling ends and the RunLoop returns to <code>.default</code>. Fix: add the timer to <code>.common</code> mode: <code>RunLoop.main.add(timer, forMode: .common)</code>. The <code>.common</code> mode is a meta-mode that includes both <code>.default</code> and <code>.tracking</code> — sources in <code>.common</code> fire regardless of which mode the RunLoop is currently in. The same fix applies to <code>CADisplayLink</code>: add it with <code>forMode: .common</code> to ensure animation callbacks continue during scroll.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How does <code>DispatchQueue.main.async</code> interact with the RunLoop?<em></em></p>
+
+<p>A: <code>DispatchQueue.main</code> is backed by a mach port. When you call <code>DispatchQueue.main.async { }</code>, the block is enqueued and a message is sent to the main queue's mach port. This message wakes the main RunLoop (which was sleeping on <code>mach_msg</code>). The RunLoop's next iteration processes the mach port event, which dequeues and executes the pending blocks. Key implication: if you call <code>DispatchQueue.main.async</code> 1000 times in a tight loop, all 1000 blocks will be enqueued, but they are executed one RunLoop iteration at a time (all pending blocks are drained in one RunLoop wakeup). This means a large batch of <code>DispatchQueue.main.async</code> calls can delay the RunLoop's ability to process other events (touches, timer fires) until the queue is drained. For progressive UI updates, prefer batching with <code>CATransaction</code> or a single <code>reloadData</code> call.</p>
+
+<p><strong>Q: What is a deadlock involving the main RunLoop and how does it manifest?</strong></p>
+
+<p>A: The classic main-thread deadlock: background thread calls <code>DispatchQueue.main.sync { }</code>, which blocks the background thread waiting for the main thread to execute the block; simultaneously, the main thread is waiting for the background thread (via a <code>semaphore.wait()</code>, <code>DispatchQueue(label:).sync { }</code>, or <code>OperationQueue</code> dependency). Neither thread can proceed. The app hangs indefinitely — the main RunLoop never processes the <code>sync</code> submission because it's blocked, and the background thread never unblocks because the main thread is blocked. In Instruments Time Profiler, this shows as the main thread stuck in <code>__dispatch_main_queue_drain_queue_one</code> or <code>semaphore_wait_trap</code> indefinitely. Fix: never call <code>DispatchQueue.main.sync</code> from a queue that the main thread might block on. Use <code>async</code> instead, or restructure with <code>async/await</code> and <code>await MainActor.run { }</code>.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><em></em>Q: How does the RunLoop interact with Swift concurrency's <code>@MainActor</code>?<em></em></p>
+
+<p>A: <code>@MainActor</code> in Swift concurrency is implemented using the main thread's dispatch queue (<code>DispatchQueue.main</code>) as its executor. When a suspended task resumes on <code>@MainActor</code>, the runtime schedules a work item on <code>DispatchQueue.main</code>. This work item is delivered as a mach port message that wakes the main RunLoop, which then executes the item in its current iteration. The implication: <code>@MainActor</code> continuations are subject to the same RunLoop-mode restrictions as <code>DispatchQueue.main.async</code> — they won't fire if the RunLoop is blocked for other reasons. Additionally, long-running synchronous code in a <code>@MainActor</code> function still blocks the main thread and all RunLoop event processing, just like any other main-thread work. Swift concurrency does not automatically yield the main actor between <code>await</code> calls within a function — only at explicit <code>await</code> suspension points does the main RunLoop get a chance to process other events. For fine-grained main-thread yielding, use <code>await Task.yield()</code>.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>NSTimer</code> stops firing after a while even though it was scheduled correctly.<em></em></p>
+
+<p>Solution: The timer's <code>target</code> is probably nil — <code>NSTimer</code> holds a strong reference to its target, but if the target was deallocated without calling <code>timer.invalidate()</code>, the timer fires against a nil target and does nothing (or crashes in older OS versions). Fix: call <code>timer.invalidate()</code> in <code>deinit</code> of the target object. Alternatively, use <code>Timer.scheduledTimer(withTimeInterval:repeats:block:)</code> with <code>[weak self]</code> in the closure to avoid the retain cycle, and call <code>invalidate()</code> when done.</p>
+
+<p><em></em>Issue: Custom view animation using <code>CADisplayLink</code> causes the app's frame rate to drop from 120 to 60 Hz on ProMotion devices.<em></em></p>
+
+<p>Solution: <code>CADisplayLink</code> defaults to <code>preferredFramesPerSecond = 0</code> which means "as fast as possible" — on ProMotion displays this should be 120 Hz. If the animation is running at 60 Hz, check: (1) Is the <code>CADisplayLink</code> added with <code>.common</code> mode? (2) Is the animation computation in the callback taking &gt; 8 ms (ProMotion budget)? Profile with the Core Animation instrument. (3) Use <code>CADisplayLink.preferredFrameRateRange</code> (iOS 15+) to specify <code>.high</code> preference: <code>displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)</code>.</p>
+
+<p><strong>Issue: App receives memory warnings and becomes unresponsive, but Instruments shows no allocation growth.</strong></p>
+
+<p>Solution: The unresponsiveness is likely due to the main RunLoop being overloaded, not memory. After a memory warning, if the app starts aggressively releasing and re-fetching resources (cache miss storm), the main thread may be flooded with <code>DispatchQueue.main.async</code> completions. Profile with Instruments Time Profiler while triggering the warning — if the main thread queue depth is large and it takes seconds to drain, throttle the re-fetch rate using a <code>DispatchWorkItem</code> debounce or a rate-limited semaphore on the background fetch queue.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="app-launch-process.md">App Launch Process</a> — how the RunLoop is started</li>
+<li><a href="startup-optimization.md">Startup Optimization</a> — deferring work past the first RunLoop iteration</li>
+<li><a href="../12-performance/main-thread-optimization.md">Main Thread Optimization</a> — keeping the RunLoop iteration fast</li>
+<li><a href="../03-concurrency/async-await.md">Concurrency — async/await</a> — <code>@MainActor</code> and the cooperative pool</li>
+<li><a href="../09-ios-platform/core-animation.md">Core Animation</a> — <code>CADisplayLink</code> and the display pipeline</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

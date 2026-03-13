@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unit Testing — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../11-testing/index.html">Testing</a></span>
+    <span>Unit Testing</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="unit-testing">Unit Testing</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>A unit test exercises a single unit of behaviour in complete isolation — no network calls, no disk I/O, no real dependencies. Each test is a precise, fast specification of what one function or method should do given a specific input. XCTest is Apple's built-in testing framework, fully integrated into Xcode with first-class async/await support since Xcode 14. Well-written unit tests follow the Arrange-Act-Assert (or Given-When-Then) pattern, have descriptive names that document behaviour, clean up state in <code>tearDown</code>, and run in milliseconds. A large suite of fast unit tests is the foundation of a reliable CI pipeline — slow tests are skipped; flaky tests are ignored.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>A unit test is like a quality-control inspector on a factory line who tests each part before it's assembled into the product. The inspector doesn't care about the whole car — just the one bolt they're checking. They bring a new bolt (set up), apply a specific amount of torque (the action), and measure whether it meets the spec (assert). If the measurement passes, the bolt is good. If not, the report clearly says "Bolt XYZ failed torque test at step 3" — not "car didn't start."</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="xctest-structure">XCTest Structure</h3>
+
+<pre><code class="language-swift">import XCTest
+@testable import MyModule   // @testable exposes internal symbols
+
+final class UserServiceTests: XCTestCase {
+
+    // SUT (System Under Test) + dependencies
+    var sut: UserService!
+    var mockRepository: MockUserRepository!
+
+    // ── Lifecycle ────────────────────────────────────────────
+    override func setUp() async throws {
+        // Runs before EACH test
+        mockRepository = MockUserRepository()
+        sut = UserService(repository: mockRepository)
+    }
+
+    override func tearDown() async throws {
+        // Runs after EACH test — clear state to prevent leaks
+        sut = nil
+        mockRepository = nil
+    }
+
+    override class func setUp() {
+        // Runs ONCE before all tests in the class
+        super.setUp()
+    }
+
+    override class func tearDown() {
+        // Runs ONCE after all tests in the class
+        super.tearDown()
+    }
+}</code></pre>
+
+<p><code>@testable import</code> exposes <code>internal</code> symbols without making them <code>public</code>. Do not use it in production code.</p>
+
+<h3 id="naming-convention">Naming Convention</h3>
+
+<p>Test names should read as specifications:</p>
+<pre><code>func test_&lt;unit&gt;_&lt;condition&gt;_&lt;expectedResult&gt;()
+func test_fetchUser_whenUserExists_returnsUser()
+func test_fetchUser_whenNetworkFails_throwsNetworkError()
+func test_login_withInvalidCredentials_returnsUnauthorized()</code></pre>
+
+<p>This makes the test report self-documenting — failures tell you exactly what broke.</p>
+
+<h3 id="assertions">Assertions</h3>
+
+<table>
+<tr><td>Assertion</td><td>Use</td></tr>
+<tr><td><code>XCTAssertEqual(a, b)</code></td><td>Equality</td></tr>
+<tr><td><code>XCTAssertNotEqual(a, b)</code></td><td>Inequality</td></tr>
+<tr><td><code>XCTAssertNil(x)</code></td><td>Nil check</td></tr>
+<tr><td><code>XCTAssertNotNil(x)</code></td><td>Non-nil check</td></tr>
+<tr><td><code>XCTAssertTrue(cond)</code></td><td>Boolean true</td></tr>
+<tr><td><code>XCTAssertFalse(cond)</code></td><td>Boolean false</td></tr>
+<tr><td><code>XCTAssertGreaterThan(a, b)</code></td><td>Ordering</td></tr>
+<tr><td><code>XCTAssertThrowsError(try fn())</code></td><td>Throws any error</td></tr>
+<tr><td><code>XCTAssertNoThrow(try fn())</code></td><td>Does not throw</td></tr>
+<tr><td><code>XCTFail("message")</code></td><td>Unconditional failure</td></tr>
+</table>
+
+<p>All assertions accept an optional <code>message:</code> and <code>file:</code>/<code>line:</code> parameters for custom failure messages.</p>
+
+<h3 id="asyncawait-tests">Async/Await Tests</h3>
+
+<p>XCTest supports <code>async</code> test methods natively:</p>
+
+<pre><code class="language-swift">func test_fetchUser_returnsExpectedUser() async throws {
+    // Given
+    mockRepository.stubbedUser = User(id: "42", name: "Alice")
+
+    // When
+    let user = try await sut.fetchUser(id: "42")
+
+    // Then
+    XCTAssertEqual(user.name, "Alice")
+}</code></pre>
+
+<p><strong>Throwing tests</strong>: if the function throws unexpectedly, the test fails with the error as the failure message — no need for <code>XCTAssertNoThrow</code> wrappers.</p>
+
+<h3 id="testing-combine-publishers">Testing Combine Publishers</h3>
+
+<p>Use <code>XCTestExpectation</code> or the <code>values</code> async sequence:</p>
+
+<pre><code class="language-swift">// Using async values (clean)
+func test_searchResults_updatesOnQuery() async throws {
+    var results: [[String]] = []
+    let cancellable = sut.$searchResults
+        .dropFirst()   // drop initial empty value
+        .prefix(1)
+        .sink { results.append($0) }
+
+    sut.search(query: "swift")
+    try await Task.sleep(nanoseconds: 100_000_000)   // 100ms
+
+    XCTAssertEqual(results.first, ["Swift Programming", "SwiftUI"])
+    cancellable.cancel()
+}
+
+// Using expectation (classic)
+func test_publisherEmitsValue() {
+    let expectation = expectation(description: "publisher emits")
+    var received: String?
+    let cancellable = sut.namePublisher
+        .sink { received = $0; expectation.fulfill() }
+
+    sut.updateName("Alice")
+    waitForExpectations(timeout: 1)
+
+    XCTAssertEqual(received, "Alice")
+    cancellable.cancel()
+}</code></pre>
+
+<h3 id="performance-tests">Performance Tests</h3>
+
+<p><code>measure</code> records CPU time and reports the baseline:</p>
+
+<pre><code class="language-swift">func test_sortPerformance() {
+    let items = (0..&lt;10_000).map { Item(id: $0, value: String($0)) }.shuffled()
+    measure {
+        _ = items.sorted { $0.value &lt; $1.value }
+    }
+}
+
+// With options — measure memory:
+func test_parsePerformance() {
+    let data = largeJSONData()
+    let options = XCTMeasureOptions()
+    options.iterationCount = 5
+    measure(metrics: [XCTMemoryMetric(), XCTCPUMetric()], options: options) {
+        _ = try? JSONDecoder().decode([Post].self, from: data)
+    }
+}</code></pre>
+
+<h3 id="test-doubles-in-unit-tests">Test Doubles in Unit Tests</h3>
+
+<p>Unit tests replace all real dependencies with test doubles. Full taxonomy in <a href="testable-architecture.md">Testable Architecture</a>. Summary:</p>
+
+<ul>
+<li><strong>Stub</strong>: returns hardcoded values.</li>
+<li><strong>Mock</strong>: records calls for verification.</li>
+<li><strong>Fake</strong>: simplified working implementation (e.g., in-memory store).</li>
+<li><strong>Spy</strong>: wraps real implementation + records calls.</li>
+</ul>
+
+<h3 id="xctunwrap">XCTUnwrap</h3>
+
+<p>Safely unwraps optionals — fails the test (rather than crashing) if nil:</p>
+
+<pre><code class="language-swift">let result = try XCTUnwrap(sut.lastError as? NetworkError)
+XCTAssertEqual(result, .unauthorized)</code></pre>
+
+<h3 id="skipping-tests">Skipping Tests</h3>
+
+<pre><code class="language-swift">func test_featureRequiringiOS17() throws {
+    try XCTSkipUnless(ProcessInfo.processInfo.operatingSystemVersion.majorVersion &gt;= 17,
+                      "Requires iOS 17")
+    // Test code here
+}</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import XCTest
+@testable import FeedFeature
+
+// ── System Under Test ─────────────────────────────────────────
+// FeedViewModel fetches posts from FeedRepository and publishes them
+
+final class FeedViewModelTests: XCTestCase {
+    var sut: FeedViewModel!
+    var mockRepository: MockFeedRepository!
+
+    override func setUp() async throws {
+        mockRepository = MockFeedRepository()
+        sut = FeedViewModel(repository: mockRepository)
+    }
+
+    override func tearDown() async throws {
+        sut = nil
+        mockRepository = nil
+    }
+
+    // ── Happy path ────────────────────────────────────────────
+    func test_loadPosts_whenRepositorySucceeds_publishesPosts() async throws {
+        // Given
+        let expected = [Post(id: "1", title: "Hello"), Post(id: "2", title: "World")]
+        mockRepository.postsToReturn = expected
+
+        // When
+        await sut.loadPosts()
+
+        // Then
+        XCTAssertEqual(sut.posts, expected)
+        XCTAssertFalse(sut.isLoading)
+        XCTAssertNil(sut.errorMessage)
+    }
+
+    // ── Loading state ─────────────────────────────────────────
+    func test_loadPosts_setsIsLoadingDuringFetch() async throws {
+        mockRepository.delay = 0.1   // 100ms delay to observe loading state
+        mockRepository.postsToReturn = []
+
+        var loadingStates: [Bool] = []
+        let cancellable = sut.$isLoading.sink { loadingStates.append($0) }
+
+        await sut.loadPosts()
+        cancellable.cancel()
+
+        // Should have been: false (initial) → true (loading) → false (done)
+        XCTAssertEqual(loadingStates, [false, true, false])
+    }
+
+    // ── Error path ────────────────────────────────────────────
+    func test_loadPosts_whenRepositoryFails_setsErrorMessage() async throws {
+        // Given
+        mockRepository.errorToThrow = NetworkError.serverError(statusCode: 500)
+
+        // When
+        await sut.loadPosts()
+
+        // Then
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertTrue(sut.posts.isEmpty)
+        XCTAssertFalse(sut.isLoading)
+    }
+
+    // ── Pagination ────────────────────────────────────────────
+    func test_loadMorePosts_appendsToExistingPosts() async throws {
+        // Given: initial load
+        mockRepository.postsToReturn = [Post(id: "1", title: "First")]
+        await sut.loadPosts()
+
+        // When: load more
+        let nextPage = [Post(id: "2", title: "Second")]
+        mockRepository.postsToReturn = nextPage
+        await sut.loadMorePosts()
+
+        // Then
+        XCTAssertEqual(sut.posts.count, 2)
+        XCTAssertEqual(sut.posts.last?.title, "Second")
+    }
+
+    // ── Idempotency ───────────────────────────────────────────
+    func test_loadPosts_whenAlreadyLoading_doesNotStartSecondFetch() async throws {
+        mockRepository.delay = 1.0   // slow response
+
+        // Start first load (don't await)
+        let firstLoad = Task { await self.sut.loadPosts() }
+
+        // Attempt second load while first is in progress
+        await sut.loadPosts()
+
+        firstLoad.cancel()
+        XCTAssertEqual(mockRepository.fetchCallCount, 1,
+                       "Should not start a second fetch while one is in progress")
+    }
+
+    // ── Computed property ─────────────────────────────────────
+    func test_hasContent_whenPostsEmpty_returnsFalse() {
+        sut.posts = []
+        XCTAssertFalse(sut.hasContent)
+    }
+
+    func test_hasContent_whenPostsNonEmpty_returnsTrue() {
+        sut.posts = [Post(id: "1", title: "A")]
+        XCTAssertTrue(sut.hasContent)
+    }
+}
+
+// ── Mock repository ───────────────────────────────────────────
+final class MockFeedRepository: FeedRepositoryProtocol {
+    var postsToReturn: [Post] = []
+    var errorToThrow: Error?
+    var delay: TimeInterval = 0
+    var fetchCallCount = 0
+
+    func fetchPosts(page: Int) async throws -&gt; [Post] {
+        fetchCallCount += 1
+        if delay &gt; 0 {
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        }
+        if let error = errorToThrow { throw error }
+        return postsToReturn
+    }
+}
+
+// ── Testing a pure transformation function ────────────────────
+final class PriceFormatterTests: XCTestCase {
+
+    func test_format_zeroPrice_returnsFreeLabelString() {
+        XCTAssertEqual(PriceFormatter.format(cents: 0), "Free")
+    }
+
+    func test_format_positiveCents_formatsAsDollarAmount() {
+        XCTAssertEqual(PriceFormatter.format(cents: 1999), "$19.99")
+    }
+
+    func test_format_negativeCents_returnsEmpty() {
+        XCTAssertEqual(PriceFormatter.format(cents: -1), "")
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: What does <code>@testable import</code> do and when should you avoid it?<em></em></p>
+
+<p>A: <code>@testable import ModuleName</code> recompiles the module with all <code>internal</code> symbols exposed as if they were <code>public</code>, allowing test targets to access internals without making them part of the module's public API. Use it to test <code>internal</code> ViewModels, parsers, and utility functions from a test target in the same module. Avoid relying on it heavily — if you're testing many internal details, it's a signal that the internal structure is too fine-grained or that the public API is too thin. Prefer testing through the public interface whenever possible; <code>@testable</code> is a convenience for testing internal logic that's not appropriate to expose publicly.</p>
+
+<p><strong>Q: What is the Arrange-Act-Assert pattern and why is it important?</strong></p>
+
+<p>A: Arrange-Act-Assert (also Given-When-Then) is a structural pattern for writing clear, readable tests: <strong>Arrange</strong> sets up the preconditions and inputs; <strong>Act</strong> performs the single operation being tested; <strong>Assert</strong> verifies the expected outcome. Its importance: (1) Forces tests to be focused — one behaviour per test. (2) Makes tests self-documenting — any engineer can read the test and understand what it verifies. (3) Makes failure diagnosis faster — when a test fails, the assert section tells you exactly what expectation was violated. Tests without this pattern tend to test multiple things at once, have cryptic assertion messages, and require reading the implementation to understand why they failed.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><em></em>Q: How do you test code that uses <code>async/await</code> in XCTest?<em></em></p>
+
+<p>A: Mark the test method as <code>async throws</code>: <code>func test_something() async throws { }</code>. XCTest runs async test methods on a Swift concurrency executor. Inside the test, <code>await</code> expressions work normally — the test runner waits for each <code>await</code> to complete before proceeding. Errors thrown by <code>try await</code> calls fail the test with the error as the message. For testing <code>@Published</code> properties or Combine publishers, either use <code>await</code> with <code>Task.sleep</code> (fragile) or better: expose an <code>async</code> function that completes when the observable state has been set, or use a helper that collects values from a publisher into an array using <code>publisher.values</code> async sequence. Avoid <code>expectation</code> + <code>waitForExpectations</code> for async/await code — it mixes two concurrency models.</p>
+
+<p><em></em>Q: What is the difference between <code>setUp()</code>, <code>setUp() async throws</code>, and <code>setUpWithError()</code>?<em></em></p>
+
+<p>A: <code>setUp()</code> is the original synchronous lifecycle method — no error throwing, runs before each test. <code>setUpWithError()</code> is a throwing variant that lets you propagate setup errors as test failures rather than crashing. <code>setUp() async throws</code> (Xcode 14+) combines both: it's async (can <code>await</code> in setup) and throwing. Use <code>setUp() async throws</code> for all new code — it's the most flexible. The async variant is essential when setup requires creating in-memory stores, loading test fixtures from disk, or performing any async operation. <code>tearDown() async throws</code> mirrors this for cleanup.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How do you ensure unit tests remain fast as the test suite grows to thousands of tests?</strong></p>
+
+<p>A: Speed comes from isolation and determinism: (1) <strong>Zero real I/O</strong>: replace all network calls, disk reads, and database queries with in-memory test doubles. Even fast I/O (10ms per test × 1000 tests = 10s) becomes a bottleneck at scale. (2) <em></em>No <code>sleep</code> or <code>waitForExpectations</code> with large timeouts<em></em>: use deterministic completion (call the mock's completion handler synchronously in tests, or use <code>Task { }</code> with immediate fulfillment). (3) <strong>Parallelism</strong>: enable <code>XCTest</code> parallel test execution (<code>Targets → Build → Parallelize</code> or <code>xcodebuild -parallel-testing-enabled YES</code>). Tests must be stateless — no shared mutable class-level state. (4) <strong>Test target structure</strong>: split large test suites into focused test targets per module. Xcode can build and run changed modules' tests in isolation. (5) <em></em>Avoid <code>@testable import</code> cascades<em></em>: if every test imports a monolithic module, any change triggers full recompilation. Local SPM packages with narrow API surfaces minimise recompilation scope.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Test passes in isolation but fails when the full suite runs.</strong></p>
+
+<p>Solution: The test has a side effect that pollutes state for subsequent tests. Common culprits: shared singletons, <code>UserDefaults.standard</code>, static properties, <code>URLProtocol.registerClass</code>. Fix: reset singletons in <code>tearDown</code>, use <code>UserDefaults(suiteName:)</code> with a unique name per test and call <code>removePersistentDomain</code> in <code>tearDown</code>, and register <code>URLProtocol</code> per-session rather than globally.</p>
+
+<p><strong>Issue: Async test times out even though the function completes.</strong></p>
+
+<p>Solution: The async function dispatches its completion to <code>@MainActor</code> but the test is already on the main actor — a deadlock. Use <code>await Task.yield()</code> to yield to the run loop, or ensure the mock resolves synchronously before the await point. Also check for missed <code>await</code> — calling an <code>async</code> function without <code>await</code> schedules it but doesn't wait for it.</p>
+
+<p><em></em>Issue: <code>XCTAssertEqual</code> fails on <code>Equatable</code> structs despite values appearing identical.<em></em></p>
+
+<p>Solution: The type conforms to <code>Equatable</code> but some property is not included in the synthesised comparison — either a computed property or a stored property that breaks the <code>==</code> symmetry. Implement explicit <code>Equatable</code> conformance listing all relevant fields, or add a <code>XCTAssertEqual(a.relevantField, b.relevantField)</code> to diagnose which field differs.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="testable-architecture.md">Testable Architecture</a> — test doubles, DI patterns, Quick/Nimble</li>
+<li><a href="integration-testing.md">Integration Testing</a> — testing multiple real components together</li>
+<li><a href="ui-testing.md">UI Testing</a> — XCUITest for end-to-end tests</li>
+<li><a href="../06-architecture/dependency-injection.md">Dependency Injection</a> — constructor injection enables test doubles</li>
+<li><a href="../03-concurrency/async-await.md">async/await</a> — async test patterns</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

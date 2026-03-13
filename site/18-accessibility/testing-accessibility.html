@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Testing Accessibility — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../18-accessibility/index.html">Accessibility</a></span>
+    <span>Testing Accessibility</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html" class="active">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="testing-accessibility">Testing Accessibility</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Accessibility testing verifies that an app's accessibility API implementation is correct — that VoiceOver navigates the UI in a logical order, that all interactive elements have labels and traits, and that colour contrast meets WCAG requirements. Three complementary approaches: <strong>Accessibility Inspector</strong> (Xcode's built-in tool — audits the accessibility tree, checks contrast, and simulates various accessibility settings), <strong>VoiceOver manual testing</strong> (the most accurate method — turn on VoiceOver and navigate the app as a real user would), and <strong>XCTest automated assertions</strong> (programmatic checks that elements exist, have correct labels, and meet contrast thresholds). Automated tests catch regressions; manual VoiceOver testing catches issues that are semantically correct but experientially wrong (e.g., a label that is technically present but confusing to hear).</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Testing accessibility is like a building inspection for ramps and lifts. The inspector uses a checklist (Accessibility Inspector audit), physically tests each ramp (VoiceOver manual walkthrough), and occasionally runs automated compliance tests (XCTest assertions). A ramp might pass the checklist but still be too steep for a wheelchair in practice — manual testing catches what the checklist misses. Similarly, an automated audit might flag a missing label, but only a real VoiceOver session reveals that "Profile photo, image" is confusing when read in the context of the surrounding text.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="accessibility-inspector">Accessibility Inspector</h3>
+
+<p>Accessibility Inspector is built into Xcode (Xcode → Open Developer Tool → Accessibility Inspector). It connects to a Simulator or real device and provides:</p>
+
+<p><strong>Inspection mode</strong>: click any element to see its <code>accessibilityLabel</code>, <code>accessibilityHint</code>, <code>accessibilityTraits</code>, <code>accessibilityValue</code>, and <code>accessibilityFrame</code>. Use this to debug why VoiceOver is reading the wrong thing.</p>
+
+<p><strong>Audit mode</strong>: Click the "Run Audit" button (triangle with exclamation mark). The audit checks:</p>
+<ul>
+<li>Missing accessibility labels on interactive elements.</li>
+<li>Small touch target sizes (minimum 44×44 pt).</li>
+<li>Clipped text.</li>
+<li>Colour contrast violations.</li>
+</ul>
+
+<p>Each finding has a severity (warning vs error) and a "?" button linking to documentation.</p>
+
+<p><strong>Simulation</strong>: Toggle accessibility features (Increase Contrast, Reduce Transparency, Reduce Motion, Button Shapes, Grayscale, Smart Invert) in the Accessibility Inspector settings pane without going to Settings → Accessibility — useful for rapid iteration.</p>
+
+<p><strong>Dynamic Type preview</strong>: change the Category Size slider in the Inspector to preview all Dynamic Type sizes without restarting the app.</p>
+
+<h3 id="voiceover-manual-testing">VoiceOver Manual Testing</h3>
+
+<p>VoiceOver on Simulator:</p>
+<pre><code>Simulator menu → Device → Turn VoiceOver On/Off
+Or: Hardware → Use Accessibility Inspector + Enable VoiceOver</code></pre>
+
+<p>VoiceOver on device:</p>
+<pre><code>Settings → Accessibility → VoiceOver → toggle
+Or: triple-click the side button (if set as Accessibility Shortcut)</code></pre>
+
+<p><strong>Basic VoiceOver gestures</strong>:</p>
+<table>
+<tr><td>Gesture</td><td>Action</td></tr>
+<tr><td>Single swipe right</td><td>Next element</td></tr>
+<tr><td>Single swipe left</td><td>Previous element</td></tr>
+<tr><td>Double-tap</td><td>Activate (tap)</td></tr>
+<tr><td>Three-finger swipe up</td><td>Scroll down</td></tr>
+<tr><td>Three-finger swipe down</td><td>Scroll up</td></tr>
+<tr><td>Two-finger z-shaped swipe</td><td>Escape / go back</td></tr>
+<tr><td>Swipe up (on adjustable element)</td><td>Increment</td></tr>
+<tr><td>Swipe down (on adjustable element)</td><td>Decrement</td></tr>
+</table>
+
+<p><strong>Testing checklist</strong>:</p>
+<ol>
+<li>Navigate through the entire screen with swipe-right only — every element should be reached, nothing skipped.</li>
+<li>Every interactive element reads a meaningful label + trait ("Submit, button" not "Button" or silence).</li>
+<li>The reading order is logical — left-to-right, top-to-bottom.</li>
+<li>No duplicate focus (two elements for the same visual control).</li>
+<li>After navigation (push/present), focus moves to the new screen's first element.</li>
+<li>After dismissal, focus returns to the triggering element.</li>
+<li>Custom actions (swipe up/down on a cell for delete/share) are accessible.</li>
+<li>Form elements read their label + current value + trait ("Email, text field").</li>
+</ol>
+
+<h3 id="xctest-accessibility-assertions">XCTest Accessibility Assertions</h3>
+
+<p>XCTest's <code>XCUIElement</code> provides accessibility-aware queries for UI tests. For dedicated accessibility unit tests, use the <code>XCUIAccessibility</code> audit APIs (iOS 17+) or write assertion helpers:</p>
+
+<pre><code class="language-swift">// Check that all buttons on screen have accessibility labels
+func test_allInteractiveElementsHaveLabels() {
+    let app = XCUIApplication()
+    app.launch()
+    // iOS 17+ Accessibility Audits
+    try app.performAccessibilityAudit()
+}
+
+// Check specific element has correct label and trait
+func test_deleteButton_hasCorrectAccessibilityInfo() {
+    let app = XCUIApplication()
+    app.launch()
+    let button = app.buttons["Delete post"]
+    XCTAssertTrue(button.exists, "Delete button must be accessible")
+    XCTAssertEqual(button.label, "Delete post")
+}</code></pre>
+
+<p><em></em><code>performAccessibilityAudit()</code> (iOS 17+)<em></em>: runs the same checks as Accessibility Inspector's audit programmatically. Issues failing the audit throw an error with a description. Integrate into your UI test suite:</p>
+
+<pre><code class="language-swift">func test_feedScreen_passesAccessibilityAudit() throws {
+    let app = XCUIApplication()
+    app.launch()
+    // Exclude specific audit types if needed:
+    try app.performAccessibilityAudit(for: .all)
+}</code></pre>
+
+<h3 id="colour-contrast-checking">Colour Contrast Checking</h3>
+
+<p>Automated colour contrast checking:</p>
+<ol>
+<li><strong>Accessibility Inspector Audit</strong> — flags contrast issues as "warnings".</li>
+<li><strong>Snapshot + contrast computation</strong>: capture a screenshot, compute contrast ratio between foreground and background pixels programmatically (WCAG formula).</li>
+<li><strong>Design system rule</strong>: enforce that all <code>UIColor</code> pairs used in the design system are pre-computed and verified in a unit test that fails if contrast &lt; 4.5:1.</li>
+</ol>
+
+<pre><code class="language-swift">extension UIColor {
+    // Relative luminance per WCAG 2.1
+    var relativeLuminance: CGFloat {
+        var r: CGFloat = 0; var g: CGFloat = 0; var b: CGFloat = 0; var a: CGFloat = 0
+        getRed(&amp;r, green: &amp;g, blue: &amp;b, alpha: &amp;a)
+        func linearise(_ c: CGFloat) -&gt; CGFloat {
+            c &lt;= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linearise(r) + 0.7152 * linearise(g) + 0.0722 * linearise(b)
+    }
+
+    func contrastRatio(with other: UIColor) -&gt; CGFloat {
+        let l1 = max(relativeLuminance, other.relativeLuminance)
+        let l2 = min(relativeLuminance, other.relativeLuminance)
+        return (l1 + 0.05) / (l2 + 0.05)
+    }
+}
+
+// Unit test:
+func test_bodyTextOnBackground_meetsWCAGAA() {
+    let bodyTextColour = UIColor.label
+    let backgroundColour = UIColor.systemBackground
+    // Use light mode appearance for calculation:
+    let ratio = bodyTextColour.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        .contrastRatio(with: backgroundColour.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)))
+    XCTAssertGreaterThanOrEqual(ratio, 4.5, "Body text must meet WCAG AA contrast ratio")
+}</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import XCTest
+
+// ── Accessibility audit in UI tests (iOS 17+) ─────────────────
+final class FeedScreenAccessibilityTests: XCTestCase {
+
+    var app: XCUIApplication!
+
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments = ["--uitesting", "--mock-api"]
+        app.launch()
+    }
+
+    func test_feedScreen_passesAccessibilityAudit() throws {
+        // Waits for the feed to load
+        XCTAssertTrue(app.tables.firstMatch.waitForExistence(timeout: 5))
+        // Runs Accessibility Inspector-equivalent audit programmatically
+        try app.performAccessibilityAudit()
+    }
+
+    func test_loginScreen_passesAccessibilityAudit() throws {
+        // Navigate to login
+        app.launchArguments = ["--uitesting", "--logged-out"]
+        app = XCUIApplication()
+        app.launch()
+        // Exclude small hit areas audit (acceptable for icon buttons in this app)
+        try app.performAccessibilityAudit(for: [
+            .dynamicType,
+            .contrast,
+            .textClipped,
+            .elementDetection
+            // Omitting .hitRegion
+        ])
+    }
+
+    func test_postCell_likeButton_hasAccessibilityLabel() {
+        let likeButton = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Like'")
+        ).firstMatch
+        XCTAssertTrue(likeButton.waitForExistence(timeout: 3))
+        XCTAssertFalse(likeButton.label.isEmpty, "Like button must have accessibility label")
+    }
+
+    func test_postCell_deleteAction_isAccessible() {
+        // Custom swipe-to-delete action must appear as an accessibility action
+        let cell = app.tables.cells.firstMatch
+        XCTAssertTrue(cell.waitForExistence(timeout: 3))
+        // The action appears in the accessibility actions list
+        let deleteAction = cell.accessibilityActions?.first { $0.name == "Delete" }
+        // Note: XCUIElement.accessibilityActions requires activating the element first
+        cell.tap()   // focus
+        // Verify the custom action by attempting to trigger it
+        XCTAssertNotNil(deleteAction ?? cell.buttons["Delete"].firstMatch)
+    }
+}
+
+// ── Snapshot + contrast unit test ────────────────────────────
+final class ColourContrastTests: XCTestCase {
+
+    func test_labelOnBackground_lightMode_meetsWCAGAA() {
+        let text = UIColor.label
+        let bg   = UIColor.systemBackground
+        let light = UITraitCollection(userInterfaceStyle: .light)
+        let ratio = text.resolvedColor(with: light)
+                        .contrastRatio(with: bg.resolvedColor(with: light))
+        XCTAssertGreaterThanOrEqual(ratio, 4.5, "label on systemBackground (light) must be ≥ 4.5:1")
+    }
+
+    func test_labelOnBackground_darkMode_meetsWCAGAA() {
+        let text = UIColor.label
+        let bg   = UIColor.systemBackground
+        let dark = UITraitCollection(userInterfaceStyle: .dark)
+        let ratio = text.resolvedColor(with: dark)
+                        .contrastRatio(with: bg.resolvedColor(with: dark))
+        XCTAssertGreaterThanOrEqual(ratio, 4.5, "label on systemBackground (dark) must be ≥ 4.5:1")
+    }
+
+    func test_brandPrimaryOnWhite_meetsWCAGAA() {
+        let brandPrimary = UIColor(named: "BrandPrimary")!
+        let white = UIColor.white
+        let ratio = brandPrimary.contrastRatio(with: white)
+        XCTAssertGreaterThanOrEqual(ratio, 4.5,
+            "BrandPrimary (\(brandPrimary)) on white must meet WCAG AA. Current ratio: \(ratio)")
+    }
+}
+
+extension UIColor {
+    var relativeLuminance: CGFloat {
+        var r: CGFloat = 0; var g: CGFloat = 0; var b: CGFloat = 0; var a: CGFloat = 0
+        getRed(&amp;r, green: &amp;g, blue: &amp;b, alpha: &amp;a)
+        func lin(_ c: CGFloat) -&gt; CGFloat { c &lt;= 0.04045 ? c/12.92 : pow((c+0.055)/1.055, 2.4) }
+        return 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b)
+    }
+    func contrastRatio(with other: UIColor) -&gt; CGFloat {
+        let l1 = max(relativeLuminance, other.relativeLuminance)
+        let l2 = min(relativeLuminance, other.relativeLuminance)
+        return (l1+0.05)/(l2+0.05)
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is Accessibility Inspector and what does its "Audit" feature check?</strong></p>
+
+<p>A: Accessibility Inspector is a tool in Xcode (Xcode → Open Developer Tool → Accessibility Inspector) that connects to a Simulator or device and provides two main features. The <strong>Inspection</strong> view shows the accessibility properties of any element you point at — label, hint, value, traits, frame. Use it to debug VoiceOver reading issues. The <strong>Audit</strong> runs automated checks on the visible UI: missing accessibility labels on interactive elements (buttons, links with no label), touch target sizes smaller than 44×44 pt (minimum for reliable tapping), clipped text (text that's cut off by its container), and colour contrast violations (text/background pairs failing WCAG 4.5:1). Findings are listed as warnings or errors with descriptions. It's the fastest first pass for catching obvious issues — but manual VoiceOver testing is still required for experiential quality.</p>
+
+<p><strong>Q: What gestures do you use to test an app with VoiceOver?</strong></p>
+
+<p>A: The core VoiceOver testing gestures: <strong>swipe right</strong> = move to the next element (use this to navigate through every element on screen in order — every interactive element must be reachable and have a meaningful reading). <strong>Swipe left</strong> = previous element. <strong>Double-tap</strong> = activate the currently focused element (equivalent to a tap). <strong>Two-finger swipe up/down</strong> = scroll. <strong>Two-finger Z gesture</strong> = escape (equivalent to back button or dismiss). For adjustable elements (sliders, steppers): <strong>swipe up</strong> = increment, <strong>swipe down</strong> = decrement. For custom actions (delete, share): <strong>swipe up/down while focused</strong> on a cell opens the custom actions rotor. For modals: VoiceOver should automatically move focus to the modal on presentation; after dismissal, it should return to the triggering element.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you integrate accessibility testing into a CI pipeline?</strong></p>
+
+<p>A: Three layers: (1) <strong>Automated audit tests</strong> using <code>performAccessibilityAudit()</code> (iOS 17+) in the UI test target. These run on every PR and fail if any auditable issues (missing labels, contrast violations, clipped text) are present. Add these tests to your standard UI test suite. They run in ~10–30 seconds on a simulator. (2) <strong>Colour contrast unit tests</strong>: write a <code>ColourContrastTests</code> XCTestCase that checks every foreground/background colour pair in your design system using the WCAG luminance formula. These run in milliseconds as part of the regular unit test suite. (3) <strong>Snapshot-based regression</strong>: use <code>swift-snapshot-testing</code> with <code>.image(traits: .init(accessibilityContrast: .high))</code> to snapshot in high-contrast mode. Any unintended change to high-contrast appearance fails the snapshot test. For manual VoiceOver testing: create a structured QA checklist (screen by screen) that is run manually before each major release — not every PR, but at least each milestone.</p>
+
+<p><strong>Q: How do you test Dynamic Type across all content size categories in an automated test?</strong></p>
+
+<p>A: Use <code>XCUIApplication.launchArguments</code> or <code>UITraitCollection</code> overrides. For XCUITests: create one test function per critical category or parameterise: iterate over <code>UIContentSizeCategory.allCases</code> and snapshot each one using <code>swift-snapshot-testing</code> with <code>assertSnapshot(of: vc, as: .image(on: .iPhone13Pro, traits: UITraitCollection(preferredContentSizeCategory: category)), named: category.rawValue)</code>. In the Simulator, use the Accessibility Inspector's category size slider to manually test at each size. Also run Xcode's UI Testing with specific launch environment: <code>app.launchEnvironment["UIPreferredContentSizeCategoryName"] = UIContentSizeCategory.accessibilityExtraExtraLarge.rawValue</code> — this overrides the Dynamic Type setting for the test session without changing the system setting.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: You are building a design system for a large iOS app used by 2 million users, 15% of whom have enabled accessibility settings. Describe your accessibility testing strategy.</strong></p>
+
+<p>A: Six-layer strategy: (1) <strong>Unit-tested design tokens</strong>: every colour pair, font combination, and spacing constant is a unit test. <code>ColourContrastTests</code> asserts all foreground/background combinations in the design system meet WCAG 2.1 AA. Spacing constants are tested to be ≥ 44 pt for touch targets. These run in CI on every commit. (2) <strong>Component snapshot library</strong>: for each design system component (button, card, text field), snapshot tests at: default Dynamic Type, <code>accessibilityExtraExtraExtraLarge</code>, dark mode, high contrast mode. 5 components × 4 variants = 20 snapshots. Snapshot drift fails CI. (3) <em></em><code>performAccessibilityAudit()</code> in UI tests<em></em>: a dedicated <code>AccessibilitySmokeTests</code> target runs one test per major screen, calling <code>performAccessibilityAudit()</code>. This runs nightly on device farm (not every PR — too slow). Failures create GitHub issues automatically. (4) <strong>VoiceOver regression checklist</strong>: maintained as a Notion document with one row per screen. QA runs this before each release. Any screen marked "audio output changed" is escalated to the original author. (5) <strong>Analytics for accessibility features</strong>: log <code>UIAccessibility.isVoiceOverRunning</code>, <code>isReduceMotionEnabled</code>, <code>preferredContentSizeCategory</code> on session start. Know which 15% of users use which features — prioritise testing the most-used features first. (6) <strong>User feedback channel</strong>: in-app feedback form with an "Accessibility" category. Incoming reports are triaged weekly by the accessibility champion. Any P1 issue is escalated to the next sprint.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>performAccessibilityAudit()</code> fails with "element has no accessibility label" for a valid control.<em></em></p>
+
+<p>Solution: The control's accessibility label is set but the audit may be running before the view is fully configured (e.g., in a dynamic list, cells outside the visible area may not have their accessibility properties set). Ensure the test waits for content to load (<code>waitForExistence</code>) before calling <code>performAccessibilityAudit</code>. Also check that the failing element is not a decorative image that should have <code>isAccessibilityElement = false</code> — the audit flags images without labels even if they're decorative.</p>
+
+<p><strong>Issue: Accessibility Inspector shows correct labels but VoiceOver reads something different.</strong></p>
+
+<p>Solution: The element's <code>accessibilityAttributedLabel</code> (which supports formatting) may override <code>accessibilityLabel</code>. Check: <code>element.accessibilityAttributedLabel</code> in the Inspector's full attribute list. Also check for parent elements whose <code>accessibilityLabel</code> is set — if a container has <code>isAccessibilityElement = true</code> AND a label, it overrides all child labels. Set <code>isAccessibilityElement = false</code> on the container or remove its label.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="core-accessibility.md">Core Accessibility</a> — properties the audit checks for</li>
+<li><a href="ui-support.md">UI Support</a> — Dynamic Type and contrast properties being tested</li>
+<li><a href="../11-testing/ui-testing.md">UI Testing</a> — <code>XCUIApplication</code> and page object pattern</li>
+<li><a href="../11-testing/snapshot-testing.md">Snapshot Testing</a> — snapshotting accessibility size variants</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

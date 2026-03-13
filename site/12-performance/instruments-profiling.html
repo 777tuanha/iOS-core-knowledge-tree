@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instruments & Profiling — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../12-performance/index.html">Performance</a></span>
+    <span>Instruments Profiling</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html" class="active">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="instruments--profiling">Instruments &amp; Profiling</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Instruments is Apple's performance-analysis suite bundled with Xcode. It attaches to a running app (on device or simulator) and samples or traces system activity at hardware level. The four most important templates for iOS performance work are: <strong>Time Profiler</strong> (CPU time per function), <strong>Allocations</strong> (heap object lifecycle), <strong>Leaks</strong> (unreachable retain cycles), and <strong>Energy Log</strong> (battery drain from CPU/GPU/network/location). Instruments runs against a <strong>Release</strong> build with compiler optimisations enabled — profiling a Debug build gives artificially inflated numbers. Xcode's Debug Navigator also provides real-time gauges (CPU, memory, disk, network) for quick sanity checks without a full Instruments session. The output of a profiling session is an <code>.trace</code> file that can be shared, archived, and diffed across builds.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Profiling with Instruments is like adding timing gates to a race course. Without gates, you know the car finished in 2 minutes but not which corner was slow. Time Profiler puts a gate at every function — now you know corner 3 took 1.4 of those 2 minutes. Allocations is the pit crew tracking every tyre fitted and removed — it tells you which object is being created 50,000 times per scroll. Leaks finds tyres that were fitted but never removed and are now blocking the garage. Energy Log is the fuel gauge — it shows whether the engine or the air conditioning is draining the tank.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="time-profiler">Time Profiler</h3>
+
+<p>Time Profiler samples the call stack of every thread at a configurable interval (default: 1 ms). It reports <strong>self time</strong> (time spent in a function itself, excluding callees) and <strong>total time</strong> (including all callees). Self time is the key metric — high self time in a function means that function itself is the bottleneck, not something it calls.</p>
+
+<p><strong>Workflow:</strong></p>
+<ol>
+<li>Open Instruments: Xcode → Product → Profile (⌘I) → Time Profiler.</li>
+<li>Press Record. Reproduce the slow scenario.</li>
+<li>Stop recording. Select the time range of interest in the timeline.</li>
+<li>In the call tree, enable <strong>"Hide System Libraries"</strong> to focus on app code.</li>
+<li>Sort by <strong>Self Time (%)</strong> descending. The top entry is the heaviest symbol.</li>
+<li>Double-click a symbol → opens the source file at the hot line.</li>
+</ol>
+
+<p><strong>Key settings:</strong></p>
+<ul>
+<li><strong>Call Tree → Separate by Thread</strong>: see which thread owns each cost.</li>
+<li><strong>Call Tree → Invert Call Tree</strong>: shows leaves (the actual hot functions) at the top.</li>
+<li><strong>High Frequency</strong>: reduce sample interval to 0.25 ms for finer granularity.</li>
+</ul>
+
+<h3 id="allocations">Allocations</h3>
+
+<p>Allocations tracks every <code>malloc</code>/<code>free</code> and every Objective-C/Swift allocation. It distinguishes:</p>
+
+<ul>
+<li><strong>Persistent</strong>: objects alive right now.</li>
+<li><strong>Transient</strong>: objects created and released — high counts indicate allocation churn.</li>
+<li><strong>All heap allocations</strong>: the cumulative count since launch.</li>
+</ul>
+
+<p><strong>Heap Shot workflow (finding leaks after a user action):</strong></p>
+<ol>
+<li>Perform the baseline action (e.g., load the feed).</li>
+<li>Click <strong>Mark Heap</strong> → Heap Shot 1.</li>
+<li>Perform the action again.</li>
+<li>Click <strong>Mark Heap</strong> → Heap Shot 2.</li>
+<li>The delta between shots shows objects created in step 3 that were not released — candidates for leaks or unnecessary retention.</li>
+</ol>
+
+<p><strong>Generation Analysis</strong>: switch to "Generations" mode to track which objects survive a mark. Surviving generations that grow unboundedly indicate a memory leak.</p>
+
+<h3 id="leaks">Leaks</h3>
+
+<p>Leaks scans the heap for <strong>unreachable objects</strong> — objects with a retain count &gt; 0 but no strong reference path from a root (stack variable, global, or static). It runs automatically while you use the app. A red bar in the Leaks timeline means leaked objects were detected.</p>
+
+<p><strong>Reading a Leak:</strong></p>
+<ol>
+<li>Click a red bar in the timeline.</li>
+<li>The Cycles &amp; Roots panel shows the retain cycle graph — which object holds a strong reference to which.</li>
+<li>The call stack shows where the leaked object was allocated.</li>
+</ol>
+
+<p><strong>Common patterns detected:</strong></p>
+<ul>
+<li><code>NotificationCenter</code> observer not removed before <code>deinit</code>.</li>
+<li>Delegate stored as <code>strong</code> instead of <code>weak</code>.</li>
+<li><code>Timer</code> with a strong <code>target:</code> reference to its owner.</li>
+<li>Closure capturing <code>self</code> strongly in a property that <code>self</code> also holds.</li>
+</ul>
+
+<h3 id="energy-log">Energy Log</h3>
+
+<p>Energy Log aggregates power consumption across four subsystems — CPU, GPU, network (Wi-Fi/cellular), and location — into a timeline. It shows <strong>High / Medium / Low / Overhead</strong> energy levels per second. Useful for diagnosing battery drain in background processing, location apps, and video playback features.</p>
+
+<p>Key patterns to look for:</p>
+<ul>
+<li><strong>CPU spikes during scroll</strong> → rendering or data processing on main thread.</li>
+<li><strong>Network bursts on a timer</strong> → unnecessary polling; switch to push/WebSocket.</li>
+<li><strong>GPS always-on</strong> → change to <code>significantLocationChanges</code> or reduce accuracy.</li>
+<li><strong>GPU always active</strong> → off-screen rendering or continuous <code>CADisplayLink</code> work.</li>
+</ul>
+
+<h3 id="xcode-debug-gauges">Xcode Debug Gauges</h3>
+
+<p>Xcode's Debug Navigator (⌘7) shows real-time gauges while running in debug mode:</p>
+
+<table>
+<tr><td>Gauge</td><td>What it shows</td></tr>
+<tr><td>CPU</td><td>% usage per core</td></tr>
+<tr><td>Memory</td><td>Heap + dirty pages; warns on memory pressure</td></tr>
+<tr><td>Disk</td><td>Read/write bytes/s</td></tr>
+<tr><td>Network</td><td>Bytes sent/received</td></tr>
+<tr><td>GPU</td><td>Frame rate, GPU utilisation</td></tr>
+<tr><td>Energy Impact</td><td>Composite score (Low/Medium/High)</td></tr>
+</table>
+
+<p>Gauges are not as accurate as Instruments (no symbolication, sampled infrequently) but are useful for immediate feedback during development.</p>
+
+<h3 id="flame-graph-vs-call-tree">Flame Graph vs Call Tree</h3>
+
+<p>Instruments shows a call tree by default. Flip to <strong>Flame Graph</strong> view (the icon in the toolbar) for a visual representation where width = time and rows = stack depth. Flame graphs make it immediately obvious which subtree dominates — the widest block is the bottleneck.</p>
+
+<h3 id="profiling-on-device-vs-simulator">Profiling on Device vs Simulator</h3>
+
+<table>
+<tr><td>Aspect</td><td>Device</td><td>Simulator</td></tr>
+<tr><td>CPU timing</td><td>Accurate (real ARM)</td><td>Inflated (x86/ARM host)</td></tr>
+<tr><td>Memory pressure</td><td>Real (limited RAM)</td><td>No pressure (uses host RAM)</td></tr>
+<tr><td>GPU</td><td>Real Metal pipeline</td><td>Emulated</td></tr>
+<tr><td>Thermal throttling</td><td>Yes</td><td>No</td></tr>
+<tr><td>Recommendation</td><td><strong>Always</strong> for release profiling</td><td>OK for quick iteration</td></tr>
+</table>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">// ── Forcing a Release build for profiling ─────────────────────
+// Edit scheme → Run → Build Configuration → Release
+// This enables -O and -whole-module-optimization
+
+// ── Instrumenting custom code with os_signpost ────────────────
+import os.signpost
+
+extension Logger {
+    static let rendering = Logger(subsystem: "com.myapp", category: "rendering")
+}
+
+// Mark a performance-sensitive interval
+func renderFeed(posts: [Post]) {
+    let signpostID = OSSignpostID(log: .default)
+    os_signpost(.begin, log: .default, name: "renderFeed", signpostID: signpostID,
+                "post count: %d", posts.count)
+    defer {
+        os_signpost(.end, log: .default, name: "renderFeed", signpostID: signpostID)
+    }
+
+    for post in posts {
+        renderCell(post: post)
+    }
+}
+
+// os_signpost intervals appear as coloured bars in the Time Profiler timeline
+// alongside the call tree — showing exactly when the interval started/ended
+
+// ── Detecting main-thread violations ──────────────────────────
+// Enable the "Main Thread Checker" in the scheme diagnostics:
+// Edit Scheme → Run → Diagnostics → ✓ Main Thread Checker
+// This crashes the app (in debug) when UIKit APIs are called off-main-thread
+
+// ── Allocations: reducing churn in a hot path ─────────────────
+// Before: allocates a new array per call
+func hotPath(items: [Item]) -&gt; [String] {
+    return items.map { $0.name }   // new Array allocation every time
+}
+
+// After: pre-allocated buffer
+func hotPath(items: [Item], into buffer: inout [String]) {
+    buffer.removeAll(keepingCapacity: true)   // reuse the allocation
+    for item in items {
+        buffer.append(item.name)
+    }
+}
+
+// ── Using MetricKit for production performance data ────────────
+import MetricKit
+
+// MetricKit delivers on-device performance reports aggregated daily
+final class MetricsManager: NSObject, MXMetricManagerSubscriber {
+
+    override init() {
+        super.init()
+        MXMetricManager.shared.add(self)
+    }
+
+    // Called daily with aggregate metrics from the previous 24 hours
+    func didReceive(_ payloads: [MXMetricPayload]) {
+        for payload in payloads {
+            if let launchMetrics = payload.applicationLaunchMetrics {
+                let resumeTime = launchMetrics.applicationResumeTime
+                    .histogrammedTimeToFirstDraw.bucketEnumerator
+                // Log or upload to analytics
+                _ = resumeTime
+            }
+
+            if let animMetrics = payload.animationMetrics {
+                let scrollHitch = animMetrics.scrollHitchTimeRatio
+                // scrollHitch &gt; 0.05 (5%) is considered poor
+                _ = scrollHitch
+            }
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the difference between Time Profiler and Allocations in Instruments?</strong></p>
+
+<p>A: Time Profiler answers "where does the CPU spend time?" by sampling call stacks at a fixed interval (typically 1 ms) and reporting the percentage of samples each function appeared in. It identifies slow code paths — functions with high self-time are the performance bottleneck. Allocations answers "what is being created on the heap and how much memory does it consume?" by tracing every <code>malloc</code>/<code>free</code>. It identifies allocation churn (many short-lived objects that stress the allocator and cause GC-like pauses in the retain/release system) and memory growth (persistent objects accumulating over time). Use Time Profiler for jank and slow operations; use Allocations for memory growth and over-allocation.</p>
+
+<p><strong>Q: Why must you profile on a Release build rather than a Debug build?</strong></p>
+
+<p>A: Debug builds compile with <code>-Onone</code> (no optimisations) to improve debuggability — the compiler does not inline functions, does not eliminate dead code, and keeps every variable on the stack. This makes Debug builds 3–10× slower than Release builds. Profiling a Debug build will identify bottlenecks that don't exist in production (optimised-away code appears expensive) and miss bottlenecks that do exist (inlined code doesn't appear as a separate entry in the call tree). Always profile a Release build (or a custom "Profile" configuration derived from Release) to get production-accurate timing data.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you use Heap Shots in Allocations to find a memory leak that doesn't appear in the Leaks instrument?</strong></p>
+
+<p>A: The Leaks instrument only finds objects that are unreachable (no strong reference path from a root). A logical leak — an object that is reachable but should have been released — won't appear in Leaks. Heap Shots detect these: perform the action expected to be leak-free (e.g., open a modal, dismiss it), mark the heap, repeat several times. After 5 iterations, if the same class appears in each heap delta with growing count, it's a logical leak — something is retaining it (a cache, an array, a notification observer) that should have removed its reference when the modal was dismissed. Use the "Object Details" panel to see the allocation call stack and the "Responsible Library" to narrow to app code.</p>
+
+<p><em></em>Q: What does <code>os_signpost</code> add to a profiling session and when should you use it?<em></em></p>
+
+<p>A: <code>os_signpost</code> emits timestamped events into the unified logging system that Instruments visualises as labelled intervals or points in the Time Profiler timeline. Without signposts, the call tree shows raw function names — you can see <code>renderFeed</code> took 80 ms but can't correlate it with "which specific batch of posts?" or "did this include the network wait?" With signposts you can bracket an operation with <code>.begin</code>/<code>.end</code> and include metadata (e.g., post count, batch index) as a format string. The interval appears as a coloured bar in the Custom Instruments lane, making it easy to align timing with user interactions and identify which invocation of <code>renderFeed</code> was slow. Use signposts in any performance-sensitive code path you regularly profile — image decoding, diffable data source snapshots, JSON parsing, and cell configuration are common targets.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you set up a continuous performance regression detection pipeline for an iOS app?</strong></p>
+
+<p>A: Four layers: (1) <strong>MetricKit</strong> in production: subscribe to <code>MXMetricManagerSubscriber</code> and upload daily payloads (launch time histograms, hitch rate, hang rate, memory termination count) to a backend. Plot these metrics on a dashboard per build version — a spike in the scroll hitch ratio after a specific commit identifies the regression. (2) <strong>XCTest performance tests</strong> in CI: use <code>measure(metrics: [XCTCPUMetric(), XCTMemoryMetric(), XCTClockMetric()])</code> for key operations (JSON decode of a 1000-item feed, diffable snapshot application, Core Data batch insert). Set a baseline and tolerance; the test fails if the metric exceeds <code>baseline × (1 + tolerance)</code>. Check these baselines into source control. (3) <strong>Instruments automation</strong> via <code>xctrace</code>: <code>xctrace record --template "Time Profiler" --device &lt;id&gt; --launch -- &lt;app-path&gt;</code> runs a headless Time Profiler session from the command line. Parse the <code>.trace</code> with <code>xctrace export --input recording.trace --output trace.xml</code> and script checks on self-time of critical symbols. (4) <strong>Allocation budgets</strong>: write a test that creates N cells, measures peak memory, and fails if peak exceeds the budget (e.g., "FeedViewController with 100 posts must fit in &lt; 50 MB working set").</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: Time Profiler shows all time in <code>objc_msgSend</code> or <code>dyld_stub_binder</code>.<em></em></p>
+
+<p>Solution: Enable <strong>"Hide System Libraries"</strong> in the Call Tree settings. These entries are system infrastructure — the actual bottleneck is in the caller above them. Invert the call tree (Call Tree → Invert Call Tree) to surface the leaf functions that are actually consuming time.</p>
+
+<p><strong>Issue: Leaks instrument shows no leaks but memory grows continuously.</strong></p>
+
+<p>Solution: This is a logical leak (reachable but should be released). Use Heap Shots: mark the heap before and after repeating an action. Objects that appear in every delta are accumulated without being released. Common cause: a cache (NSCache, Dictionary) with no eviction policy, or an append-only array used as an event log.</p>
+
+<p><strong>Issue: Instruments shows accurate data on the simulator but not on the device.</strong></p>
+
+<p>Solution: The device and simulator use different CPU architectures. Build and profile directly on the device for accurate measurements. Also check that the app is built with <code>Release</code> configuration — simulator Debug builds are especially misleading because the host machine's CPU is much faster than the device's ARM core.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="memory-optimization.md">Memory Optimization</a> — Allocations findings lead to memory optimisation</li>
+<li><a href="main-thread-optimization.md">Main Thread Optimization</a> — Time Profiler findings lead to threading work</li>
+<li><a href="../13-app-startup/index.md">App Startup &amp; Runtime</a> — launch time profiling with Instruments App Launch template</li>
+<li><a href="../09-ios-platform/core-animation.md">Core Animation</a> — GPU profiling for off-screen rendering</li>
+<li><a href="../02-memory-management/arc-memory-management.md">Memory Management — ARC</a> — Leaks findings map to ARC retain cycles</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

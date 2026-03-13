@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entitlements — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../19-app-distribution/index.html">App Distribution</a></span>
+    <span>Entitlements</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html" class="active">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="entitlements">Entitlements</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Entitlements are key-value pairs embedded in the app binary at build time that declare which platform capabilities the app requires. They act as a contract between the app and the OS: iOS will only grant a capability (push notifications, Keychain access group sharing, App Groups, iCloud, background modes) if the entitlement is both present in the binary and matched by the provisioning profile. Entitlements are defined in a <code>.entitlements</code> file (a plist) in the Xcode project and are enabled per-target in Xcode's Signing &amp; Capabilities tab. Each capability must also be enabled in the App ID on the developer portal — the provisioning profile reflects those permissions. Entitlements cross-cut code signing, app capabilities, and inter-process communication: App Groups enable data sharing between extensions and the host app; Keychain access groups enable credential sharing between multiple apps from the same team.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Entitlements are like entries on a backstage pass. The pass (provisioning profile) lists every room you're allowed to enter. The binary has its own list of rooms it claims to need. iOS compares the two lists at install time: if the binary asks for a room (entitlement) that's not on the pass, installation fails. If the pass lists rooms the binary doesn't need, that's fine — but unused capabilities don't help anyone and add to the audit surface.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="entitlements-file">Entitlements File</h3>
+
+<p>Xcode manages the <code>.entitlements</code> plist automatically when you toggle capabilities in the Signing &amp; Capabilities tab. You can also edit it directly.</p>
+
+<pre><code class="language-xml">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd"&gt;
+&lt;plist version="1.0"&gt;
+&lt;dict&gt;
+    &lt;!-- Push Notifications --&gt;
+    &lt;key&gt;aps-environment&lt;/key&gt;
+    &lt;string&gt;production&lt;/string&gt;           &lt;!-- "development" for debug builds --&gt;
+
+    &lt;!-- Keychain Sharing --&gt;
+    &lt;key&gt;keychain-access-groups&lt;/key&gt;
+    &lt;array&gt;
+        &lt;string&gt;$(AppIdentifierPrefix)com.acme.App&lt;/string&gt;
+        &lt;string&gt;$(AppIdentifierPrefix)com.acme.shared&lt;/string&gt;
+    &lt;/array&gt;
+
+    &lt;!-- App Groups --&gt;
+    &lt;key&gt;com.apple.security.application-groups&lt;/key&gt;
+    &lt;array&gt;
+        &lt;string&gt;group.com.acme.App&lt;/string&gt;
+    &lt;/array&gt;
+
+    &lt;!-- Associated Domains (Universal Links / Sign in with Apple) --&gt;
+    &lt;key&gt;com.apple.developer.associated-domains&lt;/key&gt;
+    &lt;array&gt;
+        &lt;string&gt;applinks:acme.com&lt;/string&gt;
+        &lt;string&gt;webcredentials:acme.com&lt;/string&gt;
+    &lt;/array&gt;
+
+    &lt;!-- Background Modes --&gt;
+    &lt;key&gt;UIBackgroundModes&lt;/key&gt;
+    &lt;array&gt;
+        &lt;string&gt;remote-notification&lt;/string&gt;
+        &lt;string&gt;fetch&lt;/string&gt;
+    &lt;/array&gt;
+&lt;/dict&gt;
+&lt;/plist&gt;</code></pre>
+
+<h3 id="push-notifications">Push Notifications</h3>
+
+<p>Push notifications require the <code>aps-environment</code> entitlement with value <code>development</code> (debug builds, APNs sandbox) or <code>production</code> (release builds, APNs production). In Xcode, enable Push Notifications under Signing &amp; Capabilities — this adds the entitlement and enables it in the App ID.</p>
+
+<p><strong>Registration flow:</strong></p>
+
+<pre><code class="language-swift">import UserNotifications
+
+func requestPushPermission() {
+    UNUserNotificationCenter.current().requestAuthorization(
+        options: [.alert, .sound, .badge]
+    ) { granted, error in
+        guard granted else { return }
+        DispatchQueue.main.async {
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+    }
+}
+
+// AppDelegate — receives the device token
+func application(_ application: UIApplication,
+                 didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    // Convert to hex string and send to server
+    let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+    // Upload tokenString to your push service
+}</code></pre>
+
+<h3 id="keychain-access-groups">Keychain Access Groups</h3>
+
+<p>By default, an app's Keychain items are in a private access group accessible only to that app. The <code>keychain-access-groups</code> entitlement allows multiple apps (with the same team ID prefix) to share Keychain items.</p>
+
+<pre><code class="language-swift">import Security
+
+// Storing a credential in a shared access group
+func saveSharedCredential(_ token: String, accessGroup: String) throws {
+    let tokenData = Data(token.utf8)
+    let query: [String: Any] = [
+        kSecClass as String:           kSecClassGenericPassword,
+        kSecAttrService as String:     "com.acme.authToken",
+        kSecAttrAccount as String:     "currentUser",
+        kSecAttrAccessGroup as String: accessGroup,  // e.g. "TEAMID.com.acme.shared"
+        kSecValueData as String:       tokenData,
+        kSecAttrAccessible as String:  kSecAttrAccessibleAfterFirstUnlock
+    ]
+    let status = SecItemAdd(query as CFDictionary, nil)
+    guard status == errSecSuccess || status == errSecDuplicateItem else {
+        throw KeychainError.writeFailed(status)
+    }
+}
+
+// Reading from the shared group — works from any app in the same team
+// with the same keychain-access-groups entitlement entry
+func readSharedCredential(accessGroup: String) throws -&gt; String? {
+    let query: [String: Any] = [
+        kSecClass as String:            kSecClassGenericPassword,
+        kSecAttrService as String:      "com.acme.authToken",
+        kSecAttrAccount as String:      "currentUser",
+        kSecAttrAccessGroup as String:  accessGroup,
+        kSecReturnData as String:       true,
+        kSecMatchLimit as String:       kSecMatchLimitOne
+    ]
+    var result: AnyObject?
+    let status = SecItemCopyMatching(query as CFDictionary, &amp;result)
+    guard status == errSecSuccess, let data = result as? Data else { return nil }
+    return String(data: data, encoding: .utf8)
+}
+
+enum KeychainError: Error { case writeFailed(OSStatus) }</code></pre>
+
+<h3 id="app-groups">App Groups</h3>
+
+<p>App Groups allow data sharing (UserDefaults, files) between an app and its extensions (widgets, notification service extensions, share extensions) using a shared container.</p>
+
+<pre><code class="language-swift">import Foundation
+
+// App Group identifier from entitlements
+let appGroupID = "group.com.acme.App"
+
+// Shared UserDefaults — accessible from the app AND any extension in the same group
+let sharedDefaults = UserDefaults(suiteName: appGroupID)!
+
+// Writing from the app
+sharedDefaults.set("john@acme.com", forKey: "loggedInEmail")
+sharedDefaults.synchronize()   // ensures write is flushed before extension reads
+
+// Reading from a Widget extension (same App Group)
+let email = UserDefaults(suiteName: appGroupID)?.string(forKey: "loggedInEmail")
+
+// Shared file container — for larger data (e.g., shared Core Data store)
+let sharedContainerURL = FileManager.default
+    .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)!
+let dbURL = sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite")</code></pre>
+
+<h3 id="associated-domains">Associated Domains</h3>
+
+<p>Required for Universal Links (deep links via HTTPS) and Sign in with Apple. The <code>associated-domains</code> entitlement lists the domains the app claims. iOS fetches <code>https://&lt;domain&gt;/.well-known/apple-app-site-association</code> to verify the app-domain relationship.</p>
+
+<pre><code class="language-swift">// Universal Link handling in SceneDelegate
+func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+          let url = userActivity.webpageURL else { return }
+    // Route the deep link URL
+    AppCoordinator.shared.handleDeepLink(url)
+}</code></pre>
+
+<h3 id="entitlement-per-configuration">Entitlement Per-Configuration</h3>
+
+<p>Development builds need <code>aps-environment = development</code>; release builds need <code>production</code>. In Xcode, configure this with xcconfig files or build setting conditions:</p>
+
+<pre><code>// Use different entitlements files per configuration:
+CODE_SIGN_ENTITLEMENTS[config=Debug] = MyApp/Debug.entitlements
+CODE_SIGN_ENTITLEMENTS[config=Release] = MyApp/Release.entitlements</code></pre>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UserNotifications
+import Foundation
+
+// ── Push Notification Manager ──────────────────────────────────
+final class PushNotificationManager {
+
+    static let shared = PushNotificationManager()
+    private init() {}
+
+    // Call from AppDelegate.applicationDidFinishLaunching
+    func setup() {
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    func requestAuthorisation() async -&gt; Bool {
+        do {
+            let granted = try await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .badge, .sound])
+            if granted {
+                await MainActor.run {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
+            return granted
+        } catch {
+            return false
+        }
+    }
+}
+
+extension PushNotificationManager: UNUserNotificationCenterDelegate {
+    // Foreground notification display
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -&gt; Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    // User tapped a notification
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -&gt; Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        // Handle deep link from push payload
+        if let urlString = userInfo["deeplink"] as? String,
+           let url = URL(string: urlString) {
+            AppCoordinator.shared.handleDeepLink(url)
+        }
+        completionHandler()
+    }
+}
+
+// ── App Group shared storage ───────────────────────────────────
+struct SharedAppState {
+    private static let suite = UserDefaults(suiteName: "group.com.acme.App")!
+
+    static var lastViewedArticleID: String? {
+        get { suite.string(forKey: "lastArticle") }
+        set { suite.set(newValue, forKey: "lastArticle") }
+    }
+
+    // Shared file URL — for Core Data, SQLite, or JSON written by app and read by widget
+    static var sharedDatabaseURL: URL {
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: "group.com.acme.App")!
+            .appendingPathComponent("App.sqlite")
+    }
+}
+
+// Placeholder to avoid compile error:
+final class AppCoordinator {
+    static let shared = AppCoordinator()
+    func handleDeepLink(_ url: URL) {}
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is an entitlement and how does it differ from a permission (e.g., location access)?</strong></p>
+
+<p>A: An <strong>entitlement</strong> is a build-time declaration embedded in the binary that grants access to a platform capability. It's checked by iOS at install time by comparing the binary's entitlements against the provisioning profile. Examples: <code>aps-environment</code> (push notifications), <code>keychain-access-groups</code> (Keychain sharing), App Groups. An entitlement is an all-or-nothing capability grant — there's no runtime prompt; either the app has it or it doesn't. A <strong>permission</strong> (e.g., <code>NSLocationWhenInUseUsageDescription</code>) is a runtime request the app makes to the user via a system dialog. The user can grant or revoke permissions at any time in Settings. Permissions also require entitlements in some cases (e.g., push notifications require both the <code>aps-environment</code> entitlement and the user granting notification permission at runtime), but most permissions (location, camera, contacts) require only the <code>Info.plist</code> usage description key, no entitlement.</p>
+
+<p><strong>Q: How do App Groups enable data sharing between an app and its widget extension?</strong></p>
+
+<p>A: App Groups create a shared file container on disk accessible to multiple processes from the same developer team. Both the host app and the widget extension declare the same App Group identifier (<code>group.com.acme.App</code>) in their respective entitlements. They can then: (1) share <code>UserDefaults</code> using <code>UserDefaults(suiteName: "group.com.acme.App")</code> — both processes read/write the same defaults database; (2) share files using <code>FileManager.default.containerURL(forSecurityApplicationGroupIdentifier:)</code> — e.g., a Core Data SQLite file written by the app and read by the widget for timeline entries; (3) share <code>NSUbiquitousKeyValueStore</code> for iCloud key-value sync (iCloud entitlement needed). Without App Groups, each extension runs in a sandboxed container that cannot access the host app's container.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you configure different push notification environments (APNs sandbox vs production) for debug and release builds?</strong></p>
+
+<p>A: The <code>aps-environment</code> entitlement controls which APNs environment the app communicates with. Development/debug builds must use <code>development</code> (APNs sandbox) — using <code>production</code> in a debug build fails silently (device tokens are not interchangeable between environments). Release builds must use <code>production</code>. The correct approach: maintain two separate <code>.entitlements</code> files — <code>Debug.entitlements</code> with <code>aps-environment = development</code> and <code>Release.entitlements</code> with <code>aps-environment = production</code>. In Xcode build settings, set <code>CODE_SIGN_ENTITLEMENTS[config=Debug]</code> and <code>[config=Release]</code> to point to the respective files. Both App IDs (if using separate app IDs per environment) or the same App ID (with a single push certificate covering both environments) can be used. APNs HTTP/2 push certificates are environment-specific — the development push certificate only works with APNs sandbox; the production push certificate only works with APNs production. Ensure your push backend also uses the correct certificate for each environment.</p>
+
+<p><em></em>Q: What is <code>keychain-access-groups</code> and when would you use it across multiple apps?<em></em></p>
+
+<p>A: <code>keychain-access-groups</code> is an entitlement that lists Keychain access group identifiers. By default, each app has one private access group (<code>$(AppIdentifierPrefix)$(CFBundleIdentifier)</code>) accessible only to itself. Adding additional groups to this entitlement allows sharing Keychain items between multiple apps that are: (a) from the same development team (same Team ID prefix), and (b) all have the same access group listed in their entitlements. Typical use case: a company ships a main app (<code>com.acme.App</code>) and a companion extension app (<code>com.acme.Keyboard</code>). After the user logs in via the main app, the auth token is stored in a shared Keychain group (<code>TEAMID.com.acme.shared</code>). The keyboard extension reads the token from the same group without requiring the user to log in again. Another use case: enterprise apps where multiple separate apps (separate bundle IDs, separate App Store entries) need to share credentials without server round-trips.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Your app uses a Notification Service Extension to decrypt push content end-to-end. What entitlements does each process need and how do you share the decryption key securely?</strong></p>
+
+<p>A: Three components with separate entitlements: (1) <strong>Host app</strong> — <code>aps-environment = production</code>, <code>keychain-access-groups</code> including a shared group (e.g., <code>TEAMID.com.acme.shared</code>), App Groups (<code>group.com.acme.App</code>). The app stores the user's decryption key (e.g., a symmetric key or private key) in the Keychain under the shared access group when the user logs in. (2) <strong>Notification Service Extension</strong> — same <code>aps-environment = production</code> (extensions inherit the host's push environment), same <code>keychain-access-groups</code> shared group, same App Groups. The extension reads the decryption key from the shared Keychain at <code>UNNotificationServiceExtension.didReceive(_:withContentHandler:)</code>. (3) <strong>Key access</strong>: use <code>kSecAttrAccessible = kSecAttrAccessibleAfterFirstUnlock</code> so the Keychain item is available even when the device is locked (the extension runs when the device may be locked). Do NOT use <code>kSecAttrAccessibleWhenUnlocked</code> — the extension may run before the user unlocks the device after a reboot. Architecture note: the shared Keychain group must be explicitly listed in both the app and extension entitlements files; both provisioning profiles must include the shared Keychain group (configured in the App ID on the developer portal). Both the app and extension must have the same team ID.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Push notifications work in debug but not in release builds.</strong></p>
+
+<p>Solution: Check that <code>aps-environment</code> is <code>development</code> in the Debug entitlements file and <code>production</code> in the Release entitlements file. Confirm the backend push service is using the production APNs certificate/auth key for production builds and the sandbox certificate/auth key for debug. The device token from a production-signed app cannot be used with the APNs sandbox endpoint and vice versa — they are issued by different APNs environments.</p>
+
+<p><strong>Issue: Keychain sharing fails — items written by the app cannot be read by the extension.</strong></p>
+
+<p>Solution: Verify both targets have identical access group strings (including the Team ID prefix) in their entitlements files. Check that the shared Keychain group is enabled in the App ID in the developer portal and that both provisioning profiles have been regenerated after enabling it. Also verify the <code>kSecAttrAccessGroup</code> value in the Keychain query exactly matches the entitlement string — including the team ID prefix (<code>TEAMID.com.acme.shared</code>, not just <code>com.acme.shared</code>). The <code>$(AppIdentifierPrefix)</code> build setting resolves to the team ID at build time; in code, use the full expanded string.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="code-signing.md">Code Signing</a> — provisioning profiles carry entitlement permissions</li>
+<li><a href="distribution.md">Distribution</a> — entitlements must match App ID for App Store submission</li>
+<li><a href="../14-security/data-security.md">Security — Data Security</a> — Keychain API for storing credentials</li>
+<li><a href="../09-ios-platform/background-modes.md">iOS Platform — Push Notifications</a> — push delivery pipeline</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

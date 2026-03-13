@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UI Support — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../18-accessibility/index.html">Accessibility</a></span>
+    <span>Ui Support</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html" class="active">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="ui-support">UI Support</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>UI support accessibility extends beyond VoiceOver to cover visual and motion accommodations that affect all users — not just those using assistive technology. The three major areas are: <strong>Dynamic Type</strong> (user-configurable text size — apps must scale all text and adapt layouts to accommodate sizes from <code>xSmall</code> to <code>accessibilityExtraExtraExtraLarge</code>), <strong>Colour Contrast</strong> (sufficient luminance difference between foreground text and background — WCAG 2.1 AA requires 4.5:1 for normal text, 3:1 for large text), and <strong>Reduce Motion</strong> (replacing parallax effects and cross-dissolve animations with simpler transitions for users who experience motion sickness or vestibular disorders). Supporting these features makes apps usable for elderly users, users in bright sunlight (contrast), and the ~8% of males who have colour blindness. They are also required for WCAG 2.1 AA compliance.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p><strong>Dynamic Type</strong> is the phone's font size dial. Some users set it to the minimum (they prefer dense information); elderly users or those with low vision set it to the maximum (three times the default). An app that ignores this dial always shows the same font size — the elderly user has to squint at tiny text. <strong>Colour contrast</strong> is the difference between text and background brightness. Black text on white is maximum contrast; grey text on white may look elegant but is nearly invisible in sunlight or for someone with low vision. <strong>Reduce Motion</strong> is for users who get motion sickness from parallax or zooming animations. When it's on, the parallax wallpaper effect disappears and transitions become cross-fades — apps should do the same with their animations.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="dynamic-type">Dynamic Type</h3>
+
+<p><strong>UIKit</strong>: use <code>UIFont.preferredFont(forTextStyle:)</code> for all text. Text styles map to semantic roles:</p>
+
+<table>
+<tr><td>Style</td><td>Approx pt (default)</td><td>Use</td></tr>
+<tr><td><code>.largeTitle</code></td><td>34</td><td>Page titles</td></tr>
+<tr><td><code>.title1</code></td><td>28</td><td>Section headers</td></tr>
+<tr><td><code>.title2</code></td><td>22</td><td>Sub-section headers</td></tr>
+<tr><td><code>.headline</code></td><td>17 (semibold)</td><td>Item titles</td></tr>
+<tr><td><code>.body</code></td><td>17</td><td>Body text</td></tr>
+<tr><td><code>.callout</code></td><td>16</td><td>Secondary body</td></tr>
+<tr><td><code>.subheadline</code></td><td>15</td><td>Supporting text</td></tr>
+<tr><td><code>.footnote</code></td><td>13</td><td>Caption text</td></tr>
+<tr><td><code>.caption1</code></td><td>12</td><td>Timestamps, metadata</td></tr>
+<tr><td><code>.caption2</code></td><td>11</td><td>Fine print</td></tr>
+</table>
+
+<p><strong>SwiftUI</strong>: <code>Font.body</code>, <code>Font.headline</code>, etc. automatically scale with Dynamic Type. Custom fonts need <code>@ScaledMetric</code> or <code>.dynamicTypeSize</code> environment.</p>
+
+<p><strong>Responding to size changes in UIKit</strong>:</p>
+
+<pre><code class="language-swift">// UILabel: set adjustsFontForContentSizeCategory = true
+label.font = UIFont.preferredFont(forTextStyle: .body)
+label.adjustsFontForContentSizeCategory = true
+label.numberOfLines = 0   // allow wrapping at large sizes</code></pre>
+
+<p><strong>Custom fonts with Dynamic Type</strong> (UIKit):</p>
+
+<pre><code class="language-swift">let descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .body)
+let pointSize = descriptor.pointSize
+let customFont = UIFont(name: "Merriweather-Regular", size: pointSize)!
+label.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: customFont)
+label.adjustsFontForContentSizeCategory = true</code></pre>
+
+<p><strong>Large Content Viewer</strong>: for elements that can't scale (tab bar icons, navigation bar items), iOS shows a large tooltip when the user long-presses with accessibility text sizes. Enable:</p>
+
+<pre><code class="language-swift">tabBarItem.largeContentTitle = "Home"
+tabBarItem.largeContentImage = UIImage(systemName: "house")
+view.showsLargeContentViewer = true</code></pre>
+
+<h3 id="colour-contrast">Colour Contrast</h3>
+
+<p><strong>WCAG 2.1 AA requirements:</strong></p>
+<ul>
+<li>Normal text (&lt; 18pt regular / &lt; 14pt bold): contrast ratio ≥ <strong>4.5:1</strong></li>
+<li>Large text (≥ 18pt regular / ≥ 14pt bold): contrast ratio ≥ <strong>3:1</strong></li>
+<li>Non-text UI (icons, borders): contrast ratio ≥ <strong>3:1</strong></li>
+</ul>
+
+<p>Contrast ratio = (L1 + 0.05) / (L2 + 0.05) where L1 is the lighter luminance and L2 is the darker.</p>
+
+<p><strong>Tools</strong>: Xcode Accessibility Inspector → Audit includes contrast checks. Online: WebAIM Contrast Checker. Figma plugins: "Contrast" or "A11y - Colour Contrast Checker".</p>
+
+<p><strong>Colour blindness</strong>: don't use colour alone to convey information. Add icons, patterns, or text labels alongside colour:</p>
+
+<pre><code class="language-swift">// Bad: only colour indicates status
+statusView.backgroundColor = isOnline ? .green : .red
+
+// Good: colour + icon + text
+statusView.backgroundColor = isOnline ? .systemGreen : .systemRed
+statusIcon.image = UIImage(systemName: isOnline ? "wifi" : "wifi.slash")
+statusLabel.text = isOnline ? "Online" : "Offline"</code></pre>
+
+<p>Use <strong>semantic colours</strong> (<code>UIColor.label</code>, <code>UIColor.secondaryLabel</code>, <code>UIColor.systemBackground</code>) — they automatically adapt to Dark Mode and maintain contrast in both modes. Custom colours need separate <code>light</code> and <code>dark</code> variants in the asset catalog.</p>
+
+<h3 id="reduce-motion">Reduce Motion</h3>
+
+<p><code>UIAccessibility.isReduceMotionEnabled</code> is <code>true</code> when the user has enabled Settings → Accessibility → Motion → Reduce Motion. Observe changes:</p>
+
+<pre><code class="language-swift">NotificationCenter.default.addObserver(
+    self,
+    selector: #selector(motionPreferenceChanged),
+    name: UIAccessibility.reduceMotionStatusDidChangeNotification,
+    object: nil
+)</code></pre>
+
+<p>Replace expensive animations with simpler ones:</p>
+
+<pre><code class="language-swift">// In SwiftUI: withAnimation respects Reduce Motion automatically for standard transitions
+// For custom animations:
+func animateTransition(to newView: UIView) {
+    if UIAccessibility.isReduceMotionEnabled {
+        // Simple alpha crossfade instead of slide/scale
+        UIView.animate(withDuration: 0.2) {
+            self.currentView.alpha = 0
+            newView.alpha = 1
+        }
+    } else {
+        // Full slide animation
+        slideTransition(to: newView)
+    }
+}</code></pre>
+
+<p><strong>Prefer Cross-Dissolve</strong>: iOS's <code>.transitionCrossDissolve</code> option in <code>UIView.transition(with:)</code> is the recommended reduce-motion alternative to slides and scales.</p>
+
+<h3 id="differentiate-without-colour">Differentiate Without Colour</h3>
+
+<p>Setting → Accessibility → Display &amp; Text Size → Differentiate Without Colour. Check:</p>
+
+<pre><code class="language-swift">UIAccessibility.shouldDifferentiateWithoutColor</code></pre>
+
+<p>Add a shape or text label to anything currently communicated purely by colour.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import UIKit
+import SwiftUI
+
+// ── UIKit: Dynamic Type label ─────────────────────────────────
+final class ArticleCell: UITableViewCell {
+    private let titleLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.preferredFont(forTextStyle: .headline)
+        label.adjustsFontForContentSizeCategory = true   // scales with user setting
+        label.numberOfLines = 0   // wraps at large sizes
+        return label
+    }()
+
+    private let bodyLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.preferredFont(forTextStyle: .body)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 0
+        label.textColor = .secondaryLabel   // semantic colour — adapts to dark mode
+        return label
+    }()
+}
+
+// ── Custom font with Dynamic Type scaling ─────────────────────
+extension UIFont {
+    static func branded(textStyle: UIFont.TextStyle) -&gt; UIFont {
+        let baseFont = UIFont(name: "Merriweather-Regular",
+                              size: UIFont.preferredFont(forTextStyle: textStyle).pointSize)
+                    ?? UIFont.preferredFont(forTextStyle: textStyle)
+        return UIFontMetrics(forTextStyle: textStyle).scaledFont(for: baseFont)
+    }
+}
+
+// ── SwiftUI: Dynamic Type ─────────────────────────────────────
+struct ArticleRowView: View {
+    let article: Article
+
+    // @ScaledMetric scales a numeric value with Dynamic Type size
+    @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 44
+
+    var body: some View {
+        HStack(spacing: 12) {
+            AsyncImage(url: article.authorAvatarURL) { image in image.resizable() } placeholder: { Color.gray }
+                .frame(width: avatarSize, height: avatarSize)   // scales with text size
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(article.title)
+                    .font(.headline)   // automatically scales
+                    .lineLimit(2)
+                Text(article.author)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+// ── Reduce Motion ─────────────────────────────────────────────
+struct AnimatedCard: View {
+    @State private var isExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack {
+            CardContent(isExpanded: isExpanded)
+        }
+        .onTapGesture {
+            withAnimation(reduceMotion ? .none : .spring(response: 0.4, dampingFraction: 0.7)) {
+                isExpanded.toggle()
+            }
+        }
+    }
+}
+
+// UIKit: checking reduce motion and differentiateWithoutColor
+final class StatusBadge: UIView {
+
+    var status: ConnectionStatus = .online {
+        didSet { updateAppearance() }
+    }
+
+    private let label = UILabel()
+    private let iconView = UIImageView()
+
+    private func updateAppearance() {
+        let isOnline = status == .online
+
+        // ── Colour ─────────────────────────────────────────────
+        backgroundColor = isOnline ? .systemGreen : .systemRed
+
+        // ── Shape/icon for colour-blind users ──────────────────
+        if UIAccessibility.shouldDifferentiateWithoutColor {
+            iconView.image = UIImage(systemName: isOnline ? "checkmark.circle.fill" : "xmark.circle.fill")
+            iconView.isHidden = false
+        } else {
+            iconView.isHidden = true
+        }
+
+        // ── Text label ─────────────────────────────────────────
+        label.text = isOnline ? "Online" : "Offline"
+
+        // ── Accessibility ──────────────────────────────────────
+        accessibilityLabel = isOnline ? "Connection status: online" : "Connection status: offline"
+    }
+}
+
+enum ConnectionStatus { case online, offline }
+struct Article { let title: String; let author: String; let authorAvatarURL: URL? }
+struct CardContent: View { let isExpanded: Bool; var body: some View { Text("Card") } }</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is Dynamic Type and how do you support it in UIKit?</strong></p>
+
+<p>A: Dynamic Type is iOS's user-configurable text size system. Users adjust it in Settings → Accessibility → Display &amp; Text Size → Larger Text. Sizes range from <code>xSmall</code> (for dense UIs) to <code>accessibilityExtraExtraExtraLarge</code> (for users with significant vision impairment — text can be 3–5× the default size). To support it in UIKit: (1) Use <code>UIFont.preferredFont(forTextStyle: .body)</code> (and other text styles) instead of fixed point sizes like <code>UIFont.systemFont(ofSize: 17)</code>. <code>preferredFont</code> returns a font at the size appropriate for the user's current Dynamic Type setting. (2) Set <code>label.adjustsFontForContentSizeCategory = true</code> — this ensures the label re-queries <code>preferredFont</code> when the user changes the setting without relaunching the app. (3) Set <code>label.numberOfLines = 0</code> — text must wrap at accessibility sizes; fixed single-line labels will be truncated. (4) Test with Settings → Accessibility → Larger Text at the maximum value.</p>
+
+<p><strong>Q: What is the minimum colour contrast ratio required by WCAG 2.1 AA and why does it matter?</strong></p>
+
+<p>A: WCAG 2.1 AA requires a <strong>4.5:1 contrast ratio</strong> for normal text (below 18pt regular or 14pt bold) and <strong>3:1</strong> for large text. The contrast ratio measures the luminance difference between foreground and background: 21:1 is black on white (maximum); 1:1 is no contrast (invisible). Low contrast text fails users with low vision, cataracts, or those viewing the phone in bright sunlight. Grey text on a white card (<code>#888888</code> on <code>#FFFFFF</code>) is a common design choice that fails the 4.5:1 threshold at a ratio of about 3.9:1. In practice: use semantic colours (<code>UIColor.label</code>, <code>.secondaryLabel</code>) which are designed to meet contrast requirements in both light and dark mode. Test custom colour combinations with Accessibility Inspector's audit or the WebAIM contrast checker.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How do you support Dynamic Type for a custom font without breaking the design at accessibility sizes?</strong></p>
+
+<p>A: Use <code>UIFontMetrics</code> to scale the custom font proportionally with the system text styles: <code>UIFontMetrics(forTextStyle: .body).scaledFont(for: customFont)</code>. This preserves the custom typeface while scaling the point size identically to the system <code>.body</code> style. Set <code>adjustsFontForContentSizeCategory = true</code> on all labels. For layouts: use Auto Layout constraints rather than fixed heights — set a <code>minimumHeight</code> constraint instead of an <code>equalHeight</code>. Allow vertical scrolling in containers that previously had fixed heights. For UI elements that cannot scale (tab bar icons, navigation bar items), enable the <strong>Large Content Viewer</strong> — set <code>showsLargeContentViewer = true</code> and <code>largeContentTitle</code>/<code>largeContentImage</code> on the item. Test at every Dynamic Type size using the Simulator's "Accessibility" settings or Xcode's Accessibility Inspector category size selector.</p>
+
+<p><em></em>Q: How do you handle <code>UIAccessibility.isReduceMotionEnabled</code> in a complex animated transition?<em></em></p>
+
+<p>A: Check the flag before constructing the animation and provide an alternative: use <code>UIView.transition(with:duration:options:animations:)</code> with <code>.transitionCrossDissolve</code> instead of custom slide/scale animations. For SwiftUI, read <code>@Environment(\.accessibilityReduceMotion)</code> and pass <code>.none</code> to <code>withAnimation()</code> or use a simple <code>.opacity</code> animation. For <code>CAAnimation</code>-based transitions (used in Core Animation): skip the <code>CABasicAnimation</code> on transform and instead use <code>CATransaction.setAnimationDuration(0)</code> with direct property changes. Also register for <code>UIAccessibility.reduceMotionStatusDidChangeNotification</code> to respond dynamically if the user enables the setting while the app is running — stop any in-progress animations and use the simpler alternatives going forward. In a design system, centralise this check: <code>func preferredAnimation() -&gt; Animation? { UIAccessibility.isReduceMotionEnabled ? .none : .spring() }</code>.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a Dynamic Type layout strategy for a complex card-based feed where cards contain images, multiple text sizes, and interactive elements.</strong></p>
+
+<p>A: Four-layer strategy: (1) <strong>Vertical-first layout</strong>: all card content stacks vertically using <code>UIStackView(axis: .vertical)</code> with <code>spacing = 8</code>. Never use fixed heights on any text container. Images use a <code>heightAnchor.constraint(equalTo: widthAnchor, multiplier: 0.6)</code> (aspect ratio) rather than a fixed height — they scale with card width but maintain proportion. (2) <strong>Text style hierarchy</strong>: title → <code>.headline</code>, author → <code>.subheadline</code>, body preview → <code>.callout</code>, timestamp → <code>.caption1</code>. All UILabels have <code>adjustsFontForContentSizeCategory = true</code> and <code>numberOfLines = 0</code> except the title (which clips at 2 lines to maintain feed density). (3) <strong>Accessibility size breakpoints</strong>: at <code>UIContentSizeCategory.accessibilityMedium</code> and above, switch from a side-by-side (image left, text right) to a stacked (image top, text below) layout. Detect: <code>traitCollection.preferredContentSizeCategory.isAccessibilityCategory</code>. Implement in <code>traitCollectionDidChange</code>. (4) <strong>Large Content Viewer for action buttons</strong>: "Like" and "Share" buttons use <code>UIImageView</code>-only icons that cannot scale beyond 24pt without layout breakage. Enable the Large Content Viewer on the button: <code>button.showsLargeContentViewer = true; button.largeContentTitle = "Like"; button.largeContentImage = UIImage(systemName: "heart")</code>. Test all four axes: minimum size, maximum standard size, minimum accessibility size, maximum accessibility size.</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Text is truncated at large Dynamic Type sizes.</strong></p>
+
+<p>Solution: The label has a fixed height constraint or <code>numberOfLines = 1</code>. Remove the fixed height constraint (or change it to <code>greaterThanOrEqualTo</code>). Set <code>numberOfLines = 0</code>. If the container also needs a minimum height for visual balance, add <code>heightAnchor.constraint(greaterThanOrEqualToConstant: 60)</code>. Let Auto Layout calculate the natural height from content.</p>
+
+<p><strong>Issue: Custom colours look fine in light mode but have poor contrast in dark mode.</strong></p>
+
+<p>Solution: Replace hardcoded <code>UIColor(red:green:blue:)</code> with semantic colours (<code>UIColor.label</code>, <code>.secondaryLabel</code>, <code>.tertiaryLabel</code>) where possible. For custom brand colours, create a Colour Set in Assets.xcassets with separate "Any Appearance" and "Dark" variants. Test both modes using Xcode's environment overrides (bottom toolbar of the canvas in Storyboard, or Edit Scheme → Options → Appearance).</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="core-accessibility.md">Core Accessibility</a> — VoiceOver labels and traits</li>
+<li><a href="testing-accessibility.md">Testing Accessibility</a> — Accessibility Inspector contrast audit</li>
+<li><a href="../04-ui-frameworks/uiview-lifecycle.md">UIView Lifecycle</a> — <code>layoutSubviews</code> and <code>traitCollectionDidChange</code> for adaptive layouts</li>
+<li><a href="../04-ui-frameworks/swiftui-state-management.md">SwiftUI State Management</a> — <code>@Environment</code> for accessibility properties</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

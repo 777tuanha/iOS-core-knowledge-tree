@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App Security — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../14-security/index.html">Security</a></span>
+    <span>App Security</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html" class="active">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="app-security">App Security</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>App security encompasses the techniques used to harden an iOS app against runtime manipulation, reverse engineering, and exploitation of code vulnerabilities. iOS provides a strong baseline: code signing (every binary is verified before execution), sandboxing (apps cannot access each other's data), and ASLR + non-executable memory (making buffer overflow exploitation harder). App developers extend this baseline by detecting jailbroken devices (where the sandbox is compromised), applying code obfuscation to raise the bar for reverse engineering, and following secure coding practices — input validation, parameterised queries, avoiding logging PII, and using memory-safe APIs. These are defense-in-depth measures, not silver bullets — a determined attacker with physical device access can circumvent most software-only defenses. The goal is to make attacks expensive enough that the risk/reward ratio deters casual or opportunistic attackers.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>An iOS app is like a store in a mall with security guards (iOS sandboxing). On a normal iPhone, the guards prevent one store's staff from entering another store's back room. On a jailbroken phone, the guards have been bribed — anyone can go anywhere. Jailbreak detection is like the store manager checking whether the security guards are still at their posts. Code obfuscation is like writing price tags in a secret code — a competitor can still read them if they try hard enough, but casual snoopers give up quickly. Secure coding practices are the store not leaving the safe combination written on a sticky note on the register (not logging passwords) and checking IDs at the door before serving alcohol (validating user input).</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="ios-security-baseline">iOS Security Baseline</h3>
+
+<table>
+<tr><td>Mechanism</td><td>What it does</td></tr>
+<tr><td>Code signing</td><td>Every binary verified by the OS before execution — prevents unsigned code</td></tr>
+<tr><td>Sandboxing</td><td>Each app confined to its container — can't read other apps' data</td></tr>
+<tr><td>ASLR</td><td>Binary base address randomised per launch — reduces exploitability</td></tr>
+<tr><td>XN (Execute Never)</td><td>Stack and heap are non-executable — prevents shellcode injection</td></tr>
+<tr><td>SIP / SEP</td><td>Secure Enclave Processor — hardware-isolated key storage and biometrics</td></tr>
+<tr><td>Pointer authentication (PAC)</td><td>ARM8.3 — pointer signatures catch memory corruption</td></tr>
+</table>
+
+<h3 id="jailbreak-detection">Jailbreak Detection</h3>
+
+<p>A jailbreak compromises the iOS security model by patching the kernel to disable code signing and sandbox enforcement. Detection heuristics (use multiple — any single one can be bypassed):</p>
+
+<p><strong>File system checks:</strong></p>
+<ul>
+<li><code>/Applications/Cydia.app</code> — the primary jailbreak app store</li>
+<li><code>/usr/sbin/sshd</code> — OpenSSH installed by many jailbreaks</li>
+<li><code>/bin/bash</code> — not present on a stock iOS device</li>
+<li><code>/etc/apt</code> — APT package manager directory</li>
+<li><code>/private/var/lib/apt/</code> — APT data directory</li>
+</ul>
+
+<p><strong>Sandbox escape check:</strong></p>
+<ul>
+<li>Attempt to write outside the app's container: <code>open("/private/jailbreak_test", O_CREAT | O_WRONLY, 0644)</code> — should fail on a stock device.</li>
+<li>Call <code>fork()</code> — sandboxed apps cannot fork.</li>
+</ul>
+
+<p><strong>Dynamic library injection check:</strong></p>
+<ul>
+<li>Scan <code>_dyld_image_count()</code> / <code>_dyld_get_image_name(i)</code> for known jailbreak dylibs: <code>MobileSubstrate.framework</code>, <code>CydiaSubstrate</code>, <code>SubstrateLoader.dylib</code>.</li>
+</ul>
+
+<p><strong>URL scheme check:</strong></p>
+<ul>
+<li><code>UIApplication.shared.canOpenURL(URL(string: "cydia://")!)</code> — Cydia registers this scheme.</li>
+</ul>
+
+<p><strong>Symbolic link check:</strong></p>
+<ul>
+<li><code>/Applications</code> is a symlink on jailbroken devices (points to <code>/var/stash/Applications</code>).</li>
+</ul>
+
+<p><strong>Limitations</strong>: All of these checks can be bypassed by sophisticated jailbreak tools (e.g., Liberty Lite patches the file system checks; <code>FLEX</code> patches method calls). Use <strong>AppAttest</strong> for cryptographic device integrity verification that is much harder to spoof.</p>
+
+<h3 id="anti-debugging">Anti-Debugging</h3>
+
+<p>Debuggers (LLDB, Frida) attach to a process and can read memory, set breakpoints, and call arbitrary functions. Anti-debugging is a cat-and-mouse game — determined attackers will bypass it. Use defensively (as a signal, not a hard block):</p>
+
+<pre><code class="language-swift">// Check if a debugger is attached via sysctl
+func isDebuggerAttached() -&gt; Bool {
+    var mib = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+    var info = kinfo_proc()
+    var size = MemoryLayout&lt;kinfo_proc&gt;.size
+    sysctl(&amp;mib, 4, &amp;info, &amp;size, nil, 0)
+    return (info.kp_proc.p_flag &amp; P_TRACED) != 0
+}</code></pre>
+
+<h3 id="code-obfuscation">Code Obfuscation</h3>
+
+<p><strong>String obfuscation</strong>: hardcoded strings (API endpoints, encryption constants, SDK keys) are visible via <code>strings</code> binary or a disassembler. Obfuscation encrypts string constants at compile time and decrypts them at runtime. Tools: <code>SwiftShield</code> (renames Swift symbols), custom build plugin using XOR or substitution ciphers on string literals.</p>
+
+<p><strong>Control flow obfuscation</strong>: adds opaque predicates and dead code paths to confuse static analysis. This is high-effort, low-return for most apps — reserve for DRM or high-value financial apps.</p>
+
+<p><strong>Symbol stripping</strong>: Release builds strip debug symbols by default. Ensure <code>STRIP_SWIFT_SYMBOLS = YES</code> and <code>DEPLOYMENT_POSTPROCESSING = YES</code> in build settings — removes readable Swift symbol names from the binary.</p>
+
+<p><strong>Practical note</strong>: obfuscation raises the bar but does not prevent a determined reverse engineer with runtime access (Frida, LLDB). Focus obfuscation on the most sensitive strings (API keys that cannot be server-proxied, license verification logic).</p>
+
+<h3 id="secure-coding-practices">Secure Coding Practices</h3>
+
+<p><strong>Input validation:</strong></p>
+<ul>
+<li>Never construct SQL using string interpolation — use parameterised queries (<code>?</code> placeholders in GRDB/SQLite).</li>
+<li>Validate and sanitise all user input before use in URLs, SQL, file paths, or HTML.</li>
+<li>Use <code>URL(string:)</code> + validate scheme — never pass arbitrary URL strings to <code>openURL</code>.</li>
+</ul>
+
+<p><strong>Avoiding log leakage:</strong></p>
+<pre><code class="language-swift">// Bad: PII in log
+print("Login attempt for user: \(email) with password: \(password)")
+
+// Good: no PII, no secrets
+Logger.auth.debug("Login attempt for user ID: \(userID.prefix(4))***")</code></pre>
+
+<p>Use <code>os_log</code> with <code>%{private}s</code> format specifier in production: the value is redacted from Console.app logs unless explicitly captured with a privileged profile.</p>
+
+<p><strong>Preventing URL scheme hijacking:</strong></p>
+<ul>
+<li>Use Universal Links for sensitive flows (password reset, OAuth callbacks) — not custom URL schemes. Custom schemes can be registered by any app, enabling a malicious app to intercept your scheme. Universal Links are verified via the AASA file on your domain.</li>
+</ul>
+
+<p><strong>Jailbreak response:</strong></p>
+<ul>
+<li>Do not crash on jailbreak detection — this enables a binary patch. Instead, degrade gracefully: disable biometric authentication, prevent sensitive data from being displayed, log a security event to your backend, and prompt the user to use a non-jailbroken device for sensitive actions.</li>
+</ul>
+
+<h3 id="app-permissions-hygiene">App Permissions Hygiene</h3>
+
+<ul>
+<li>Request only the permissions you need and at the moment they're needed (never at launch unless required for core functionality).</li>
+<li>Use <code>NSLocationWhenInUseUsageDescription</code> instead of <code>NSLocationAlwaysUsageDescription</code> unless background location is a core feature.</li>
+<li>Revoke sensitive entitlements (e.g., <code>com.apple.developer.networking.networkextension</code>) from builds that don't use them.</li>
+</ul>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import Foundation
+import UIKit
+
+// ── Jailbreak detection ────────────────────────────────────────
+final class IntegrityChecker {
+
+    static func isDeviceCompromised() -&gt; Bool {
+        return checkSuspiciousFiles()
+            || checkSandboxEscape()
+            || checkSuspiciousDylibs()
+            || checkFork()
+    }
+
+    // ── 1. Suspicious file system paths ───────────────────────
+    private static func checkSuspiciousFiles() -&gt; Bool {
+        let suspiciousPaths = [
+            "/Applications/Cydia.app",
+            "/usr/sbin/sshd",
+            "/bin/bash",
+            "/etc/apt",
+            "/private/var/lib/apt/",
+            "/usr/bin/ssh",
+            "/var/cache/apt",
+            "/Library/MobileSubstrate/MobileSubstrate.dylib"
+        ]
+        return suspiciousPaths.contains { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    // ── 2. Sandbox escape via file write ──────────────────────
+    private static func checkSandboxEscape() -&gt; Bool {
+        let path = "/private/jailbreak_canary_\(UUID().uuidString)"
+        do {
+            try "test".write(toFile: path, atomically: true, encoding: .utf8)
+            try FileManager.default.removeItem(atPath: path)
+            return true   // write succeeded outside sandbox
+        } catch {
+            return false   // failed as expected on stock device
+        }
+    }
+
+    // ── 3. Injected jailbreak dylibs ──────────────────────────
+    private static func checkSuspiciousDylibs() -&gt; Bool {
+        let suspicious = ["MobileSubstrate", "CydiaSubstrate", "SubstrateLoader",
+                          "cycript", "libhooker", "TweakInject"]
+        let count = _dyld_image_count()
+        for i in 0..&lt;count {
+            if let name = _dyld_get_image_name(i) {
+                let imageName = String(cString: name)
+                if suspicious.contains(where: { imageName.contains($0) }) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    // ── 4. fork() — not allowed in sandboxed apps ─────────────
+    private static func checkFork() -&gt; Bool {
+        let pid = fork()
+        if pid &gt;= 0 {
+            if pid &gt; 0 { kill(pid, SIGTERM) }
+            return true   // fork succeeded — sandbox broken
+        }
+        return false
+    }
+}
+
+// ── Usage: degrade gracefully rather than hard-crash ──────────
+final class SecurityPolicyEnforcer {
+    static func evaluate(in viewController: UIViewController) {
+        guard IntegrityChecker.isDeviceCompromised() else { return }
+
+        // Log security event (without PII)
+        Logger.security.warning("Compromised device detected — restricting sensitive features")
+
+        // Show advisory (not a hard block — it can be patched)
+        let alert = UIAlertController(
+            title: "Security Warning",
+            message: "This device may be compromised. Sensitive features have been disabled for your protection.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        viewController.present(alert, animated: true)
+
+        // Disable sensitive UI
+        NotificationCenter.default.post(name: .securityThreatDetected, object: nil)
+    }
+}
+
+// ── Anti-debugging check ───────────────────────────────────────
+func isDebuggerAttached() -&gt; Bool {
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+    var info = kinfo_proc()
+    var size = MemoryLayout.size(ofValue: info)
+    let result = sysctl(&amp;mib, UInt32(mib.count), &amp;info, &amp;size, nil, 0)
+    guard result == 0 else { return false }
+    return (info.kp_proc.p_flag &amp; P_TRACED) != 0
+}
+
+// ── Preventing SQL injection with parameterised queries ────────
+// Using GRDB:
+// BAD: string interpolation — injectable
+// try db.execute(sql: "SELECT * FROM posts WHERE author = '\(author)'")
+
+// GOOD: parameterised — safe
+// try db.execute(sql: "SELECT * FROM posts WHERE author = ?", arguments: [author])
+
+// ── Private logging with os_log ───────────────────────────────
+import os
+
+let securityLog = Logger(subsystem: "com.myapp.security", category: "auth")
+
+func logLoginAttempt(email: String, success: Bool) {
+    // %{private} — value is redacted in system logs unless profiling with consent
+    securityLog.info("Login attempt success=\(success) email=\(email, privacy: .private)")
+}
+
+extension Notification.Name {
+    static let securityThreatDetected = Notification.Name("securityThreatDetected")
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><em></em>Q: Why should you not store authentication tokens in <code>UserDefaults</code> or <code>NSLog</code> output?<em></em></p>
+
+<p>A: <code>UserDefaults</code> stores data in a plist file in the app's container directory. On an unencrypted iTunes/Finder backup (any iOS backup that the user hasn't specifically encrypted), this file is accessible in plaintext. On a jailbroken device, any app with root access can read the file. <code>NSLog</code> output is written to the system log, accessible from Console.app and diagnostic reports — other apps on the device can read the system log in older iOS versions, and crash reports/diagnostic data sent to developers may contain log output. Store tokens in the Keychain, which is excluded from backups and encrypted with device-specific keys. Remove sensitive values from all log statements — use <code>privacy: .private</code> with <code>os_log</code>.</p>
+
+<p><strong>Q: What is jailbreaking and why does it affect your app's security model?</strong></p>
+
+<p>A: Jailbreaking is a privilege escalation exploit that patches the iOS kernel to disable code signing enforcement and sandbox restrictions. On a jailbroken device: (1) Any code can run without an Apple signature, enabling injection of malicious dylibs into your app's process. (2) The sandbox is bypassed — other processes can read your app's Keychain items, UserDefaults, and files. (3) Tools like Frida and Cycript can attach to your app, inspect memory at runtime, hook Swift/ObjC methods, and modify app behaviour. (4) SSL Kill Switch can bypass certificate pinning by patching the system's TLS verification functions. Jailbreak detection signals that you cannot trust the security model your app was designed for, allowing you to degrade sensitive features and alert users.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: How does Frida work and what can it do to a running iOS app?</strong></p>
+
+<p>A: Frida is a dynamic instrumentation toolkit that injects a JavaScript engine (V8) into a target process via <code>task_for_pid</code> or by injecting a dylib through Cydia Substrate (on jailbroken devices). Once injected, it can: (1) Intercept and replace any Objective-C method using <code>ObjC.classes.ClassName['- methodName'].implementation = ...</code>. (2) Hook any exported C/Swift symbol using <code>Interceptor.attach</code>. (3) Read and write process memory at arbitrary addresses. (4) Call any function in the process with arbitrary arguments. (5) Intercept <code>URLSession</code> network calls, decrypt SSL traffic, modify requests/responses. Mitigations: detect the Frida server port (TCP 27042), scan for the <code>frida-agent</code> dylib in the image list, check for known Frida strings in memory. These are bypassable, but they raise the cost of analysis.</p>
+
+<p><em></em>Q: What is <code>AppAttest</code> and how is it more reliable than software jailbreak detection?<em></em></p>
+
+<p>A: <code>DCAppAttestService</code> (AppAttest) uses the Secure Enclave to generate a cryptographic attestation that proves: the requesting device is a genuine Apple device (not an emulator), the app binary matches the App ID registered with Apple, and (optionally, via risk analysis) the device shows no signs of compromise. The attestation is signed by Apple's private key, which is stored in hardware — it cannot be forged by a jailbreak tool. The app generates an attestation key in the Secure Enclave, Apple's servers sign it (after validating the hardware attestation), and subsequent API calls include a cryptographic "assertion" signed by that key. Your server validates the assertion using Apple's public key. Because the Secure Enclave is isolated from the main CPU even on a jailbroken device, and because the signing key never leaves the enclave, a jailbroken device cannot forge a valid assertion. Limitation: AppAttest requires an internet connection on first attestation, and Apple does not guarantee 100% detection — some compromised devices may still pass.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: Design a security architecture for a banking app that needs to prevent screen recording, protect session tokens, and detect runtime tampering.</strong></p>
+
+<p>A: Six-layer approach: (1) <strong>Screen recording prevention</strong>: set <code>UIWindow.isSecure = true</code> (or apply to specific views with <code>UITextField.isSecureTextEntry</code>) — iOS blurs secure windows in the app switcher and in screen recordings. For transaction confirmation screens, additionally check <code>UIScreen.main.isCaptured</code> and hide sensitive values if <code>true</code>. (2) <strong>Session token protection</strong>: store tokens in Keychain with <code>kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly</code> + <code>SecAccessControl</code> requiring biometric authentication for each read. This means stolen tokens are useless without the user's face/fingerprint. Short session token TTL (15 min) with silent refresh. (3) <strong>Runtime tampering detection</strong>: check <code>isDebuggerAttached()</code> and <code>IntegrityChecker.isDeviceCompromised()</code> at app launch and before sensitive operations. Verify the app binary's hash against an expected value (computed at build time, stored obfuscated) — a modified binary has a different hash. (4) <strong>AppAttest for API requests</strong>: all transaction APIs require an AppAttest assertion header. The backend validates with Apple's API — rejects requests from non-attested or compromised devices. (5) <strong>Certificate pinning</strong>: as described in <a href="network-security.md">Network Security</a> — SPKI pinning with two keys and pin rotation mechanism. (6) <strong>Anomaly detection</strong>: log security events (jailbreak detection, failed attestations, pin mismatches, repeated biometric failures) to the backend. Implement server-side rate limiting and account lockout. Alert the security team on anomalous patterns (e.g., 100 attestation failures from a single device).</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><strong>Issue: Jailbreak detection is triggering for users on non-jailbroken devices (false positives).</strong></p>
+
+<p>Solution: The file system checks are too broad. Some enterprise MDM solutions or developer devices have files in unusual paths that match your detection patterns. Narrow the checks: check for Cydia-specific paths (<code>/Applications/Cydia.app</code>, not just <code>/Applications</code>), check for Cydia's URL scheme (<code>cydia://</code>), and weight multiple weak signals rather than any single check triggering. Log which check triggered for each detection to tune the false positive rate.</p>
+
+<p><em></em>Issue: App is rejected for using <code>fork()</code> in jailbreak detection.<em></em></p>
+
+<p>Solution: Apple's App Store review may flag <code>fork()</code> usage. Alternative: use only file system checks and dylib injection checks. <code>fork()</code> is a strong signal but not essential if you have three or four other checks. Replace with a Mach-O image scan for jailbreak dylib names — this avoids the POSIX process creation APIs that flag App Review.</p>
+
+<p><strong>Issue: SSL Kill Switch bypasses certificate pinning in a release build.</strong></p>
+
+<p>Solution: SSL Kill Switch hooks <code>SecTrustEvaluateWithError</code> at the Objective-C/C level via Cydia Substrate. It is only effective on jailbroken devices. Pair certificate pinning with jailbreak detection: if a jailbreak is detected, disable network access to sensitive APIs entirely (not just degrade). For extra hardening, implement pinning at a lower level using <code>nw_tcp_create_connection</code> with custom certificate validation rather than the higher-level <code>URLSession</code> delegate, which is a more common hook target.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="data-security.md">Data Security</a> — Keychain and CryptoKit for data at rest</li>
+<li><a href="network-security.md">Network Security</a> — certificate pinning and ATS</li>
+<li><a href="../11-testing/testable-architecture.md">Testing — Testable Architecture</a> — mocking security services in tests</li>
+<li><a href="../09-ios-platform/app-lifecycle.md">App Lifecycle</a> — entry points where integrity checks should run</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>

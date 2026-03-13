@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Core Data — iOS Knowledge Tree</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body id="top" class="site-wrapper">
+
+  <header class="site-header">
+  <a href="../index.html">iOS Core Knowledge Tree</a>
+  <div class="breadcrumb"><span><a href="../index.html">Home</a></span>
+    <span><a href="../08-data-persistence/index.html">Data Persistence</a></span>
+    <span>Core Data</span></div>
+</header>
+
+
+  <div class="main-layout">
+    <nav class="site-nav">
+  <h2>Topics</h2>
+  <ol>
+    <li><a href="../01-swift-language/index.html">Swift Language</a></li>
+    <li><a href="../02-memory-management/index.html">Memory Management</a></li>
+    <li><a href="../03-concurrency/index.html">Concurrency</a></li>
+    <li><a href="../04-ui-frameworks/index.html">UI Frameworks</a></li>
+    <li><a href="../05-reactive-programming/index.html">Reactive Programming</a></li>
+    <li><a href="../06-architecture/index.html">Architecture</a></li>
+    <li><a href="../07-networking/index.html">Networking</a></li>
+    <li><a href="../08-data-persistence/index.html" class="active">Data Persistence</a></li>
+    <li><a href="../09-ios-platform/index.html">iOS Platform</a></li>
+    <li><a href="../10-dependency-management/index.html">Dependency Management</a></li>
+    <li><a href="../11-testing-quality/index.html">Testing &amp; Quality</a></li>
+    <li><a href="../12-performance/index.html">Performance</a></li>
+    <li><a href="../13-app-startup-runtime/index.html">App Startup &amp; Runtime</a></li>
+    <li><a href="../14-security/index.html">Security</a></li>
+    <li><a href="../15-design-patterns/index.html">Design Patterns</a></li>
+    <li><a href="../16-refactoring/index.html">Refactoring</a></li>
+    <li><a href="../17-observability/index.html">Observability</a></li>
+    <li><a href="../18-accessibility/index.html">Accessibility</a></li>
+    <li><a href="../19-app-distribution/index.html">App Distribution</a></li>
+    <li><a href="../20-mobile-system-design/index.html">Mobile System Design</a></li>
+  </ol>
+</nav>
+
+
+    <main class="site-content">
+      <h1 id="core-data">Core Data</h1>
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>Core Data is Apple's object graph persistence framework. It maps Swift objects (<code>NSManagedObject</code> subclasses) to a persistent store — typically SQLite — and manages the full lifecycle: insertion, fetching, updating, deleting, undo/redo, and change tracking. Core Data is not a SQL wrapper; it operates at the object graph level with an <code>NSManagedObjectContext</code> acting as a scratch pad. It provides powerful features: <code>NSFetchedResultsController</code> for live table/collection view updates, lightweight migrations for schema evolution, faulting for lazy-loading, and CloudKit integration via <code>NSPersistentCloudKitContainer</code>. Understanding Core Data's threading model is critical — an <code>NSManagedObjectContext</code> and its objects are not thread-safe and must be used on the queue they were created on.</p>
+
+<h2 id="2-simple-explanation">2. Simple Explanation</h2>
+
+<p>Think of Core Data as a smart filing system for objects. The <code>NSManagedObjectContext</code> is your desk — a working area where you create, modify, and organise papers (objects). The <code>NSPersistentStore</code> (SQLite file) is the filing cabinet in the back room. When you're done editing, you call <code>save()</code> and the system moves your desk work into the filing cabinet. Fetching is like asking a filing clerk to bring you matching folders (objects) matching a description. The <code>NSPersistentContainer</code> is the building manager that sets up the whole system for you. The key rule: each desk (context) belongs to one person (one thread) — never hand a paper (managed object) to someone at a different desk.</p>
+
+<h2 id="3-deep-ios-knowledge">3. Deep iOS Knowledge</h2>
+
+<h3 id="stack-architecture">Stack Architecture</h3>
+
+<pre><code>NSPersistentContainer
+  ├── NSManagedObjectModel        (.xcdatamodeld — entity definitions)
+  ├── NSPersistentStoreCoordinator (manages one or more stores)
+  │     └── NSPersistentStore     (SQLite file in Library/Application Support/)
+  └── NSManagedObjectContext      (viewContext — main queue)
+        └── child contexts        (background contexts for writes)</code></pre>
+
+<h3 id="nspersistentcontainer-setup">NSPersistentContainer Setup</h3>
+
+<p><code>NSPersistentContainer</code> initialises the full Core Data stack from a <code>.xcdatamodeld</code> model file:</p>
+
+<pre><code class="language-swift">class PersistenceController {
+    static let shared = PersistenceController()
+
+    let container: NSPersistentContainer
+
+    init(inMemory: Bool = false) {
+        container = NSPersistentContainer(name: "MyApp")   // matches .xcdatamodeld filename
+        if inMemory {
+            container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+        }
+        container.loadPersistentStores { _, error in
+            if let error { fatalError("Core Data load failed: \(error)") }
+        }
+        container.viewContext.automaticallyMergesChangesFromParent = true
+    }
+}</code></pre>
+
+<h3 id="nsmanagedobjectcontext-threading-rules">NSManagedObjectContext Threading Rules</h3>
+
+<ul>
+<li><code>viewContext</code> runs on the <strong>main queue</strong> — use it for reading data to display in the UI.</li>
+<li>Background contexts (<code>container.newBackgroundContext()</code> or <code>performBackgroundTask</code>) run on a private queue — use for writes, imports, and heavy processing.</li>
+<li><em></em>Never pass <code>NSManagedObject</code> instances between contexts.<em></em> Pass <code>NSManagedObjectID</code> instead and call <code>context.object(with: objectID)</code> in the target context.</li>
+<li>Always call <code>context.perform { }</code> or <code>context.performAndWait { }</code> to execute operations on the correct queue.</li>
+</ul>
+
+<h3 id="fetch-requests">Fetch Requests</h3>
+
+<pre><code class="language-swift">let request = NSFetchRequest&lt;Article&gt;(entityName: "Article")
+request.predicate = NSPredicate(format: "isPublished == YES AND authorID == %@", userID)
+request.sortDescriptors = [NSSortDescriptor(key: "publishedAt", ascending: false)]
+request.fetchLimit = 20
+request.fetchBatchSize = 20    // faults remaining objects — memory-efficient
+
+let articles = try context.fetch(request)</code></pre>
+
+<p><em></em><code>fetchBatchSize</code><em></em> is critical for large datasets: Core Data loads objects in batches as you access them, rather than pulling all rows into memory at once. The returned array is a fault array — individual objects are loaded on demand.</p>
+
+<h3 id="nsfetchedresultscontroller">NSFetchedResultsController</h3>
+
+<p><code>NSFetchedResultsController</code> (NSFRC) monitors a fetch request and notifies a delegate when the result set changes. Essential for <code>UITableView</code>/<code>UICollectionView</code> driven by Core Data:</p>
+
+<pre><code class="language-swift">lazy var frc: NSFetchedResultsController&lt;Article&gt; = {
+    let request = Article.fetchRequest()
+    request.sortDescriptors = [NSSortDescriptor(key: "publishedAt", ascending: false)]
+    return NSFetchedResultsController(
+        fetchRequest: request,
+        managedObjectContext: PersistenceController.shared.container.viewContext,
+        sectionNameKeyPath: nil,
+        cacheName: nil
+    )
+}()</code></pre>
+
+<h3 id="faulting">Faulting</h3>
+
+<p>Core Data uses <strong>faults</strong> — placeholder objects that haven't loaded their data from the store yet. When you access a fault's property, Core Data fires the fault and loads the data. This is transparent but has performance implications: accessing many faults one-by-one in a loop causes N+1 queries ("fault storm"). Mitigate with <code>NSFetchRequest.returnsObjectsAsFaults = false</code> for small result sets, or <code>NSFetchRequest.relationshipKeyPathsForPrefetching</code> for related objects.</p>
+
+<h3 id="relationships">Relationships</h3>
+
+<p>Core Data models relationships (<code>to-one</code>, <code>to-many</code>) in the data model editor:</p>
+
+<ul>
+<li>Always define <strong>inverse relationships</strong> — Core Data uses them to maintain graph consistency.</li>
+<li>For large to-many relationships, use <code>NSOrderedSet</code> if order matters; otherwise <code>NSSet</code>.</li>
+<li>Cascade delete rules propagate deletions through the graph automatically.</li>
+</ul>
+
+<h3 id="lightweight-migration">Lightweight Migration</h3>
+
+<p>When the schema changes, Core Data can automatically migrate the store if the change is "lightweight" (additive: new entity, new optional attribute, renamed entity/attribute with a renaming identifier):</p>
+
+<pre><code class="language-swift">let description = container.persistentStoreDescriptions.first!
+description.shouldMigrateStoreAutomatically = true
+description.shouldInferMappingModelAutomatically = true</code></pre>
+
+<p>For non-lightweight changes (new required attribute without default, changed relationship type), provide a <code>NSMappingModel</code> and use <code>NSMigrationManager</code>.</p>
+
+<h3 id="cloudkit-integration">CloudKit Integration</h3>
+
+<p><code>NSPersistentCloudKitContainer</code> replaces <code>NSPersistentContainer</code> to sync the Core Data store with CloudKit automatically. Constraints: all attributes must be optional, and ordered relationships are not supported. Sync conflicts are resolved with a last-write-wins strategy by default.</p>
+
+<h2 id="4-practical-usage">4. Practical Usage</h2>
+
+<pre><code class="language-swift">import CoreData
+import SwiftUI
+
+// ── PersistenceController singleton ───────────────────────────
+class PersistenceController {
+    static let shared = PersistenceController()
+
+    // Preview / test instance with in-memory store
+    static let preview: PersistenceController = {
+        let ctrl = PersistenceController(inMemory: true)
+        let ctx = ctrl.container.viewContext
+        // Seed preview data
+        for i in 0..&lt;5 {
+            let note = Note(context: ctx)
+            note.id = UUID()
+            note.title = "Note \(i)"
+            note.body = "Body of note \(i)"
+            note.createdAt = Date()
+        }
+        try? ctx.save()
+        return ctrl
+    }()
+
+    let container: NSPersistentContainer
+
+    init(inMemory: Bool = false) {
+        container = NSPersistentContainer(name: "MyApp")
+        if inMemory {
+            container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+        }
+        container.loadPersistentStores { _, error in
+            if let error { fatalError("Core Data: \(error)") }
+        }
+        container.viewContext.automaticallyMergesChangesFromParent = true
+        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+    }
+}
+
+// ── NSManagedObject subclass (generated or manual) ────────────
+// Assumes Note entity with: id: UUID, title: String, body: String, createdAt: Date
+// (In Xcode: Entity → Codegen = "Class Definition")
+
+// ── Repository wrapping Core Data operations ──────────────────
+actor NoteRepository {
+    private let container: NSPersistentContainer
+
+    init(container: NSPersistentContainer = PersistenceController.shared.container) {
+        self.container = container
+    }
+
+    // ── Read on main context (for UI) ────────────────────────
+    func fetchAll() throws -&gt; [Note] {
+        let ctx = container.viewContext
+        let request = Note.fetchRequest() as NSFetchRequest&lt;Note&gt;
+        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+        request.fetchBatchSize = 20
+        return try ctx.fetch(request)
+    }
+
+    // ── Write on background context ──────────────────────────
+    func create(title: String, body: String) async throws {
+        try await container.performBackgroundTask { ctx in
+            let note = Note(context: ctx)
+            note.id = UUID()
+            note.title = title
+            note.body = body
+            note.createdAt = Date()
+            try ctx.save()                              // persist to SQLite
+        }
+    }
+
+    func update(objectID: NSManagedObjectID, title: String, body: String) async throws {
+        try await container.performBackgroundTask { ctx in
+            let note = ctx.object(with: objectID) as! Note   // re-fetch in background context
+            note.title = title
+            note.body = body
+            if ctx.hasChanges { try ctx.save() }
+        }
+    }
+
+    func delete(objectID: NSManagedObjectID) async throws {
+        try await container.performBackgroundTask { ctx in
+            let note = ctx.object(with: objectID)
+            ctx.delete(note)
+            try ctx.save()
+        }
+    }
+
+    // ── Batch delete (avoids loading objects into memory) ────
+    func deleteAll() async throws {
+        try await container.performBackgroundTask { ctx in
+            let request = NSFetchRequest&lt;NSFetchRequestResult&gt;(entityName: "Note")
+            let batchDelete = NSBatchDeleteRequest(fetchRequest: request)
+            batchDelete.resultType = .resultTypeObjectIDs
+            let result = try ctx.execute(batchDelete) as? NSBatchDeleteResult
+            let ids = result?.result as? [NSManagedObjectID] ?? []
+
+            // Merge deletions into view context
+            let changes = [NSDeletedObjectsKey: ids]
+            NSManagedObjectContext.mergeChanges(fromRemoteContextSave: changes,
+                                               into: [self.container.viewContext])
+        }
+    }
+}
+
+// ── NSFetchedResultsController in UIKit ──────────────────────
+class NotesViewController: UITableViewController, NSFetchedResultsControllerDelegate {
+    private lazy var frc: NSFetchedResultsController&lt;Note&gt; = {
+        let request = Note.fetchRequest() as NSFetchRequest&lt;Note&gt;
+        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+        request.fetchBatchSize = 20
+        return NSFetchedResultsController(
+            fetchRequest: request,
+            managedObjectContext: PersistenceController.shared.container.viewContext,
+            sectionNameKeyPath: nil,
+            cacheName: "NotesList"
+        )
+    }()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        frc.delegate = self
+        try? frc.performFetch()
+    }
+
+    // UITableViewDataSource
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -&gt; Int {
+        frc.sections?[section].numberOfObjects ?? 0
+    }
+
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -&gt; UITableViewCell {
+        let note = frc.object(at: indexPath)
+        let cell = tableView.dequeueReusableCell(withIdentifier: "NoteCell", for: indexPath)
+        cell.textLabel?.text = note.title
+        return cell
+    }
+
+    // NSFetchedResultsControllerDelegate — automatic table updates
+    func controllerWillChangeContent(_ controller: NSFetchedResultsController&lt;NSFetchRequestResult&gt;) {
+        tableView.beginUpdates()
+    }
+
+    func controller(_ controller: NSFetchedResultsController&lt;NSFetchRequestResult&gt;,
+                    didChange anObject: Any, at indexPath: IndexPath?,
+                    for type: NSFetchedResultsChangeType, newIndexPath: IndexPath?) {
+        switch type {
+        case .insert: tableView.insertRows(at: [newIndexPath!], with: .automatic)
+        case .delete: tableView.deleteRows(at: [indexPath!], with: .automatic)
+        case .update: tableView.reloadRows(at: [indexPath!], with: .automatic)
+        case .move:   tableView.moveRow(at: indexPath!, to: newIndexPath!)
+        @unknown default: break
+        }
+    }
+
+    func controllerDidChangeContent(_ controller: NSFetchedResultsController&lt;NSFetchRequestResult&gt;) {
+        tableView.endUpdates()
+    }
+}
+
+// ── @FetchRequest in SwiftUI ──────────────────────────────────
+struct NoteListView: View {
+    @FetchRequest(
+        sortDescriptors: [SortDescriptor(\.createdAt, order: .reverse)],
+        predicate: nil,
+        animation: .default
+    )
+    private var notes: FetchedResults&lt;Note&gt;
+
+    @Environment(\.managedObjectContext) private var context
+
+    var body: some View {
+        List(notes) { note in
+            Text(note.title ?? "")
+        }
+        .toolbar {
+            Button("Add") {
+                let n = Note(context: context)
+                n.id = UUID(); n.title = "New"; n.createdAt = Date()
+                try? context.save()
+            }
+        }
+    }
+}</code></pre>
+
+<h2 id="5-interview-questions--answers">5. Interview Questions &amp; Answers</h2>
+
+<h3 id="basic">Basic</h3>
+
+<p><strong>Q: What is the role of NSManagedObjectContext and why can't you use it on multiple threads?</strong></p>
+
+<p>A: <code>NSManagedObjectContext</code> is the in-memory workspace where Core Data objects live. It tracks inserts, updates, and deletes since the last save. It is not thread-safe because it uses mutable, unsynchronised internal state. Each context is tied to a serial queue (main or private), and <code>NSManagedObject</code> instances are bound to the context that created them. Accessing a managed object from a different queue than its context's queue causes data corruption and crashes. The correct pattern is: use <code>viewContext</code> (main queue) for reads that feed the UI, create background contexts via <code>container.newBackgroundContext()</code> or <code>performBackgroundTask</code> for writes and imports, and pass <code>NSManagedObjectID</code> values (not the objects themselves) between contexts.</p>
+
+<p><em></em>Q: What is <code>automaticallyMergesChangesFromParent</code> and when should you set it to <code>true</code>?<em></em></p>
+
+<p>A: When a background context saves changes, those changes are pushed to the persistent store coordinator. The <code>viewContext</code> does not automatically receive them unless <code>automaticallyMergesChangesFromParent = true</code> is set. With this flag enabled, the <code>viewContext</code> merges the background saves automatically (on the main thread), ensuring the UI reflects the latest data. Set it to <code>true</code> on the <code>viewContext</code> in almost all cases. If disabled, you must manually call <code>mergeChanges(fromContextDidSave:)</code> in response to <code>NSManagedObjectContextDidSave</code> notifications — more error-prone.</p>
+
+<h3 id="hard">Hard</h3>
+
+<p><strong>Q: What is faulting in Core Data, and how do you avoid fault storms?</strong></p>
+
+<p>A: A fault is a lightweight placeholder for a managed object that hasn't loaded its property data from the store yet. When you access a faulted object's property, Core Data fires the fault — executing a SQL query to load that object's row. In a loop over a large array, this causes N individual SQL queries ("fault storm"), severely degrading performance. Mitigations: (1) Set <code>NSFetchRequest.returnsObjectsAsFaults = false</code> for small result sets where you'll access most properties. (2) Specify <code>propertiesToFetch</code> to load only needed columns. (3) Use <code>relationshipKeyPathsForPrefetching</code> to pre-fetch related objects in the same query. (4) Set <code>fetchBatchSize</code> on the fetch request — Core Data fetches rows in batches, reducing memory usage while amortising round-trips.</p>
+
+<p><strong>Q: When does lightweight migration work and when do you need a heavyweight migration?</strong></p>
+
+<p>A: Lightweight migration works for schema changes that Core Data can infer automatically: adding a new optional attribute or entity, deleting an attribute or entity, renaming an entity or attribute (with a renaming identifier set in the model editor), and changing an attribute to optional. It does NOT work for: adding a required (non-optional) attribute without a default value, changing an attribute's type (e.g., <code>String</code> → <code>Int</code>), splitting an entity into two, or merging two entities. For these cases, you need a heavyweight migration: create a <code>NSMappingModel</code> that maps old entities to new entities, write <code>NSEntityMigrationPolicy</code> subclasses to handle custom value transformations, and use <code>NSMigrationManager</code> to execute the migration manually before loading the store.</p>
+
+<h3 id="expert">Expert</h3>
+
+<p><strong>Q: How would you architect a performant Core Data import of 50,000 records from a JSON API response?</strong></p>
+
+<p>A: Large imports must not run on the <code>viewContext</code> (would block the UI) and must be designed to avoid excessive memory use. The architecture: (1) <strong>Background context</strong>: use <code>container.performBackgroundTask</code> to get a private-queue context. (2) <strong>Batch processing</strong>: process records in chunks of 500–1000, calling <code>context.save()</code> and <code>context.reset()</code> after each chunk. <code>reset()</code> clears the context's object graph, releasing memory — without it, all 50k objects accumulate in memory. (3) <strong>Batch insert</strong> (iOS 13+): <code>NSBatchInsertRequest</code> with a <code>managedObjectHandler</code> block inserts records directly into SQLite without going through the object graph — orders of magnitude faster than individual <code>NSManagedObject</code> inserts. (4) <strong>Merge</strong>: after the batch insert, call <code>NSManagedObjectContext.mergeChanges(fromRemoteContextSave:into: [viewContext])</code> to notify the view context. (5) <strong>Conflict policy</strong>: set <code>mergePolicy = NSMergeByPropertyStoreTrumpMergePolicy</code> on the import context to handle re-imports correctly (existing records are updated, not duplicated, based on a unique constraint defined in the model).</p>
+
+<h2 id="6-common-issues--solutions">6. Common Issues &amp; Solutions</h2>
+
+<p><em></em>Issue: <code>EXC_BAD_ACCESS</code> or crashes when accessing managed objects.<em></em></p>
+
+<p>Solution: A managed object is being accessed from a different thread than its context's queue. Use <code>context.perform { }</code> to access objects on the correct queue, or pass <code>NSManagedObjectID</code> between threads.</p>
+
+<p><strong>Issue: Changes saved in a background context do not appear in the UI.</strong></p>
+
+<p>Solution: Set <code>container.viewContext.automaticallyMergesChangesFromParent = true</code>. Without this, the <code>viewContext</code> does not receive background saves automatically.</p>
+
+<p><em></em>Issue: <code>NSFetchedResultsController</code> triggers too many UI updates.<em></em></p>
+
+<p>Solution: Ensure <code>sectionNameKeyPath</code> is nil if you're not using sections. Use the batched delegate methods (<code>controllerWillChangeContent</code>/<code>controllerDidChangeContent</code> with <code>beginUpdates</code>/<code>endUpdates</code>) rather than <code>reloadData()</code> in <code>controllerDidChangeContent</code>. For diffable data source integration, update the snapshot inside <code>controllerDidChangeContent</code>.</p>
+
+<p><strong>Issue: App crashes on launch after a schema change with "The model used to open the store is incompatible with the one used to create the store."</strong></p>
+
+<p>Solution: You changed the Core Data model without creating a new model version. Always use <strong>Editor → Add Model Version</strong> in Xcode to create a versioned model, set the current version to the new one, and enable lightweight migration on the persistent store description. Never edit the active model version directly.</p>
+
+<h2 id="7-related-topics">7. Related Topics</h2>
+
+<ul>
+<li><a href="file-system.md">File System</a> — Core Data SQLite files live in <code>Library/Application Support/</code></li>
+<li><a href="data-sync.md">Data Synchronization</a> — NSPersistentCloudKitContainer and migration strategies</li>
+<li><a href="../03-concurrency/actors.md">Actors</a> — actor-based wrappers enforce Core Data threading rules</li>
+<li><a href="../06-architecture/mvvm.md">MVVM</a> — ViewModel fetches from the repository; Core Data stays out of the View</li>
+<li><a href="sqlite-realm.md">SQLite &amp; Realm</a> — alternative database options with tradeoff comparison</li>
+</ul>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+  <span>iOS Core Knowledge Tree</span>
+  <span>
+    <a href="../index.html">Home</a> &nbsp;·&nbsp;
+    <a href="#top">Back to top</a>
+  </span>
+</footer>
+
+
+</body>
+</html>
