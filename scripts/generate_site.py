@@ -315,8 +315,15 @@ def render_site_index(sections: list[tuple[str, str]]) -> None:
         for slug, label in sections
     )
 
+    notion_sync_ui = """\
+<div class="notion-sync-container">
+  <button id="notion-sync-btn" class="btn-notion-sync" type="button">Sync to Notion</button>
+  <div id="notion-sync-panel" hidden></div>
+</div>"""
+
     content = f"""<h1>iOS Core Knowledge Tree</h1>
 <p>A structured reference for senior iOS engineers covering Swift, architecture, performance, and more.</p>
+{notion_sync_ui}
 <h2>All Sections</h2>
 <ul class="topic-list">
 {section_items}
@@ -330,6 +337,7 @@ def render_site_index(sections: list[tuple[str, str]]) -> None:
     page = page.replace("{{nav}}", nav)
     page = page.replace("{{header}}", header)
     page = page.replace("{{footer}}", footer)
+    page = page.replace("</body>", '<script src="assets/notion-sync.js"></script>\n</body>')
 
     (SITE_DIR / "index.html").write_text(page, encoding="utf-8")
     print(f"  [index]   index.html")
